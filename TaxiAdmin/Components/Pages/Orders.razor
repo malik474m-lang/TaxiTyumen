@@ -1,0 +1,143 @@
+﻿@page "/orders"
+@using Microsoft.EntityFrameworkCore
+@using TaxiService.Infrastructure.Data
+@using TaxiService.Domain.Enums
+@using TaxiService.Domain.Entities
+@inject TaxiDbContext Db
+@rendermode InteractiveServer
+
+<PageTitle>Заказы  Такси Тюмень</PageTitle>
+
+<h2 style="color:#FFD700;margin:20px 0"> Все заказы</h2>
+
+<div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">
+    <button @onclick="() => SetFilter(null)"
+            style="background:@(filter==null?"#FFD700":"#333");color:@(filter==null?"#1E1E2E":"white");padding:6px 16px;border:none;border-radius:16px;cursor:pointer">
+        Все
+    </button>
+    <button @onclick='() => SetFilter("Searching")'
+            style="background:@(filter=="Searching"?"#FF9800":"#333");color:white;padding:6px 16px;border:none;border-radius:16px;cursor:pointer">
+        Поиск
+    </button>
+    <button @onclick='() => SetFilter("InProgress")'
+            style="background:@(filter=="InProgress"?"#2196F3":"#333");color:white;padding:6px 16px;border:none;border-radius:16px;cursor:pointer">
+        В поездке
+    </button>
+    <button @onclick='() => SetFilter("Completed")'
+            style="background:@(filter=="Completed"?"#4CAF50":"#333");color:white;padding:6px 16px;border:none;border-radius:16px;cursor:pointer">
+        Завершены
+    </button>
+    <button @onclick='() => SetFilter("Cancelled")'
+            style="background:@(filter=="Cancelled"?"#F44336":"#333");color:white;padding:6px 16px;border:none;border-radius:16px;cursor:pointer">
+        Отменены
+    </button>
+</div>
+
+<p style="color:gray">Показано: @filteredOrders.Count из @allOrders.Count</p>
+
+@if (loading)
+{
+    <p style="color:gray">Загрузка...</p>
+}
+else
+{
+    <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse">
+            <thead>
+                <tr style="background:#333">
+                    <th style="padding:8px;text-align:left;color:white">Номер</th>
+                    <th style="padding:8px;text-align:left;color:white">Статус</th>
+                    <th style="padding:8px;text-align:left;color:white">Клиент</th>
+                    <th style="padding:8px;text-align:left;color:white">Откуда</th>
+                    <th style="padding:8px;text-align:left;color:white">Куда</th>
+                    <th style="padding:8px;text-align:left;color:white">Водитель</th>
+                    <th style="padding:8px;text-align:left;color:white">Тариф</th>
+                    <th style="padding:8px;text-align:left;color:white">Цена</th>
+                    <th style="padding:8px;text-align:left;color:white">Дата</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var order in filteredOrders)
+                {
+                    var statusColor = order.Status switch
+                    {
+                        OrderStatus.Completed => "#4CAF50",
+                        OrderStatus.Cancelled or OrderStatus.NoDriverFound => "#F44336",
+                        OrderStatus.Searching => "#FF9800",
+                        OrderStatus.InProgress => "#2196F3",
+                        _ => "#4FC3F7"
+                    };
+
+                    var statusText = order.Status switch
+                    {
+                        OrderStatus.Created => "Создан",
+                        OrderStatus.Searching => "Поиск",
+                        OrderStatus.DriverAssigned => "Назначен",
+                        OrderStatus.DriverEnRoute => "Едет",
+                        OrderStatus.DriverArrived => "На месте",
+                        OrderStatus.InProgress => "В поездке",
+                        OrderStatus.Completed => "Завершён",
+                        OrderStatus.Cancelled => "Отменён",
+                        OrderStatus.NoDriverFound => "Нет водителя",
+                        _ => order.Status.ToString()
+                    };
+
+                    <tr style="background:#252536;border-bottom:1px solid #333">
+                        <td style="padding:8px;color:#FFD700;font-size:12px">@order.OrderNumber</td>
+                        <td style="padding:8px;color:@statusColor">@statusText</td>
+                        <td style="padding:8px;font-size:13px">
+                            @(order.Client != null
+                                ? $"{order.Client.FirstName} {order.Client.LastName}"
+                                : order.ClientName ?? "")
+                        </td>
+                        <td style="padding:8px;font-size:12px;max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">
+                            @order.PickupAddress
+                        </td>
+                        <td style="padding:8px;font-size:12px;max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">
+                            @(order.DestinationAddress ?? "")
+                        </td>
+                        <td style="padding:8px;font-size:12px">
+                            @(order.Driver != null
+                                ? $"{order.Driver.User.FirstName} {order.Driver.User.LastName}"
+                                : "")
+                        </td>
+                        <td style="padding:8px;color:gray;font-size:12px">@order.Tariff</td>
+                        <td style="padding:8px;color:#FFD700;font-weight:bold">@order.EstimatedPrice.ToString("F0") </td>
+                        <td style="padding:8px;color:gray;font-size:12px">
+                            @order.CreatedAt.AddHours(5).ToString("dd.MM HH:mm")
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    bool loading = true;
+    List<Order> allOrders = new();
+    List<Order> filteredOrders = new();
+    string? filter = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        allOrders = await Db.Orders
+            .Include(o => o.Client)
+            .Include(o => o.Driver).ThenInclude(d => d!.User)
+            .OrderByDescending(o => o.CreatedAt)
+            .Take(200)
+            .ToListAsync();
+
+        filteredOrders = allOrders;
+        loading = false;
+    }
+
+    void SetFilter(string? f)
+    {
+        filter = f;
+        if (filter == null)
+            filteredOrders = allOrders;
+        else
+            filteredOrders = allOrders.Where(o => o.Status.ToString() == filter).ToList();
+    }
+}

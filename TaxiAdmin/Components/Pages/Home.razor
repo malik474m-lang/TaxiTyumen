@@ -1,0 +1,145 @@
+﻿@page "/"
+@using Microsoft.EntityFrameworkCore
+@using TaxiService.Infrastructure.Data
+@using TaxiService.Domain.Enums
+@using TaxiService.Domain.Entities
+@inject TaxiDbContext Db
+@rendermode InteractiveServer
+
+<PageTitle>Дашборд  Такси Тюмень</PageTitle>
+
+<h2 style="color:#FFD700;margin:20px 0"> Дашборд</h2>
+
+@if (loading)
+{
+    <p style="color:gray">Загрузка...</p>
+}
+else
+{
+    <!-- Статистика -->
+    <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:30px">
+        @foreach (var stat in stats)
+        {
+            <div style="background:#252536;padding:20px 24px;border-radius:12px;min-width:140px;text-align:center">
+                <div style="font-size:32px;font-weight:bold;color:@stat.Color">@stat.Value</div>
+                <div style="color:gray;font-size:13px;margin-top:4px">@stat.Label</div>
+            </div>
+        }
+    </div>
+
+    <!-- Последние заказы -->
+    <h3 style="color:#FFD700;margin-bottom:12px"> Последние заказы</h3>
+
+    <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse">
+            <thead>
+                <tr style="background:#333">
+                    <th style="padding:10px;text-align:left;color:white">Номер</th>
+                    <th style="padding:10px;text-align:left;color:white">Статус</th>
+                    <th style="padding:10px;text-align:left;color:white">Клиент</th>
+                    <th style="padding:10px;text-align:left;color:white">Откуда</th>
+                    <th style="padding:10px;text-align:left;color:white">Куда</th>
+                    <th style="padding:10px;text-align:left;color:white">Тариф</th>
+                    <th style="padding:10px;text-align:left;color:white">Цена</th>
+                    <th style="padding:10px;text-align:left;color:white">Дата</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var order in recentOrders)
+                {
+                    var statusColor = order.Status switch
+                    {
+                        OrderStatus.Completed => "#4CAF50",
+                        OrderStatus.Cancelled => "#F44336",
+                        OrderStatus.Searching => "#FF9800",
+                        OrderStatus.InProgress => "#2196F3",
+                        OrderStatus.DriverAssigned or
+                        OrderStatus.DriverEnRoute or
+                        OrderStatus.DriverArrived => "#4FC3F7",
+                        _ => "#888"
+                    };
+
+                    var statusText = order.Status switch
+                    {
+                        OrderStatus.Created => "Создан",
+                        OrderStatus.Searching => "Поиск",
+                        OrderStatus.DriverAssigned => "Назначен",
+                        OrderStatus.DriverEnRoute => "Едет",
+                        OrderStatus.DriverArrived => "На месте",
+                        OrderStatus.InProgress => "Поездка",
+                        OrderStatus.Completed => "Завершён",
+                        OrderStatus.Cancelled => "Отменён",
+                        OrderStatus.NoDriverFound => "Нет водителя",
+                        _ => order.Status.ToString()
+                    };
+
+                    <tr style="background:#252536;border-bottom:1px solid #333">
+                        <td style="padding:8px;color:#FFD700">@order.OrderNumber</td>
+                        <td style="padding:8px;color:@statusColor">@statusText</td>
+                        <td style="padding:8px">
+                            @(order.Client != null
+                                ? $"{order.Client.FirstName} {order.Client.LastName}"
+                                : order.ClientName ?? "")
+                        </td>
+                        <td style="padding:8px;max-width:200px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">
+                            @order.PickupAddress
+                        </td>
+                        <td style="padding:8px;max-width:200px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">
+                            @(order.DestinationAddress ?? "")
+                        </td>
+                        <td style="padding:8px;color:gray">@order.Tariff</td>
+                        <td style="padding:8px;color:#FFD700">@order.EstimatedPrice.ToString("F0") </td>
+                        <td style="padding:8px;color:gray">
+                            @order.CreatedAt.AddHours(5).ToString("dd.MM HH:mm")
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    bool loading = true;
+    List<Order> recentOrders = new();
+    record StatItem(string Label, string Value, string Color);
+    List<StatItem> stats = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var totalOrders = await Db.Orders.CountAsync();
+        var activeOrders = await Db.Orders.CountAsync(o =>
+            o.Status != OrderStatus.Completed &&
+            o.Status != OrderStatus.Cancelled &&
+            o.Status != OrderStatus.NoDriverFound);
+        var totalDrivers = await Db.Drivers.CountAsync();
+        var onlineDrivers = await Db.Drivers.CountAsync(d => d.Status != DriverStatus.Offline);
+        var totalRevenue = await Db.Orders
+            .Where(o => o.Status == OrderStatus.Completed)
+            .SumAsync(o => o.FinalPrice ?? o.EstimatedPrice);
+        var todayRevenue = await Db.Orders
+            .Where(o => o.Status == OrderStatus.Completed &&
+                        o.CompletedAt >= DateTime.UtcNow.Date)
+            .SumAsync(o => o.FinalPrice ?? o.EstimatedPrice);
+        var totalClients = await Db.Users.CountAsync(u => u.Role == UserRole.Client);
+
+        stats = new List<StatItem>
+        {
+            new("Всего заказов", totalOrders.ToString(), "#4CAF50"),
+            new("Активных", activeOrders.ToString(), "#FF9800"),
+            new("Водителей", totalDrivers.ToString(), "#2196F3"),
+            new("Онлайн", onlineDrivers.ToString(), "#9C27B0"),
+            new("Выручка всего", totalRevenue.ToString("F0") + " ", "#FFD700"),
+            new("Выручка сегодня", todayRevenue.ToString("F0") + " ", "#4FC3F7"),
+            new("Клиентов", totalClients.ToString(), "#F44336"),
+        };
+
+        recentOrders = await Db.Orders
+            .Include(o => o.Client)
+            .OrderByDescending(o => o.CreatedAt)
+            .Take(20)
+            .ToListAsync();
+
+        loading = false;
+    }
+}

@@ -1,0 +1,48 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="TaxiClient.Views.ChatPage"
+             Title=" Чат"
+             BackgroundColor="#1E1E2E">
+    <Grid RowDefinitions="*,Auto">
+
+        <ScrollView x:Name="ChatScroll" Grid.Row="0">
+            <StackLayout x:Name="MessagesList"
+                         Padding="15" Spacing="8"/>
+        </ScrollView>
+
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto"
+              Padding="10" BackgroundColor="#252536">
+
+            <Button Grid.Column="0" Text=""
+                    BackgroundColor="#333"
+                    TextColor="White"
+                    CornerRadius="20"
+                    WidthRequest="44"
+                    HeightRequest="44"
+                    Clicked="OnQuickPhrases"/>
+
+            <Border Grid.Column="1" BackgroundColor="#2D2D3F"
+                    Stroke="#555" Padding="4,0" Margin="8,0">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="20"/>
+                </Border.StrokeShape>
+                <Entry x:Name="MessageEntry"
+                       Placeholder="Сообщение..."
+                       PlaceholderColor="Gray"
+                       TextColor="White"
+                       FontSize="15"
+                       Completed="OnSendMessage"/>
+            </Border>
+
+            <Button Grid.Column="2" Text=""
+                    BackgroundColor="#FFD700"
+                    TextColor="#1E1E2E"
+                    CornerRadius="20"
+                    WidthRequest="44"
+                    HeightRequest="44"
+                    FontSize="18"
+                    Clicked="OnSendMessage"/>
+        </Grid>
+    </Grid>
+</ContentPage>

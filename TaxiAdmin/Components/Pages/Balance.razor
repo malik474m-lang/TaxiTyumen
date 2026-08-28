@@ -1,0 +1,79 @@
+﻿@page "/balance"
+@using Microsoft.EntityFrameworkCore
+@using TaxiService.Infrastructure.Data
+@using TaxiService.Domain.Entities
+@inject TaxiDbContext Db
+@rendermode InteractiveServer
+
+<PageTitle>Балансы водителей</PageTitle>
+
+<h2 style="color:#FFD700;margin:20px 0"> История балансов</h2>
+
+@if (loading)
+{
+    <p style="color:gray">Загрузка...</p>
+}
+else
+{
+    <table style="width:100%;border-collapse:collapse">
+        <thead>
+            <tr style="background:#333">
+                <th style="padding:10px;text-align:left;color:white">Дата</th>
+                <th style="padding:10px;text-align:left;color:white">Водитель</th>
+                <th style="padding:10px;text-align:left;color:white">Тип</th>
+                <th style="padding:10px;text-align:left;color:white">Сумма</th>
+                <th style="padding:10px;text-align:left;color:white">Баланс после</th>
+                <th style="padding:10px;text-align:left;color:white">Описание</th>
+                <th style="padding:10px;text-align:left;color:white">Кем</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var t in transactions)
+            {
+                var amountColor = t.Amount >= 0 ? "#4CAF50" : "#F44336";
+                var amountText = t.Amount >= 0
+                    ? "+" + t.Amount.ToString("F0") + " "
+                    : t.Amount.ToString("F0") + " ";
+
+                var typeText = t.Type switch
+                {
+                    BalanceTransactionType.TopUp => "Пополнение",
+                    BalanceTransactionType.Commission => "Комиссия",
+                    BalanceTransactionType.Refund => "Возврат",
+                    BalanceTransactionType.Bonus => "Бонус",
+                    _ => t.Type.ToString()
+                };
+
+                <tr style="background:#252536;border-bottom:1px solid #333">
+                    <td style="padding:8px;color:gray">
+                        @t.CreatedAt.AddHours(5).ToString("dd.MM.yyyy HH:mm")
+                    </td>
+                    <td style="padding:8px">
+                        @(t.Driver?.User?.FirstName) @(t.Driver?.User?.LastName)
+                    </td>
+                    <td style="padding:8px;color:#FF9800">@typeText</td>
+                    <td style="padding:8px;color:@amountColor;font-weight:bold">@amountText</td>
+                    <td style="padding:8px">@t.BalanceAfter.ToString("F0") </td>
+                    <td style="padding:8px;color:gray">@t.Description</td>
+                    <td style="padding:8px;color:gray">@(t.CreatedBy ?? "")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    bool loading = true;
+    List<BalanceTransaction> transactions = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        transactions = await Db.BalanceTransactions
+            .Include(t => t.Driver).ThenInclude(d => d!.User)
+            .OrderByDescending(t => t.CreatedAt)
+            .Take(100)
+            .ToListAsync();
+
+        loading = false;
+    }
+}

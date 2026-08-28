@@ -1,0 +1,70 @@
+﻿<div class="top-row ps-3 navbar navbar-dark" style="background:#252536">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="" style="color:#FFD700"> Такси Тюмень</a>
+        <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+    </div>
+</div>
+
+<div class="@NavMenuCssClass nav-scrollable" style="background:#1E1E2E"
+     @onclick="ToggleNavMenu" @onclick:stopPropagation="true">
+    <nav class="flex-column">
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All" style="color:white">
+                 Дашборд
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="orders" style="color:white">
+                 Заказы
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="drivers" style="color:white">
+                 Водители
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="clients" style="color:white">
+                 Клиенты
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="operators" style="color:white">
+                 Операторы
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="balance" style="color:white">
+                 Балансы
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="tariffs" style="color:white">
+                 Тарифы
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="stats" style="color:white">
+                 Статистика
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="export" style="color:white">
+                 Экспорт Excel
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="autocall" style="color:white">
+                 Автодозвон
+            </NavLink>
+        </div>
+    </nav>
+</div>
+
+@code {
+    private bool collapseNavMenu = true;
+    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+    private void ToggleNavMenu() => collapseNavMenu = !collapseNavMenu;
+}

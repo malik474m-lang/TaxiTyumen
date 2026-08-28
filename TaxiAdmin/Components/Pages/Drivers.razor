@@ -1,0 +1,414 @@
+﻿@page "/drivers"
+@using Microsoft.EntityFrameworkCore
+@using TaxiService.Infrastructure.Data
+@using TaxiService.Domain.Enums
+@using TaxiService.Domain.Entities
+@using TaxiService.Core.Services
+@inject TaxiDbContext Db
+@inject IBalanceService BalanceService
+@rendermode InteractiveServer
+
+<PageTitle>Водители</PageTitle>
+
+<h2 style="color:#FFD700;margin:20px 0"> Водители (@drivers.Count)</h2>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <div style="padding:10px;background:#1A3A1A;border:1px solid #4CAF50;border-radius:8px;color:#4CAF50;margin-bottom:16px">
+        @message
+    </div>
+}
+
+<!-- Добавление водителя -->
+<div style="background:#252536;padding:16px;border-radius:12px;margin-bottom:20px">
+    <h3 style="color:#4FC3F7;margin:0 0 12px 0"> Добавить водителя</h3>
+
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end">
+        <div>
+            <label style="@lblStyle">Телефон</label>
+            <input @bind="newPhone" style="@inpStyle" placeholder="+79991112233" />
+        </div>
+        <div>
+            <label style="@lblStyle">Имя</label>
+            <input @bind="newFirstName" style="@inpStyle" />
+        </div>
+        <div>
+            <label style="@lblStyle">Фамилия</label>
+            <input @bind="newLastName" style="@inpStyle" />
+        </div>
+        <div>
+            <label style="@lblStyle">Пароль</label>
+            <input @bind="newPassword" style="@inpStyle" />
+        </div>
+        <div>
+            <label style="@lblStyle">Марка</label>
+            <input @bind="newCarBrand" style="@inpStyle" />
+        </div>
+        <div>
+            <label style="@lblStyle">Модель</label>
+            <input @bind="newCarModel" style="@inpStyle" />
+        </div>
+        <div>
+            <label style="@lblStyle">Цвет</label>
+            <input @bind="newCarColor" style="@inpStyle" />
+        </div>
+        <div>
+            <label style="@lblStyle">Гос. номер</label>
+            <input @bind="newPlate" style="@inpStyle" />
+        </div>
+        <div>
+            <label style="@lblStyle">Год</label>
+            <input type="number" @bind="newYear" style="@smallInputStyle" />
+        </div>
+        <div>
+            <label style="@lblStyle">ВУ</label>
+            <input @bind="newLicense" style="@inpStyle" />
+        </div>
+
+        <button @onclick="AddDriver"
+                style="background:#4CAF50;color:white;border:none;padding:8px 20px;border-radius:8px;cursor:pointer">
+             Добавить
+        </button>
+    </div>
+</div>
+
+<div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse">
+        <thead>
+            <tr style="background:#333">
+                <th style="@thStyle">Водитель</th>
+                <th style="@thStyle">Телефон</th>
+                <th style="@thStyle">Авто</th>
+                <th style="@thStyle">Номер</th>
+                <th style="@thStyle">Статус</th>
+                <th style="@thStyle">Рейтинг</th>
+                <th style="@thStyle">Баланс</th>
+                <th style="@thStyle">Штраф за отказ</th>
+                <th style="@thStyle">Поездок</th>
+                <th style="@thStyle">Заработок</th>
+                <th style="@thStyle">Верификация</th>
+                <th style="@thStyle">Реквизиты оплаты</th>
+                <th style="@thStyle">Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var d in drivers)
+            {
+                var statusColor = d.Status switch
+                {
+                    DriverStatus.Available => "#4CAF50",
+                    DriverStatus.OnRoute => "#2196F3",
+                    DriverStatus.InTrip => "#FF9800",
+                    DriverStatus.Busy => "#9C27B0",
+                    _ => "#888"
+                };
+
+                var statusText = d.Status switch
+                {
+                    DriverStatus.Offline => "Офлайн",
+                    DriverStatus.Available => "Свободен",
+                    DriverStatus.OnRoute => "Едет к клиенту",
+                    DriverStatus.InTrip => "В поездке",
+                    DriverStatus.Busy => "Занят",
+                    _ => d.Status.ToString()
+                };
+
+                var balanceColor = d.Balance < d.MinBalanceForOrders ? "#F44336" : "#4CAF50";
+
+                <tr style="background:#252536;border-bottom:1px solid #333">
+                    <td style="padding:8px;font-weight:bold">
+                        @d.User.FirstName @d.User.LastName
+                    </td>
+
+                    <td style="padding:8px;color:#4FC3F7">
+                        @d.User.Phone
+                    </td>
+
+                    <td style="padding:8px">
+                        @d.CarBrand @d.CarModel
+                        <span style="color:gray">(@d.CarColor)</span>
+                    </td>
+
+                    <td style="padding:8px;color:#FFD700">
+                        @d.LicensePlate
+                    </td>
+
+                    <td style="padding:8px;color:@statusColor">
+                        @statusText
+                    </td>
+
+                    <td style="padding:8px">
+                         @d.Rating.ToString("F1")
+                    </td>
+
+                    <td style="padding:8px;color:@balanceColor;font-weight:bold">
+                        @d.Balance.ToString("F0") ₽
+                        <div style="display:flex;gap:4px;margin-top:4px">
+                            <input type="number"
+                                   @bind="topUpAmounts[d.Id]"
+                                   style="width:70px;padding:3px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:4px" />
+                            <button @onclick="() => TopUp(d.Id)"
+                                    style="background:#4CAF50;color:white;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:12px">
+                                +
+                            </button>
+                        </div>
+                    </td>
+
+                    <td style="padding:8px">
+                        <input type="number"
+                               @bind="d.RejectionPenalty"
+                               style="width:70px;padding:3px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:4px" />
+                        <button @onclick="() => SavePenalty(d)"
+                                style="background:#FF9800;color:white;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;margin-top:4px">
+                            
+                        </button>
+                    </td>
+
+                    <td style="padding:8px">
+                        @d.CompletedTrips
+                    </td>
+
+                    <td style="padding:8px;color:#FFD700">
+                        @d.TotalEarnings.ToString("F0") ₽
+                    </td>
+
+                    <td style="padding:8px;text-align:center">
+                        <button @onclick="() => ToggleVerify(d)"
+                                style="background:@(d.IsVerified ? "#F44336" : "#4CAF50");color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px">
+                            @(d.IsVerified ? "Снять " : "Верифицировать")
+                        </button>
+                    </td>
+
+                    <td style="padding:8px;min-width:190px">
+                        <div style="display:flex;flex-direction:column;gap:4px">
+                            <input @bind="d.PaymentPhone"
+                                   placeholder="Тел. для перевода"
+                                   style="width:160px;padding:3px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:4px;font-size:11px" />
+
+                            <input @bind="d.PaymentBankName"
+                                   placeholder="Название банка"
+                                   style="width:160px;padding:3px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:4px;font-size:11px" />
+
+                            <input @bind="d.PaymentCardHolder"
+                                   placeholder="Имя получателя"
+                                   style="width:160px;padding:3px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:4px;font-size:11px" />
+
+                            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                                <label style="color:white;font-size:11px">
+                                    <input type="checkbox" @bind="d.AcceptCardTransfer" /> Перевод
+                                </label>
+                                <label style="color:white;font-size:11px">
+                                    <input type="checkbox" @bind="d.AcceptSbp" /> СБП
+                                </label>
+                            </div>
+
+                            <button @onclick="() => SavePaymentSettings(d)"
+                                    style="background:#2196F3;color:white;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">
+                                 Сохранить
+                            </button>
+                        </div>
+                    </td>
+
+                    <td style="padding:8px">
+                        <button @onclick="() => BlockUser(d)"
+                                style="background:@(d.User.IsBlocked ? "#4CAF50" : "#F44336");color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;margin-bottom:4px">
+                            @(d.User.IsBlocked ? "Разблокировать" : "Заблокировать")
+                        </button>
+
+                        <button @onclick="() => DeleteDriver(d)"
+                                style="background:#880000;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px">
+                             Удалить
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    List<Driver> drivers = new();
+    Dictionary<Guid, decimal> topUpAmounts = new();
+    string message = "";
+
+    string newPhone = "";
+    string newFirstName = "";
+    string newLastName = "";
+    string newPassword = "Driver123!";
+    string newCarBrand = "";
+    string newCarModel = "";
+    string newCarColor = "";
+    string newPlate = "";
+    string newLicense = "";
+    int newYear = 2020;
+
+    string lblStyle = "color:gray;font-size:11px;display:block";
+    string inpStyle = "width:130px;padding:6px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:6px";
+    string smallInputStyle = "width:90px;padding:6px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:6px";
+    string thStyle = "padding:8px;text-align:left;color:white;font-size:12px";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+    }
+
+    async Task Load()
+    {
+        drivers = await Db.Drivers
+            .Include(d => d.User)
+            .OrderBy(d => d.User.LastName)
+            .ToListAsync();
+
+        foreach (var d in drivers)
+        {
+            if (!topUpAmounts.ContainsKey(d.Id))
+                topUpAmounts[d.Id] = 300;
+        }
+    }
+
+    async Task TopUp(Guid driverId)
+    {
+        try
+        {
+            var amount = topUpAmounts[driverId];
+            if (amount <= 0)
+            {
+                message = "Введите сумму больше 0";
+                return;
+            }
+
+            var newBalance = await BalanceService.TopUpAsync(driverId, amount, "Администратор");
+            message = $"Баланс пополнен на {amount:F0} ₽. Новый баланс: {newBalance:F0} ₽";
+
+            await Load();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            message = $"Ошибка: {ex.Message}";
+        }
+    }
+
+    async Task SavePenalty(Driver d)
+    {
+        try
+        {
+            await Db.SaveChangesAsync();
+            message = $"Штраф за отказ для {d.User.FirstName}: {d.RejectionPenalty:F0} ₽";
+        }
+        catch (Exception ex)
+        {
+            message = $"Ошибка: {ex.Message}";
+        }
+    }
+
+    async Task SavePaymentSettings(Driver d)
+    {
+        try
+        {
+            await Db.SaveChangesAsync();
+            message = $"Реквизиты оплаты для {d.User.FirstName} {d.User.LastName} сохранены ";
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            message = $"Ошибка: {ex.Message}";
+        }
+    }
+
+    async Task ToggleVerify(Driver d)
+    {
+        d.IsVerified = !d.IsVerified;
+        d.VerifiedAt = d.IsVerified ? DateTime.UtcNow : null;
+        await Db.SaveChangesAsync();
+        message = d.IsVerified
+            ? $"{d.User.FirstName} верифицирован "
+            : $"{d.User.FirstName} верификация снята ";
+    }
+
+    async Task BlockUser(Driver d)
+    {
+        d.User.IsBlocked = !d.User.IsBlocked;
+        d.User.BlockReason = d.User.IsBlocked ? "Заблокирован администратором" : null;
+        await Db.SaveChangesAsync();
+        message = d.User.IsBlocked
+            ? $"{d.User.FirstName} заблокирован "
+            : $"{d.User.FirstName} разблокирован ";
+    }
+
+    async Task DeleteDriver(Driver d)
+    {
+        Db.Drivers.Remove(d);
+        Db.Users.Remove(d.User);
+        await Db.SaveChangesAsync();
+        message = $"Водитель {d.User.FirstName} удалён";
+        await Load();
+        StateHasChanged();
+    }
+
+    async Task AddDriver()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(newPhone) || string.IsNullOrWhiteSpace(newFirstName))
+            {
+                message = "Заполните телефон и имя";
+                return;
+            }
+
+            var user = new User
+            {
+                Phone = newPhone.Trim(),
+                FirstName = newFirstName.Trim(),
+                LastName = newLastName.Trim(),
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword),
+                Role = UserRole.Driver,
+                IsPhoneVerified = true,
+                IsActive = true
+            };
+
+            Db.Users.Add(user);
+            await Db.SaveChangesAsync();
+
+            var driver = new Driver
+            {
+                UserId = user.Id,
+                CarBrand = newCarBrand.Trim(),
+                CarModel = newCarModel.Trim(),
+                CarColor = newCarColor.Trim(),
+                LicensePlate = newPlate.Trim(),
+                CarYear = newYear,
+                DriverLicense = newLicense.Trim(),
+                LicenseExpiry = DateTime.UtcNow.AddYears(5),
+                IsVerified = true,
+                Balance = 500,
+                MinBalanceForOrders = 100,
+                Latitude = 57.1522,
+                Longitude = 65.5272,
+                AcceptCardTransfer = true,
+                AcceptSbp = true
+            };
+
+            Db.Drivers.Add(driver);
+            await Db.SaveChangesAsync();
+
+            message = $"Водитель {newFirstName} добавлен ";
+
+            newPhone = "";
+            newFirstName = "";
+            newLastName = "";
+            newCarBrand = "";
+            newCarModel = "";
+            newCarColor = "";
+            newPlate = "";
+            newLicense = "";
+
+            await Load();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            message = $"Ошибка: {ex.Message}";
+        }
+    }
+}

@@ -1,0 +1,195 @@
+﻿@page "/autocall"
+@using Microsoft.EntityFrameworkCore
+@using TaxiService.Infrastructure.Data
+@using TaxiService.Domain.Entities
+@inject TaxiDbContext Db
+@rendermode InteractiveServer
+
+<PageTitle>Автодозвон</PageTitle>
+
+<h2 style="color:#FFD700;margin:20px 0"> Настройки автодозвона</h2>
+
+@if (message != "")
+{
+    <div style="padding:10px;background:#1A3A1A;border:1px solid #4CAF50;border-radius:8px;color:#4CAF50;margin-bottom:16px">@message</div>
+}
+
+@if (settings != null)
+{
+    <div style="background:#252536;padding:20px;border-radius:12px;margin-bottom:20px">
+
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+            <input type="checkbox" @bind="settings.IsEnabled" style="transform:scale(1.5)"/>
+            <span style="font-size:18px;font-weight:bold;color:@(settings.IsEnabled ? "#4CAF50" : "#F44336")">
+                @(settings.IsEnabled ? " Автодозвон ВКЛЮЧЁН" : " Автодозвон ВЫКЛЮЧЕН")
+            </span>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:20px">
+            <div>
+                <label style="color:gray;font-size:12px;display:block">Провайдер</label>
+                <select @bind="settings.Provider"
+                        style="padding:8px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:6px;min-width:200px">
+                    <option value="none">Без звонков (только SignalR)</option>
+                    <option value="zvonok">Zvonok.com</option>
+                </select>
+            </div>
+
+            <div>
+                <label style="color:gray;font-size:12px;display:block">Бесплатное ожидание (мин)</label>
+                <input type="number" @bind="settings.FreeWaitingMinutes"
+                       style="padding:8px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:6px;width:100px"/>
+            </div>
+        </div>
+
+        @if (settings.Provider == "zvonok")
+        {
+            <div style="background:#1E1E2E;padding:16px;border-radius:8px;margin-bottom:16px">
+                <h3 style="color:#4FC3F7;margin:0 0 12px 0"> Zvonok.com</h3>
+
+                <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px">
+                    <div>
+                        <label style="color:gray;font-size:12px;display:block">API ключ (public_key)</label>
+                        <input @bind="settings.ZvonokApiKey"
+                               style="padding:8px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:6px;width:300px"/>
+                    </div>
+                    <div>
+                        <label style="color:gray;font-size:12px;display:block">ID кампании</label>
+                        <input @bind="settings.ZvonokCampaignId"
+                               style="padding:8px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:6px;width:200px"/>
+                    </div>
+                </div>
+
+                <div style="display:flex;align-items:center;gap:16px">
+                    <div style="background:#252536;padding:10px 20px;border-radius:8px">
+                        <span style="color:gray;font-size:12px">Баланс Zvonok:</span>
+                        <span style="color:#FFD700;font-size:20px;font-weight:bold;margin-left:8px">
+                            @settings.ZvonokBalance.ToString("F2") ₽
+                        </span>
+                        @if (settings.BalanceCheckedAt.HasValue)
+                        {
+                            <span style="color:gray;font-size:11px;margin-left:8px">
+                                (обновлено @settings.BalanceCheckedAt.Value.AddHours(5).ToString("dd.MM HH:mm"))
+                            </span>
+                        }
+                    </div>
+                    <button @onclick="CheckBalance"
+                            style="background:#2196F3;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer">
+                         Проверить баланс
+                    </button>
+                </div>
+            </div>
+        }
+
+        <div style="margin-bottom:16px">
+            <label style="color:gray;font-size:12px;display:block;margin-bottom:6px">
+                Шаблон сообщения
+            </label>
+            <textarea @bind="settings.MessageTemplate"
+                      style="width:100%;height:100px;padding:10px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:8px;font-size:14px;resize:vertical"/>
+            <div style="color:gray;font-size:11px;margin-top:6px">
+                Доступные переменные:
+                <code style="color:#FFD700">{CarColor}</code>
+                <code style="color:#FFD700">{CarBrand}</code>
+                <code style="color:#FFD700">{CarModel}</code>
+                <code style="color:#FFD700">{LicensePlate}</code>
+                <code style="color:#FFD700">{FreeWaitingMinutes}</code>
+                <code style="color:#FFD700">{OrderNumber}</code>
+                <code style="color:#FFD700">{ClientName}</code>
+            </div>
+        </div>
+
+        <div style="background:#1E1E2E;padding:12px;border-radius:8px;margin-bottom:16px">
+            <div style="color:gray;font-size:12px;margin-bottom:6px">Пример сообщения:</div>
+            <div style="color:white;font-size:14px;line-height:1.5">
+                @PreviewMessage()
+            </div>
+        </div>
+
+        <button @onclick="Save"
+                style="background:#4CAF50;color:white;border:none;padding:10px 30px;border-radius:8px;cursor:pointer;font-size:16px;font-weight:bold">
+             Сохранить настройки
+        </button>
+    </div>
+}
+
+@code {
+    AutoCallSettings? settings;
+    string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        settings = await Db.AutoCallSettings.FirstOrDefaultAsync();
+
+        if (settings == null)
+        {
+            settings = new AutoCallSettings();
+            Db.AutoCallSettings.Add(settings);
+            await Db.SaveChangesAsync();
+        }
+    }
+
+    string PreviewMessage()
+    {
+        if (settings == null) return "";
+
+        return settings.MessageTemplate
+            .Replace("{CarColor}", "Белая")
+            .Replace("{CarBrand}", "Toyota")
+            .Replace("{CarModel}", "Camry")
+            .Replace("{LicensePlate}", "А 123 БВ | 72")
+            .Replace("{FreeWaitingMinutes}", settings.FreeWaitingMinutes.ToString())
+            .Replace("{OrderNumber}", "TX-20260701-001")
+            .Replace("{ClientName}", "Иван");
+    }
+
+    async Task Save()
+    {
+        try
+        {
+            settings!.UpdatedAt = DateTime.UtcNow;
+            await Db.SaveChangesAsync();
+            message = "Настройки сохранены ";
+        }
+        catch (Exception ex)
+        {
+            message = $"Ошибка: {ex.Message}";
+        }
+    }
+
+    async Task CheckBalance()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(settings?.ZvonokApiKey))
+            {
+                message = "Введите API ключ Zvonok";
+                return;
+            }
+
+            using var http = new HttpClient();
+            var url = $"https://zvonok.com/manager/cabapi_external/api/v1/balance/?public_key={settings.ZvonokApiKey}";
+            var resp = await http.GetAsync(url);
+
+            if (resp.IsSuccessStatusCode)
+            {
+                var json = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+                if (json.TryGetProperty("balance", out var bal))
+                {
+                    settings.ZvonokBalance = bal.GetDecimal();
+                    settings.BalanceCheckedAt = DateTime.UtcNow;
+                    await Db.SaveChangesAsync();
+                    message = $"Баланс Zvonok: {settings.ZvonokBalance:F2} ₽ ";
+                }
+            }
+            else
+            {
+                message = "Ошибка запроса к Zvonok API";
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"Ошибка: {ex.Message}";
+        }
+    }
+}

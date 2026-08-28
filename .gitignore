@@ -1,0 +1,24 @@
+﻿## .NET / C#
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+*.log
+crash.log
+
+## Visual Studio / VS Code
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## MAUI / Android / iOS temporary
+*.apk
+*.aab
+*.appxbundle
+*.msixbundle
+
+## Credentials
+firebase-credentials.json

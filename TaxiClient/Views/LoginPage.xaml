@@ -1,0 +1,45 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="TaxiClient.Views.LoginPage"
+             BackgroundColor="#1E1E2E">
+    <ScrollView>
+        <VerticalStackLayout Padding="40" Spacing="0" VerticalOptions="Center">
+
+            <Label Text="" FontSize="64" HorizontalOptions="Center"/>
+            <Label Text="Такси Тюмень" FontSize="28" FontAttributes="Bold"
+                   TextColor="#FFD700" HorizontalOptions="Center" Margin="0,0,0,4"/>
+            <Label Text="Заказ такси" FontSize="14" TextColor="Gray"
+                   HorizontalOptions="Center" Margin="0,0,0,30"/>
+
+            <Label Text="Телефон:" TextColor="White" FontSize="14" Margin="0,0,0,4"/>
+            <Border BackgroundColor="#2D2D3F" Stroke="#555" StrokeThickness="1" Padding="4,0" Margin="0,0,0,12">
+                <Border.StrokeShape><RoundRectangle CornerRadius="8"/></Border.StrokeShape>
+                <Entry x:Name="PhoneEntry" PlaceholderColor="Gray" TextColor="White"
+                       FontSize="16" Keyboard="Telephone"/>
+            </Border>
+
+            <Label Text="Пароль:" TextColor="White" FontSize="14" Margin="0,0,0,4"/>
+            <Border BackgroundColor="#2D2D3F" Stroke="#555" StrokeThickness="1" Padding="4,0" Margin="0,0,0,8">
+                <Border.StrokeShape><RoundRectangle CornerRadius="8"/></Border.StrokeShape>
+                <Entry x:Name="PasswordEntry" PlaceholderColor="Gray" TextColor="White"
+                       FontSize="16" IsPassword="True"/>
+            </Border>
+
+            <Label x:Name="ErrorLabel" TextColor="#FF6B6B" FontSize="13"
+                   IsVisible="False" Margin="0,0,0,8"/>
+
+            <Button x:Name="LoginBtn" Text="Войти" FontSize="18" FontAttributes="Bold"
+                    BackgroundColor="#FFD700" TextColor="#1E1E2E" HeightRequest="52"
+                    CornerRadius="10" Margin="0,15,0,0" Clicked="OnLoginClicked"/>
+
+            <Button x:Name="RegisterBtn" Text="Зарегистрироваться"
+                    FontSize="14" BackgroundColor="Transparent" TextColor="#4FC3F7"
+                    Margin="0,10,0,0" Clicked="OnRegisterClicked"/>
+
+            <ActivityIndicator x:Name="Loading" IsRunning="False" IsVisible="False"
+                               Color="#FFD700" Margin="0,10,0,0" HorizontalOptions="Center"/>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

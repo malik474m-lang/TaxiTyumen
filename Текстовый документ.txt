@@ -1,0 +1,27 @@
+Запуск всех компонентов
+Сервер:
+PowerShell
+
+cd C:\Projects\TaxiTyumen\TaxiService.API
+dotnet run
+Админка:
+PowerShell
+
+cd C:\Projects\TaxiTyumen\TaxiAdmin
+dotnet run --urls "http://localhost:5200"
+Клиент:
+PowerShell
+
+cd C:\Projects\TaxiTyumen
+dotnet run --project TaxiClient -f net8.0-windows10.0.19041.0 --no-launch-profile
+Водитель:
+PowerShell
+
+cd C:\Projects\TaxiTyumen
+dotnet run --project TaxiDriver -f net8.0-windows10.0.19041.0
+
+
+оператор
+
+cd C:\Projects\TaxiTyumen
+dotnet run --project TaxiOperator

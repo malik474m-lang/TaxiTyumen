@@ -1,0 +1,274 @@
+﻿@page "/operators"
+@using Microsoft.EntityFrameworkCore
+@using TaxiService.Infrastructure.Data
+@using TaxiService.Domain.Enums
+@using TaxiService.Domain.Entities
+@inject TaxiDbContext Db
+@rendermode InteractiveServer
+
+<PageTitle>Операторы</PageTitle>
+
+<h2 style="color:#FFD700;margin:20px 0"> Операторы (@operatorList.Count)</h2>
+
+@if (message != "")
+{
+    <div style="padding:10px;background:#1A3A1A;border:1px solid #4CAF50;border-radius:8px;color:#4CAF50;margin-bottom:16px">@message</div>
+}
+
+<!-- Добавить оператора -->
+<div style="background:#252536;padding:16px;border-radius:12px;margin-bottom:20px">
+    <h3 style="color:#4FC3F7;margin:0 0 12px 0"> Добавить оператора</h3>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end">
+        <div><label style="@lbl">Телефон</label><input @bind="newPhone" style="@inp" placeholder="+7900..."/></div>
+        <div><label style="@lbl">Имя</label><input @bind="newFirstName" style="@inp"/></div>
+        <div><label style="@lbl">Фамилия</label><input @bind="newLastName" style="@inp"/></div>
+        <div><label style="@lbl">Пароль</label><input @bind="newPassword" style="@inp"/></div>
+        <button @onclick="AddOperator" style="background:#4CAF50;color:white;border:none;padding:8px 20px;border-radius:8px;cursor:pointer"></button>
+    </div>
+</div>
+
+@foreach (var op in operatorList)
+{
+    var profile = profiles.FirstOrDefault(p => p.UserId == op.Id);
+    var shifts = allShifts.Where(s => s.OperatorId == op.Id).ToList();
+
+    var now = DateTime.UtcNow;
+    var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+    var monthShifts = shifts.Where(s => s.StartedAt >= monthStart).ToList();
+
+    var totalHoursMonth = monthShifts.Sum(s => s.HoursWorked);
+    var totalOrdersMonth = monthShifts.Sum(s => s.OrdersAccepted);
+    var totalDaysMonth = monthShifts.Select(s => s.StartedAt.Date).Distinct().Count();
+
+    decimal salary = 0;
+    var scheme = profile?.Scheme ?? PaymentScheme.PerOrder;
+
+    salary = scheme switch
+    {
+        PaymentScheme.PerOrder => totalOrdersMonth * (profile?.RatePerOrder ?? 30),
+        PaymentScheme.PerHour => (decimal)totalHoursMonth * (profile?.RatePerHour ?? 150),
+        PaymentScheme.PerDay => totalDaysMonth * (profile?.RatePerDay ?? 1500),
+        PaymentScheme.FixedMonthly => profile?.FixedMonthly ?? 30000,
+        _ => 0
+    };
+
+    var schemeName = scheme switch
+    {
+        PaymentScheme.PerOrder => "За заказ",
+        PaymentScheme.PerHour => "За час",
+        PaymentScheme.PerDay => "За день",
+        PaymentScheme.FixedMonthly => "Фикс/месяц",
+        _ => "?"
+    };
+
+    <div style="background:#252536;padding:16px;border-radius:12px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div>
+                <h3 style="color:white;margin:0">@op.FirstName @op.LastName</h3>
+                <span style="color:#4FC3F7;font-size:13px">@op.Phone</span>
+                @if (op.IsBlocked) { <span style="color:#F44336;margin-left:10px"> Заблокирован</span> }
+            </div>
+            <div style="display:flex;gap:8px">
+                <button @onclick="() => ToggleBlock(op)"
+                        style="background:@(op.IsBlocked?"#4CAF50":"#F44336");color:white;border:none;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px">
+                    @(op.IsBlocked ? "Разблокировать" : "Заблокировать")
+                </button>
+                <button @onclick="() => DeleteOperator(op)"
+                        style="background:#880000;color:white;border:none;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px">
+                    
+                </button>
+            </div>
+        </div>
+
+        <!-- Статистика за месяц -->
+        <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px">
+            <div style="background:#1E1E2E;padding:10px 16px;border-radius:8px;text-align:center">
+                <div style="font-size:22px;font-weight:bold;color:#FFD700">@totalOrdersMonth</div>
+                <div style="color:gray;font-size:11px">Заказов/мес</div>
+            </div>
+            <div style="background:#1E1E2E;padding:10px 16px;border-radius:8px;text-align:center">
+                <div style="font-size:22px;font-weight:bold;color:#2196F3">@totalHoursMonth.ToString("F1")</div>
+                <div style="color:gray;font-size:11px">Часов/мес</div>
+            </div>
+            <div style="background:#1E1E2E;padding:10px 16px;border-radius:8px;text-align:center">
+                <div style="font-size:22px;font-weight:bold;color:#4CAF50">@totalDaysMonth</div>
+                <div style="color:gray;font-size:11px">Смен/мес</div>
+            </div>
+            <div style="background:#1E1E2E;padding:10px 16px;border-radius:8px;text-align:center;border:2px solid #FFD700">
+                <div style="font-size:22px;font-weight:bold;color:#FFD700">@salary.ToString("F0") ₽</div>
+                <div style="color:gray;font-size:11px">Зарплата (@schemeName)</div>
+            </div>
+        </div>
+
+        <!-- Настройка оплаты -->
+        <div style="background:#1E1E2E;padding:12px;border-radius:8px">
+            <div style="color:gray;font-size:12px;margin-bottom:8px">Схема оплаты:</div>
+            <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end">
+                <div>
+                    <label style="@lbl">Схема</label>
+                    <select @bind="profileSchemes[op.Id]" style="padding:6px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:6px">
+                        <option value="PerOrder">За заказ</option>
+                        <option value="PerHour">За час</option>
+                        <option value="PerDay">За день</option>
+                        <option value="FixedMonthly">Фикс/месяц</option>
+                    </select>
+                </div>
+                <div><label style="@lbl">За заказ ₽</label><input type="number" @bind="profileRateOrder[op.Id]" style="@sinp"/></div>
+                <div><label style="@lbl">За час ₽</label><input type="number" @bind="profileRateHour[op.Id]" style="@sinp"/></div>
+                <div><label style="@lbl">За день ₽</label><input type="number" @bind="profileRateDay[op.Id]" style="@sinp"/></div>
+                <div><label style="@lbl">Фикс/мес ₽</label><input type="number" @bind="profileFixedMonth[op.Id]" style="@sinp"/></div>
+                <button @onclick="() => SaveProfile(op.Id)" style="background:#4CAF50;color:white;border:none;padding:6px 16px;border-radius:6px;cursor:pointer;font-size:13px">
+                     Сохранить
+                </button>
+            </div>
+        </div>
+
+        <!-- Последние смены -->
+        @if (monthShifts.Count > 0)
+        {
+            <div style="margin-top:12px">
+                <div style="color:gray;font-size:12px;margin-bottom:6px">Последние смены:</div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px">
+                    @foreach (var shift in monthShifts.OrderByDescending(s => s.StartedAt).Take(7))
+                    {
+                        var duration = shift.EndedAt.HasValue
+                            ? (shift.EndedAt.Value - shift.StartedAt).TotalHours.ToString("F1")
+                            : "...";
+
+                        <div style="background:#2D2D3F;padding:6px 10px;border-radius:6px;font-size:11px;color:white">
+                            @shift.StartedAt.AddHours(5).ToString("dd.MM") |
+                            @duration ч |
+                            @shift.OrdersAccepted заказов |
+                            <span style="color:#FFD700">@shift.Earned.ToString("F0") ₽</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    List<User> operatorList = new();
+    List<OperatorProfile> profiles = new();
+    List<OperatorShift> allShifts = new();
+
+    Dictionary<Guid, string> profileSchemes = new();
+    Dictionary<Guid, decimal> profileRateOrder = new();
+    Dictionary<Guid, decimal> profileRateHour = new();
+    Dictionary<Guid, decimal> profileRateDay = new();
+    Dictionary<Guid, decimal> profileFixedMonth = new();
+
+    string message = "";
+    string newPhone = "", newFirstName = "", newLastName = "", newPassword = "Operator123!";
+
+    string lbl = "color:gray;font-size:11px;display:block";
+    string inp = "width:140px;padding:6px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:6px";
+    string sinp = "width:90px;padding:6px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:6px";
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    async Task Load()
+    {
+        operatorList = await Db.Users
+            .Where(u => u.Role == UserRole.Operator)
+            .OrderBy(u => u.LastName)
+            .ToListAsync();
+
+        profiles = await Db.OperatorProfiles.ToListAsync();
+
+        var monthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        allShifts = await Db.OperatorShifts
+            .Where(s => s.StartedAt >= monthStart.AddMonths(-1))
+            .ToListAsync();
+
+        foreach (var op in operatorList)
+        {
+            var p = profiles.FirstOrDefault(x => x.UserId == op.Id);
+
+            if (!profileSchemes.ContainsKey(op.Id))
+                profileSchemes[op.Id] = p?.Scheme.ToString() ?? "PerOrder";
+            if (!profileRateOrder.ContainsKey(op.Id))
+                profileRateOrder[op.Id] = p?.RatePerOrder ?? 30;
+            if (!profileRateHour.ContainsKey(op.Id))
+                profileRateHour[op.Id] = p?.RatePerHour ?? 150;
+            if (!profileRateDay.ContainsKey(op.Id))
+                profileRateDay[op.Id] = p?.RatePerDay ?? 1500;
+            if (!profileFixedMonth.ContainsKey(op.Id))
+                profileFixedMonth[op.Id] = p?.FixedMonthly ?? 30000;
+        }
+    }
+
+    async Task SaveProfile(Guid userId)
+    {
+        try
+        {
+            var profile = profiles.FirstOrDefault(p => p.UserId == userId);
+            if (profile == null)
+            {
+                profile = new OperatorProfile { UserId = userId };
+                Db.OperatorProfiles.Add(profile);
+                profiles.Add(profile);
+            }
+
+            profile.Scheme = Enum.Parse<PaymentScheme>(profileSchemes[userId]);
+            profile.RatePerOrder = profileRateOrder[userId];
+            profile.RatePerHour = profileRateHour[userId];
+            profile.RatePerDay = profileRateDay[userId];
+            profile.FixedMonthly = profileFixedMonth[userId];
+
+            await Db.SaveChangesAsync();
+            message = "Схема оплаты сохранена ";
+        }
+        catch (Exception ex) { message = $"Ошибка: {ex.Message}"; }
+    }
+
+    async Task AddOperator()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(newPhone) || string.IsNullOrWhiteSpace(newFirstName))
+            { message = "Заполните телефон и имя"; return; }
+
+            var user = new User
+            {
+                Phone = newPhone.Trim(),
+                FirstName = newFirstName.Trim(),
+                LastName = newLastName.Trim(),
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword),
+                Role = UserRole.Operator,
+                IsPhoneVerified = true,
+                IsActive = true
+            };
+
+            Db.Users.Add(user);
+            await Db.SaveChangesAsync();
+
+            Db.OperatorProfiles.Add(new OperatorProfile { UserId = user.Id });
+            await Db.SaveChangesAsync();
+
+            message = $"Оператор {newFirstName} добавлен ";
+            newPhone = ""; newFirstName = ""; newLastName = "";
+            await Load(); StateHasChanged();
+        }
+        catch (Exception ex) { message = $"Ошибка: {ex.Message}"; }
+    }
+
+    async Task ToggleBlock(User op)
+    {
+        op.IsBlocked = !op.IsBlocked;
+        op.BlockReason = op.IsBlocked ? "Заблокирован администратором" : null;
+        await Db.SaveChangesAsync();
+        message = op.IsBlocked ? $"{op.FirstName} заблокирован" : $"{op.FirstName} разблокирован";
+    }
+
+    async Task DeleteOperator(User op)
+    {
+        var profile = profiles.FirstOrDefault(p => p.UserId == op.Id);
+        if (profile != null) Db.OperatorProfiles.Remove(profile);
+        Db.Users.Remove(op);
+        await Db.SaveChangesAsync();
+        message = $"Оператор {op.FirstName} удалён";
+        await Load(); StateHasChanged();
+    }
+}

@@ -1,0 +1,188 @@
+﻿@page "/stats"
+@using Microsoft.EntityFrameworkCore
+@using TaxiService.Infrastructure.Data
+@using TaxiService.Domain.Enums
+@using TaxiService.Domain.Entities
+@inject TaxiDbContext Db
+@rendermode InteractiveServer
+
+<PageTitle>Статистика</PageTitle>
+
+<h2 style="color:#FFD700;margin:20px 0"> Статистика по дням</h2>
+
+<div style="display:flex;gap:10px;margin-bottom:20px;align-items:end">
+    <div>
+        <label style="color:gray;font-size:12px;display:block">С даты</label>
+        <input type="date" @bind="dateFrom" style="padding:6px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:6px"/>
+    </div>
+    <div>
+        <label style="color:gray;font-size:12px;display:block">По дату</label>
+        <input type="date" @bind="dateTo" style="padding:6px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:6px"/>
+    </div>
+    <button @onclick="Load"
+            style="background:#FFD700;color:#1E1E2E;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:bold">
+         Показать
+    </button>
+</div>
+
+@if (loading)
+{
+    <p style="color:gray">Загрузка...</p>
+}
+else
+{
+    <!-- Итоги за период -->
+    <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:24px">
+        <div style="background:#252536;padding:16px 24px;border-radius:12px;text-align:center">
+            <div style="font-size:28px;font-weight:bold;color:#4CAF50">@totalCompleted</div>
+            <div style="color:gray;font-size:12px">Завершено</div>
+        </div>
+        <div style="background:#252536;padding:16px 24px;border-radius:12px;text-align:center">
+            <div style="font-size:28px;font-weight:bold;color:#F44336">@totalCancelled</div>
+            <div style="color:gray;font-size:12px">Отменено</div>
+        </div>
+        <div style="background:#252536;padding:16px 24px;border-radius:12px;text-align:center">
+            <div style="font-size:28px;font-weight:bold;color:#FFD700">@totalRevenue.ToString("F0") </div>
+            <div style="color:gray;font-size:12px">Выручка</div>
+        </div>
+        <div style="background:#252536;padding:16px 24px;border-radius:12px;text-align:center">
+            <div style="font-size:28px;font-weight:bold;color:#4FC3F7">@totalCommission.ToString("F0") </div>
+            <div style="color:gray;font-size:12px">Комиссия платформы</div>
+        </div>
+        <div style="background:#252536;padding:16px 24px;border-radius:12px;text-align:center">
+            <div style="font-size:28px;font-weight:bold;color:#FF9800">@avgPrice.ToString("F0") </div>
+            <div style="color:gray;font-size:12px">Средний чек</div>
+        </div>
+    </div>
+
+    <!-- Гистограмма по дням -->
+    @if (dayStats.Count > 0)
+    {
+        var maxVal = dayStats.Max(d => d.Revenue);
+
+        <h3 style="color:#FFD700;margin-bottom:12px"> Выручка по дням</h3>
+
+        <div style="display:flex;align-items:flex-end;gap:4px;height:200px;background:#252536;padding:16px;border-radius:12px;margin-bottom:20px">
+            @foreach (var day in dayStats)
+            {
+                var barHeight = maxVal > 0 ? (int)(day.Revenue / maxVal * 160) : 0;
+                var barColor = day.Revenue > 0 ? "#FFD700" : "#333";
+
+                <div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:30px">
+                    <div style="font-size:10px;color:gray;margin-bottom:4px">@day.Revenue.ToString("F0")</div>
+                    <div style="width:100%;background:@barColor;height:@(barHeight)px;border-radius:4px 4px 0 0" title="@day.Date.ToString("dd.MM"): @day.Revenue "></div>
+                    <div style="font-size:9px;color:gray;margin-top:4px;transform:rotate(-45deg);white-space:nowrap">
+                        @day.Date.ToString("dd.MM")
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    <!-- Таблица по дням -->
+    <h3 style="color:#FFD700;margin-bottom:12px"> Детализация по дням</h3>
+
+    <table style="width:100%;border-collapse:collapse">
+        <thead>
+            <tr style="background:#333">
+                <th style="padding:10px;text-align:left;color:white">Дата</th>
+                <th style="padding:10px;text-align:right;color:white">Завершено</th>
+                <th style="padding:10px;text-align:right;color:white">Отменено</th>
+                <th style="padding:10px;text-align:right;color:white">Выручка</th>
+                <th style="padding:10px;text-align:right;color:white">Комиссия</th>
+                <th style="padding:10px;text-align:right;color:white">Средний чек</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var day in dayStats.OrderByDescending(d => d.Date))
+            {
+                <tr style="background:#252536;border-bottom:1px solid #333">
+                    <td style="padding:8px;color:#4FC3F7">@day.Date.ToString("dd.MM.yyyy (ddd)")</td>
+                    <td style="padding:8px;text-align:right;color:#4CAF50">@day.Completed</td>
+                    <td style="padding:8px;text-align:right;color:#F44336">@day.Cancelled</td>
+                    <td style="padding:8px;text-align:right;color:#FFD700;font-weight:bold">@day.Revenue.ToString("F0") </td>
+                    <td style="padding:8px;text-align:right;color:#FF9800">@day.Commission.ToString("F0") </td>
+                    <td style="padding:8px;text-align:right;color:gray">
+                        @(day.Completed > 0 ? (day.Revenue / day.Completed).ToString("F0") + " " : "")
+                    </td>
+                </tr>
+            }
+        </tbody>
+        <tfoot>
+            <tr style="background:#333;font-weight:bold">
+                <td style="padding:8px;color:white">ИТОГО</td>
+                <td style="padding:8px;text-align:right;color:#4CAF50">@totalCompleted</td>
+                <td style="padding:8px;text-align:right;color:#F44336">@totalCancelled</td>
+                <td style="padding:8px;text-align:right;color:#FFD700">@totalRevenue.ToString("F0") </td>
+                <td style="padding:8px;text-align:right;color:#FF9800">@totalCommission.ToString("F0") </td>
+                <td style="padding:8px;text-align:right;color:gray">@avgPrice.ToString("F0") </td>
+            </tr>
+        </tfoot>
+    </table>
+}
+
+@code {
+    DateTime dateFrom = DateTime.Today.AddDays(-30);
+    DateTime dateTo = DateTime.Today;
+    bool loading = false;
+
+    int totalCompleted;
+    int totalCancelled;
+    decimal totalRevenue;
+    decimal totalCommission;
+    decimal avgPrice;
+
+    record DayStat(DateTime Date, int Completed, int Cancelled, decimal Revenue, decimal Commission);
+    List<DayStat> dayStats = new();
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    async Task Load()
+    {
+        loading = true;
+        StateHasChanged();
+
+        var from = dateFrom.ToUniversalTime();
+        var to = dateTo.AddDays(1).ToUniversalTime();
+
+        var orders = await Db.Orders
+            .Where(o => o.CreatedAt >= from && o.CreatedAt < to)
+            .ToListAsync();
+
+        var transactions = await Db.BalanceTransactions
+            .Where(t => t.Type == BalanceTransactionType.Commission &&
+                        t.CreatedAt >= from && t.CreatedAt < to)
+            .ToListAsync();
+
+        totalCompleted = orders.Count(o => o.Status == OrderStatus.Completed);
+        totalCancelled = orders.Count(o => o.Status == OrderStatus.Cancelled);
+        totalRevenue = orders.Where(o => o.Status == OrderStatus.Completed)
+            .Sum(o => o.FinalPrice ?? o.EstimatedPrice);
+        totalCommission = transactions.Sum(t => Math.Abs(t.Amount));
+        avgPrice = totalCompleted > 0 ? totalRevenue / totalCompleted : 0;
+
+        dayStats = orders
+            .GroupBy(o => o.CreatedAt.AddHours(5).Date)
+            .Select(g =>
+            {
+                var dayStart = g.Key.ToUniversalTime();
+                var dayEnd = g.Key.AddDays(1).ToUniversalTime();
+                var dayCommission = transactions
+                    .Where(t => t.CreatedAt >= dayStart && t.CreatedAt < dayEnd)
+                    .Sum(t => Math.Abs(t.Amount));
+
+                return new DayStat(
+                    Date: g.Key,
+                    Completed: g.Count(o => o.Status == OrderStatus.Completed),
+                    Cancelled: g.Count(o => o.Status == OrderStatus.Cancelled),
+                    Revenue: g.Where(o => o.Status == OrderStatus.Completed)
+                               .Sum(o => o.FinalPrice ?? o.EstimatedPrice),
+                    Commission: dayCommission
+                );
+            })
+            .OrderBy(d => d.Date)
+            .ToList();
+
+        loading = false;
+    }
+}

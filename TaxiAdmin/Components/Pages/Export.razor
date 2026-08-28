@@ -1,0 +1,261 @@
+﻿@page "/export"
+@using Microsoft.EntityFrameworkCore
+@using TaxiService.Infrastructure.Data
+@using TaxiService.Domain.Enums
+@using TaxiService.Domain.Entities
+@using ClosedXML.Excel
+@inject TaxiDbContext Db
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+
+<PageTitle>Экспорт</PageTitle>
+
+<h2 style="color:#FFD700;margin:20px 0"> Экспорт данных</h2>
+
+<div style="display:flex;gap:10px;margin-bottom:20px;align-items:end">
+    <div>
+        <label style="color:gray;font-size:12px;display:block">С даты</label>
+        <input type="date" @bind="dateFrom"
+               style="padding:6px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:6px"/>
+    </div>
+    <div>
+        <label style="color:gray;font-size:12px;display:block">По дату</label>
+        <input type="date" @bind="dateTo"
+               style="padding:6px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:6px"/>
+    </div>
+</div>
+
+<div style="display:flex;flex-wrap:wrap;gap:12px">
+    <button @onclick="ExportOrders"
+            style="background:#4CAF50;color:white;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:14px">
+         Экспорт заказов в Excel
+    </button>
+
+    <button @onclick="ExportDrivers"
+            style="background:#2196F3;color:white;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:14px">
+         Экспорт водителей в Excel
+    </button>
+
+    <button @onclick="ExportBalance"
+            style="background:#FF9800;color:white;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:14px">
+         Экспорт балансов в Excel
+    </button>
+</div>
+
+@if (message != "")
+{
+    <div style="margin-top:16px;padding:12px;background:#1A3A1A;border:1px solid #4CAF50;border-radius:8px;color:#4CAF50">
+        @message
+    </div>
+}
+
+@code {
+    DateTime dateFrom = DateTime.Today.AddDays(-30);
+    DateTime dateTo = DateTime.Today;
+    string message = "";
+
+    async Task ExportOrders()
+    {
+        try
+        {
+            var from = dateFrom.ToUniversalTime();
+            var to = dateTo.AddDays(1).ToUniversalTime();
+
+            var orders = await Db.Orders
+                .Include(o => o.Client)
+                .Include(o => o.Driver).ThenInclude(d => d!.User)
+                .Where(o => o.CreatedAt >= from && o.CreatedAt < to)
+                .OrderByDescending(o => o.CreatedAt)
+                .ToListAsync();
+
+            using var wb = new XLWorkbook();
+            var ws = wb.Worksheets.Add("Заказы");
+
+            ws.Cell(1, 1).Value = "Номер";
+            ws.Cell(1, 2).Value = "Статус";
+            ws.Cell(1, 3).Value = "Клиент";
+            ws.Cell(1, 4).Value = "Телефон клиента";
+            ws.Cell(1, 5).Value = "Откуда";
+            ws.Cell(1, 6).Value = "Куда";
+            ws.Cell(1, 7).Value = "Тариф";
+            ws.Cell(1, 8).Value = "Цена";
+            ws.Cell(1, 9).Value = "Итоговая цена";
+            ws.Cell(1, 10).Value = "Водитель";
+            ws.Cell(1, 11).Value = "Авто водителя";
+            ws.Cell(1, 12).Value = "Дата создания";
+            ws.Cell(1, 13).Value = "Дата завершения";
+            ws.Cell(1, 14).Value = "Источник";
+
+            var headerRow = ws.Row(1);
+            headerRow.Style.Font.Bold = true;
+            headerRow.Style.Fill.BackgroundColor = XLColor.FromHtml("#FFD700");
+
+            int row = 2;
+            foreach (var o in orders)
+            {
+                ws.Cell(row, 1).Value = o.OrderNumber;
+                ws.Cell(row, 2).Value = o.Status.ToString();
+                ws.Cell(row, 3).Value = o.Client != null
+                    ? $"{o.Client.FirstName} {o.Client.LastName}"
+                    : o.ClientName ?? "";
+                ws.Cell(row, 4).Value = o.Client?.Phone ?? o.ClientPhone ?? "";
+                ws.Cell(row, 5).Value = o.PickupAddress;
+                ws.Cell(row, 6).Value = o.DestinationAddress ?? "";
+                ws.Cell(row, 7).Value = o.Tariff.ToString();
+                ws.Cell(row, 8).Value = (double)o.EstimatedPrice;
+                ws.Cell(row, 9).Value = (double)(o.FinalPrice ?? o.EstimatedPrice);
+                ws.Cell(row, 10).Value = o.Driver != null
+                    ? $"{o.Driver.User.FirstName} {o.Driver.User.LastName}"
+                    : "";
+                ws.Cell(row, 11).Value = o.Driver != null
+                    ? $"{o.Driver.CarBrand} {o.Driver.CarModel} ({o.Driver.LicensePlate})"
+                    : "";
+                ws.Cell(row, 12).Value = o.CreatedAt.AddHours(5).ToString("dd.MM.yyyy HH:mm");
+                ws.Cell(row, 13).Value = o.CompletedAt.HasValue
+                    ? o.CompletedAt.Value.AddHours(5).ToString("dd.MM.yyyy HH:mm")
+                    : "";
+                ws.Cell(row, 14).Value = o.Source.ToString();
+                row++;
+            }
+
+            ws.Columns().AdjustToContents();
+
+            await DownloadExcel(wb, $"orders_{dateFrom:yyyyMMdd}_{dateTo:yyyyMMdd}.xlsx");
+            message = $"Экспортировано {orders.Count} заказов ";
+        }
+        catch (Exception ex)
+        {
+            message = $"Ошибка: {ex.Message}";
+        }
+    }
+
+    async Task ExportDrivers()
+    {
+        try
+        {
+            var drivers = await Db.Drivers
+                .Include(d => d.User)
+                .OrderBy(d => d.User.LastName)
+                .ToListAsync();
+
+            using var wb = new XLWorkbook();
+            var ws = wb.Worksheets.Add("Водители");
+
+            ws.Cell(1, 1).Value = "Имя";
+            ws.Cell(1, 2).Value = "Телефон";
+            ws.Cell(1, 3).Value = "Авто";
+            ws.Cell(1, 4).Value = "Гос. номер";
+            ws.Cell(1, 5).Value = "Статус";
+            ws.Cell(1, 6).Value = "Рейтинг";
+            ws.Cell(1, 7).Value = "Баланс ";
+            ws.Cell(1, 8).Value = "Поездок";
+            ws.Cell(1, 9).Value = "Заработок ";
+            ws.Cell(1, 10).Value = "Верифицирован";
+            ws.Cell(1, 11).Value = "Заблокирован";
+
+            var headerRow = ws.Row(1);
+            headerRow.Style.Font.Bold = true;
+            headerRow.Style.Fill.BackgroundColor = XLColor.FromHtml("#2196F3");
+            headerRow.Style.Font.FontColor = XLColor.White;
+
+            int row = 2;
+            foreach (var d in drivers)
+            {
+                ws.Cell(row, 1).Value = $"{d.User.FirstName} {d.User.LastName}";
+                ws.Cell(row, 2).Value = d.User.Phone;
+                ws.Cell(row, 3).Value = $"{d.CarBrand} {d.CarModel} ({d.CarColor})";
+                ws.Cell(row, 4).Value = d.LicensePlate;
+                ws.Cell(row, 5).Value = d.Status.ToString();
+                ws.Cell(row, 6).Value = (double)d.Rating;
+                ws.Cell(row, 7).Value = (double)d.Balance;
+                ws.Cell(row, 8).Value = d.CompletedTrips;
+                ws.Cell(row, 9).Value = (double)d.TotalEarnings;
+                ws.Cell(row, 10).Value = d.IsVerified ? "Да" : "Нет";
+                ws.Cell(row, 11).Value = d.User.IsBlocked ? "Да" : "Нет";
+                row++;
+            }
+
+            ws.Columns().AdjustToContents();
+
+            await DownloadExcel(wb, "drivers.xlsx");
+            message = $"Экспортировано {drivers.Count} водителей ";
+        }
+        catch (Exception ex)
+        {
+            message = $"Ошибка: {ex.Message}";
+        }
+    }
+
+    async Task ExportBalance()
+    {
+        try
+        {
+            var from = dateFrom.ToUniversalTime();
+            var to = dateTo.AddDays(1).ToUniversalTime();
+
+            var transactions = await Db.BalanceTransactions
+                .Include(t => t.Driver).ThenInclude(d => d!.User)
+                .Where(t => t.CreatedAt >= from && t.CreatedAt < to)
+                .OrderByDescending(t => t.CreatedAt)
+                .ToListAsync();
+
+            using var wb = new XLWorkbook();
+            var ws = wb.Worksheets.Add("Балансы");
+
+            ws.Cell(1, 1).Value = "Дата";
+            ws.Cell(1, 2).Value = "Водитель";
+            ws.Cell(1, 3).Value = "Тип операции";
+            ws.Cell(1, 4).Value = "Сумма ";
+            ws.Cell(1, 5).Value = "Баланс после ";
+            ws.Cell(1, 6).Value = "Описание";
+            ws.Cell(1, 7).Value = "Кем создана";
+
+            var headerRow = ws.Row(1);
+            headerRow.Style.Font.Bold = true;
+            headerRow.Style.Fill.BackgroundColor = XLColor.FromHtml("#FF9800");
+
+            int row = 2;
+            foreach (var t in transactions)
+            {
+                var typeText = t.Type switch
+                {
+                    BalanceTransactionType.TopUp => "Пополнение",
+                    BalanceTransactionType.Commission => "Комиссия",
+                    BalanceTransactionType.Refund => "Возврат",
+                    BalanceTransactionType.Bonus => "Бонус",
+                    _ => t.Type.ToString()
+                };
+
+                ws.Cell(row, 1).Value = t.CreatedAt.AddHours(5).ToString("dd.MM.yyyy HH:mm");
+                ws.Cell(row, 2).Value = t.Driver != null
+                    ? $"{t.Driver.User.FirstName} {t.Driver.User.LastName}"
+                    : "";
+                ws.Cell(row, 3).Value = typeText;
+                ws.Cell(row, 4).Value = (double)t.Amount;
+                ws.Cell(row, 5).Value = (double)t.BalanceAfter;
+                ws.Cell(row, 6).Value = t.Description;
+                ws.Cell(row, 7).Value = t.CreatedBy ?? "";
+                row++;
+            }
+
+            ws.Columns().AdjustToContents();
+
+            await DownloadExcel(wb, $"balance_{dateFrom:yyyyMMdd}_{dateTo:yyyyMMdd}.xlsx");
+            message = $"Экспортировано {transactions.Count} операций ";
+        }
+        catch (Exception ex)
+        {
+            message = $"Ошибка: {ex.Message}";
+        }
+    }
+
+    async Task DownloadExcel(XLWorkbook wb, string filename)
+    {
+        using var stream = new MemoryStream();
+        wb.SaveAs(stream);
+        var bytes = stream.ToArray();
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFileFromBase64", base64, filename,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+}

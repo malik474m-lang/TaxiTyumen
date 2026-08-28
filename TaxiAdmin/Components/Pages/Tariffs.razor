@@ -1,0 +1,97 @@
+﻿@page "/tariffs"
+@using Microsoft.EntityFrameworkCore
+@using TaxiService.Infrastructure.Data
+@using TaxiService.Domain.Entities
+@inject TaxiDbContext Db
+@rendermode InteractiveServer
+
+<PageTitle>Тарифы</PageTitle>
+
+<h2 style="color:#FFD700;margin:20px 0"> Управление тарифами</h2>
+
+@if (message != "")
+{
+    <div style="padding:10px;background:#1A3A1A;border:1px solid #4CAF50;border-radius:8px;color:#4CAF50;margin-bottom:16px">
+        @message
+    </div>
+}
+
+@foreach (var t in tariffs)
+{
+    <div style="background:#252536;padding:16px;border-radius:12px;margin-bottom:12px">
+        <h3 style="color:#FFD700;margin:0 0 12px 0">@t.Name (@t.Type)</h3>
+
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:end">
+            <div>
+                <label style="color:gray;font-size:11px">Посадка ₽</label>
+                <input type="number" @bind="t.BaseFare" style="@inputStyle" />
+            </div>
+            <div>
+                <label style="color:gray;font-size:11px">За км ₽</label>
+                <input type="number" @bind="t.PricePerKm" style="@inputStyle" />
+            </div>
+            <div>
+                <label style="color:gray;font-size:11px">За мин ₽</label>
+                <input type="number" @bind="t.PricePerMinute" style="@inputStyle" />
+            </div>
+            <div>
+                <label style="color:gray;font-size:11px">Минимум ₽</label>
+                <input type="number" @bind="t.MinimumFare" style="@inputStyle" />
+            </div>
+            <div>
+                <label style="color:gray;font-size:11px">Ночной </label>
+                <input type="number" step="0.1" @bind="t.NightMultiplier" style="@inputStyle" />
+            </div>
+            <div>
+                <label style="color:gray;font-size:11px">Пиковый </label>
+                <input type="number" step="0.1" @bind="t.PeakMultiplier" style="@inputStyle" />
+            </div>
+            <div>
+                <label style="color:gray;font-size:11px">Комиссия %</label>
+                <input type="number" @bind="t.CommissionPercent" style="@inputStyle" />
+            </div>
+            <div>
+                <label style="color:gray;font-size:11px">Ожидание бесплатно мин</label>
+                <input type="number" @bind="t.FreeWaitingMinutes" style="@inputStyle" />
+            </div>
+            <div>
+                <label style="color:gray;font-size:11px">Ожидание платно ₽/мин</label>
+                <input type="number" @bind="t.PaidWaitingPerMinute" style="@inputStyle" />
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+                <input type="checkbox" @bind="t.IsActive" />
+                <label style="color:white;font-size:13px">Активен</label>
+            </div>
+
+            <button @onclick="() => SaveTariff(t)"
+                    style="background:#4CAF50;color:white;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:14px">
+                 Сохранить
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    List<Tariff> tariffs = new();
+    string message = "";
+    string inputStyle = "width:90px;padding:6px;background:#2D2D3F;color:white;border:1px solid #555;border-radius:6px";
+
+    protected override async Task OnInitializedAsync()
+    {
+        tariffs = await Db.Tariffs.OrderBy(t => t.Type).ToListAsync();
+    }
+
+    async Task SaveTariff(Tariff t)
+    {
+        try
+        {
+            t.UpdatedAt = DateTime.UtcNow;
+            await Db.SaveChangesAsync();
+            message = $"Тариф \"{t.Name}\" сохранён ";
+        }
+        catch (Exception ex)
+        {
+            message = $"Ошибка: {ex.Message}";
+        }
+    }
+}

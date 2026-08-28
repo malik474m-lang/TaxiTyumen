@@ -1,0 +1,72 @@
+﻿@page "/clients"
+@using Microsoft.EntityFrameworkCore
+@using TaxiService.Infrastructure.Data
+@using TaxiService.Domain.Enums
+@using TaxiService.Domain.Entities
+@inject TaxiDbContext Db
+@rendermode InteractiveServer
+
+<PageTitle>Клиенты</PageTitle>
+
+<h2 style="color:#FFD700;margin:20px 0"> Клиенты (@clients.Count)</h2>
+
+@if (message != "")
+{
+    <div style="padding:10px;background:#1A3A1A;border:1px solid #4CAF50;border-radius:8px;color:#4CAF50;margin-bottom:16px">@message</div>
+}
+
+<table style="width:100%;border-collapse:collapse">
+    <thead>
+        <tr style="background:#333">
+            <th style="padding:10px;text-align:left;color:white">Имя</th>
+            <th style="padding:10px;text-align:left;color:white">Телефон</th>
+            <th style="padding:10px;text-align:left;color:white">Email</th>
+            <th style="padding:10px;text-align:left;color:white">Поездок</th>
+            <th style="padding:10px;text-align:left;color:white">Рейтинг</th>
+            <th style="padding:10px;text-align:left;color:white">Регистрация</th>
+            <th style="padding:10px;text-align:left;color:white">Статус</th>
+            <th style="padding:10px;text-align:left;color:white">Действие</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var c in clients)
+        {
+            <tr style="background:#252536;border-bottom:1px solid #333">
+                <td style="padding:8px;font-weight:bold">@c.FirstName @c.LastName</td>
+                <td style="padding:8px;color:#4FC3F7">@c.Phone</td>
+                <td style="padding:8px;color:gray">@(c.Email ?? "")</td>
+                <td style="padding:8px;color:#FFD700">@c.TotalTrips</td>
+                <td style="padding:8px"> @c.Rating.ToString("F1")</td>
+                <td style="padding:8px;color:gray">@c.CreatedAt.AddHours(5).ToString("dd.MM.yyyy")</td>
+                <td style="padding:8px">
+                    @if (c.IsBlocked) { <span style="color:#F44336"> Заблокирован</span> }
+                    else { <span style="color:#4CAF50"> Активен</span> }
+                </td>
+                <td style="padding:8px">
+                    <button @onclick="() => ToggleBlock(c)"
+                            style="background:@(c.IsBlocked ? "#4CAF50" : "#F44336");color:white;border:none;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px">
+                        @(c.IsBlocked ? "Разблокировать" : "Заблокировать")
+                    </button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    List<User> clients = new();
+    string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        clients = await Db.Users.Where(u => u.Role == UserRole.Client).OrderByDescending(u => u.CreatedAt).ToListAsync();
+    }
+
+    async Task ToggleBlock(User c)
+    {
+        c.IsBlocked = !c.IsBlocked;
+        c.BlockReason = c.IsBlocked ? "Заблокирован администратором" : null;
+        await Db.SaveChangesAsync();
+        message = c.IsBlocked ? $"{c.FirstName} заблокирован " : $"{c.FirstName} разблокирован ";
+    }
+}

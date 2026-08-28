@@ -1,0 +1,42 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="TaxiClient.Views.RegisterPage"
+             Title="Регистрация" BackgroundColor="#1E1E2E">
+    <ScrollView>
+        <VerticalStackLayout Padding="40" Spacing="0" VerticalOptions="Center">
+            <Label Text="Регистрация" FontSize="24" FontAttributes="Bold"
+                   TextColor="#FFD700" HorizontalOptions="Center" Margin="0,0,0,25"/>
+
+            <Label Text="Имя:" TextColor="White" Margin="0,0,0,4"/>
+            <Border BackgroundColor="#2D2D3F" Stroke="#555" Padding="4,0" Margin="0,0,0,10">
+                <Border.StrokeShape><RoundRectangle CornerRadius="8"/></Border.StrokeShape>
+                <Entry x:Name="FirstNameEntry" TextColor="White" FontSize="16"/>
+            </Border>
+
+            <Label Text="Фамилия:" TextColor="White" Margin="0,0,0,4"/>
+            <Border BackgroundColor="#2D2D3F" Stroke="#555" Padding="4,0" Margin="0,0,0,10">
+                <Border.StrokeShape><RoundRectangle CornerRadius="8"/></Border.StrokeShape>
+                <Entry x:Name="LastNameEntry" TextColor="White" FontSize="16"/>
+            </Border>
+
+            <Label Text="Телефон:" TextColor="White" Margin="0,0,0,4"/>
+            <Border BackgroundColor="#2D2D3F" Stroke="#555" Padding="4,0" Margin="0,0,0,10">
+                <Border.StrokeShape><RoundRectangle CornerRadius="8"/></Border.StrokeShape>
+                <Entry x:Name="PhoneEntry" TextColor="White" FontSize="16" Keyboard="Telephone"/>
+            </Border>
+
+            <Label Text="Пароль:" TextColor="White" Margin="0,0,0,4"/>
+            <Border BackgroundColor="#2D2D3F" Stroke="#555" Padding="4,0" Margin="0,0,0,10">
+                <Border.StrokeShape><RoundRectangle CornerRadius="8"/></Border.StrokeShape>
+                <Entry x:Name="PasswordEntry" TextColor="White" FontSize="16" IsPassword="True"/>
+            </Border>
+
+            <Label x:Name="ErrorLabel" TextColor="#FF6B6B" FontSize="13" IsVisible="False" Margin="0,0,0,8"/>
+
+            <Button x:Name="RegBtn" Text="Зарегистрироваться" FontSize="18"
+                    BackgroundColor="#4CAF50" TextColor="White" HeightRequest="52"
+                    CornerRadius="10" Margin="0,15,0,0" Clicked="OnRegisterClicked"/>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>
