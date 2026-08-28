@@ -1,0 +1,204 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Manrope", "Inter", -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+  --color-taxi: #facc15;
+  --color-taxi-dark: #eab308;
+  --color-ink: #0a0a0c;
+  --color-panel: #121216;
+  --color-panel-2: #17171c;
+  --color-line: rgba(255, 255, 255, 0.08);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgba(250, 204, 21, 0.07), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(250, 204, 21, 0.05), transparent 60%),
+    #0a0a0c;
+}
+
+::selection {
+  background: #facc15;
+  color: #0a0a0c;
+}
+
+/* Тонкие скроллбары */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(250, 204, 21, 0.35) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(250, 204, 21, 0.35);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Пульс маркера поиска */
+@keyframes ping-slow {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  80%,
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+.animate-ping-slow {
+  animation: ping-slow 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-rise {
+  animation: rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes ticker {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.animate-ticker {
+  animation: ticker 1.4s ease-in-out infinite;
+}
+
+/* Шашки такси для разделителей */
+.checker {
+  background-image: repeating-conic-gradient(#facc15 0% 25%, transparent 0% 50%);
+  background-size: 14px 14px;
+}
+
+.card {
+  background: #121216;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+}
+
+.input-dark {
+  width: 100%;
+  background: #0f0f13;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 12px 16px;
+  font-size: 14px;
+  color: #fafafa;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.input-dark::placeholder {
+  color: #52525b;
+}
+.input-dark:focus {
+  border-color: rgba(250, 204, 21, 0.6);
+  box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.12);
+}
+
+select.input-dark option {
+  background: #17171c;
+  color: #fafafa;
+}
+
+.btn-taxi {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #facc15;
+  color: #0a0a0c;
+  font-weight: 800;
+  border-radius: 14px;
+  padding: 13px 22px;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  transition: transform 0.15s, background 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 24px rgba(250, 204, 21, 0.22);
+  cursor: pointer;
+  border: none;
+}
+.btn-taxi:hover {
+  background: #fde047;
+  transform: translateY(-1px);
+}
+.btn-taxi:active {
+  transform: translateY(0);
+}
+.btn-taxi:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #d4d4d8;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 12px 20px;
+  font-size: 14px;
+  transition: background 0.2s, border-color 0.2s;
+  cursor: pointer;
+}
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+  font-weight: 600;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 14px;
+  padding: 12px 20px;
+  font-size: 14px;
+  transition: background 0.2s;
+  cursor: pointer;
+}
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
