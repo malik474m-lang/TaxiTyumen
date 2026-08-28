@@ -12,6 +12,7 @@ import {
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { serializeOrder } from "@/lib/serialize";
+import { publishEvent } from "@/lib/bus";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -84,6 +85,7 @@ export async function POST(req: Request, ctx: Ctx) {
         .set({ status: "on_route", currentOrderId: id })
         .where(eq(drivers.id, driverId));
 
+      publishEvent("orders");
       return NextResponse.json(await serializeOrder((await loadOrder(id))!));
     }
 
@@ -117,6 +119,7 @@ export async function POST(req: Request, ctx: Ctx) {
         await chargePenalty(driverId, id, driver.rejectionPenalty, "Штраф за отказ от заказа");
       }
 
+      publishEvent("orders");
       return NextResponse.json(await serializeOrder((await loadOrder(id))!));
     }
 
@@ -126,6 +129,7 @@ export async function POST(req: Request, ctx: Ctx) {
         .update(orders)
         .set({ status: "driver_arrived", driverArrivedAt: new Date() })
         .where(eq(orders.id, id));
+      publishEvent("orders");
       return NextResponse.json(await serializeOrder((await loadOrder(id))!));
     }
 
@@ -140,6 +144,7 @@ export async function POST(req: Request, ctx: Ctx) {
           .set({ status: "in_trip" })
           .where(eq(drivers.id, order.driverId));
       }
+      publishEvent("orders");
       return NextResponse.json(await serializeOrder((await loadOrder(id))!));
     }
 
@@ -173,6 +178,7 @@ export async function POST(req: Request, ctx: Ctx) {
           await chargeCommission(driver.id, id, finalPrice, commissionPercent);
         }
       }
+      publishEvent("orders");
       return NextResponse.json(await serializeOrder((await loadOrder(id))!));
     }
 
@@ -192,6 +198,7 @@ export async function POST(req: Request, ctx: Ctx) {
           .set({ status: "available", currentOrderId: null })
           .where(eq(drivers.id, order.driverId));
       }
+      publishEvent("orders");
       return NextResponse.json(await serializeOrder((await loadOrder(id))!));
     }
 
@@ -221,6 +228,7 @@ export async function POST(req: Request, ctx: Ctx) {
         .set({ status: "on_route", currentOrderId: id })
         .where(eq(drivers.id, driverId));
 
+      publishEvent("orders");
       return NextResponse.json(await serializeOrder((await loadOrder(id))!));
     }
 
@@ -231,6 +239,7 @@ export async function POST(req: Request, ctx: Ctx) {
         .update(orders)
         .set({ clientRating: rating })
         .where(eq(orders.id, id));
+      publishEvent("orders");
       return NextResponse.json(await serializeOrder((await loadOrder(id))!));
     }
 

@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import OrderChat from "@/components/OrderChat";
+import TaxiMap, { type MapMarker } from "@/components/TaxiMap";
+import { useEvents } from "@/lib/use-events";
 import {
   api,
   getSession,
@@ -79,6 +81,11 @@ export default function DriverPage() {
     return () => clearInterval(t);
   }, [user, refresh]);
 
+  useEvents(() => {
+    const u = getSession();
+    if (u?.role === "driver") refresh(u);
+  });
+
   async function toggleOnline() {
     if (!me || !user) return;
     setBusy(true);
@@ -127,6 +134,50 @@ export default function DriverPage() {
 
   const online = me.status !== "offline";
   const lowBalance = me.balance < me.minBalanceForOrders;
+
+  // Маркеры карты: я + доступные заказы / текущая цель
+  const mapMarkers: MapMarker[] = [
+    { id: "me", lat: me.latitude, lng: me.longitude, kind: "driver", label: me.licensePlate },
+    ...(current
+      ? [
+          {
+            id: "pickup",
+            lat: current.pickupLatitude,
+            lng: current.pickupLongitude,
+            kind: "pickup" as const,
+            label: "Подача",
+          },
+          ...(current.destinationLatitude != null
+            ? [
+                {
+                  id: "dest",
+                  lat: current.destinationLatitude,
+                  lng: current.destinationLongitude ?? 0,
+                  kind: "dest" as const,
+                  label: "Финиш",
+                },
+              ]
+            : []),
+        ]
+      : available.map((o) => ({
+          id: o.id,
+          lat: o.pickupLatitude,
+          lng: o.pickupLongitude,
+          kind: "pickup" as const,
+          label: `${Math.round(o.estimatedPrice)} ₽`,
+        }))),
+  ];
+  const mapLine: [number, number][] | null = current
+    ? current.status === "in_progress" && current.destinationLatitude != null
+      ? [
+          [me.latitude, me.longitude],
+          [current.destinationLatitude, current.destinationLongitude ?? 0],
+        ]
+      : [
+          [me.latitude, me.longitude],
+          [current.pickupLatitude, current.pickupLongitude],
+        ]
+    : null;
 
   return (
     <div className="min-h-screen">
@@ -227,6 +278,23 @@ export default function DriverPage() {
 
           {/* Правая колонка */}
           <div className="space-y-5">
+            {/* Карта */}
+            <div className="card animate-rise overflow-hidden">
+              <TaxiMap
+                markers={mapMarkers}
+                polyline={mapLine}
+                className="h-56 w-full"
+                followBounds={mapMarkers.length > 1}
+              />
+              <div className="flex items-center justify-between px-4 py-2.5 text-[11px] font-semibold text-zinc-500">
+                <span>{current ? "маршрут текущего заказа" : online ? `${available.length} заказ(ов) рядом` : "вы офлайн"}</span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400" /> заказ
+                  <span className="ml-1 inline-block h-3 w-3 rounded-md bg-amber-400" /> вы
+                </span>
+              </div>
+            </div>
+
             {/* Текущий заказ */}
             {current && (
               <div className="card animate-rise border-amber-400/30 p-6">

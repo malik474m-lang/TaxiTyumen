@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { drivers, balanceTransactions } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
+import { publishEvent } from "@/lib/bus";
 
 export async function POST(
   req: Request,
@@ -26,6 +27,7 @@ export async function POST(
           lastLocationUpdate: new Date(),
         })
         .where(eq(drivers.id, id));
+      publishEvent("drivers");
       return NextResponse.json({ ok: true, status });
     }
 
@@ -38,6 +40,7 @@ export async function POST(
         .update(drivers)
         .set({ latitude: lat, longitude: lng, lastLocationUpdate: new Date() })
         .where(eq(drivers.id, id));
+      publishEvent("drivers");
       return NextResponse.json({ ok: true });
     }
 
@@ -56,6 +59,7 @@ export async function POST(
         description: `Пополнение +${amount.toFixed(0)} руб.`,
         createdBy: String(body.createdBy ?? "system"),
       });
+      publishEvent("drivers");
       return NextResponse.json({ ok: true, balance: newBalance });
     }
 
@@ -64,6 +68,7 @@ export async function POST(
         .update(drivers)
         .set({ isVerified: Boolean(body.isVerified ?? true) })
         .where(eq(drivers.id, id));
+      publishEvent("drivers");
       return NextResponse.json({ ok: true });
     }
 

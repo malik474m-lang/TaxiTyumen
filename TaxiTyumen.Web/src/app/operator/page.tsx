@@ -19,6 +19,8 @@ import {
   DoorOpen,
 } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
+import TaxiMap, { type MapMarker } from "@/components/TaxiMap";
+import { useEvents } from "@/lib/use-events";
 import {
   api,
   getSession,
@@ -88,6 +90,11 @@ export default function OperatorPage() {
     return () => clearInterval(t);
   }, [user, refresh]);
 
+  useEvents(() => {
+    const u = getSession();
+    if (u?.role === "operator") refresh();
+  });
+
   async function createOrder(e: React.FormEvent) {
     e.preventDefault();
     if (!user) return;
@@ -147,6 +154,26 @@ export default function OperatorPage() {
   }
   const onlineDrivers = drivers.filter((d) => d.status !== "offline");
 
+  // Маркеры карты: водители на линии + точки подачи неназначенных заказов
+  const fleetMarkers: MapMarker[] = [
+    ...onlineDrivers.map((d) => ({
+      id: `driver-${d.id}`,
+      lat: d.latitude,
+      lng: d.longitude,
+      kind: "driver" as const,
+      label: d.licensePlate,
+    })),
+    ...active
+      .filter((o) => !o.driver)
+      .map((o) => ({
+        id: `order-${o.id}`,
+        lat: o.pickupLatitude,
+        lng: o.pickupLongitude,
+        kind: "pickup" as const,
+        label: `${Math.round(o.estimatedPrice)} ₽`,
+      })),
+  ];
+
   return (
     <div className="min-h-screen">
       <AppHeader user={user} subtitle="Диспетчерская" />
@@ -157,6 +184,20 @@ export default function OperatorPage() {
             {error}
           </div>
         )}
+
+        {/* Карта автопарка */}
+        <div className="card animate-rise overflow-hidden">
+          <TaxiMap markers={fleetMarkers} className="h-72 w-full" followBounds={fleetMarkers.length > 0} />
+          <div className="flex items-center justify-between px-4 py-2.5 text-[11px] font-semibold text-zinc-500">
+            <span>
+              {onlineDrivers.length} водителей на линии · {active.filter((o) => !o.driver).length} заказов без водителя
+            </span>
+            <span className="flex items-center gap-3">
+              <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded-md bg-amber-400" /> водитель</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-400" /> подача</span>
+            </span>
+          </div>
+        </div>
 
         <div className="grid gap-6 lg:grid-cols-[420px_1fr]">
           {/* Приём звонка */}

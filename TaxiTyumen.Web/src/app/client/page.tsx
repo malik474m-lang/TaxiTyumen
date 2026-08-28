@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import OrderChat from "@/components/OrderChat";
+import TaxiMap, { type MapMarker } from "@/components/TaxiMap";
+import { useEvents } from "@/lib/use-events";
 import {
   api,
   getSession,
@@ -60,6 +62,10 @@ export default function ClientPage() {
 
   // Цены и заказы
   const [estimates, setEstimates] = useState<EstimateDto[]>([]);
+  const [geo, setGeo] = useState<{
+    from?: { lat: number; lng: number };
+    to?: { lat: number; lng: number };
+  }>({});
   const [estimating, setEstimating] = useState(false);
   const [active, setActive] = useState<OrderDto | null>(null);
   const [history, setHistory] = useState<OrderDto[]>([]);
@@ -96,6 +102,12 @@ export default function ClientPage() {
     return () => clearInterval(t);
   }, [user, refresh]);
 
+  // Realtime (SSE) — мгновенные обновления поверх polling
+  useEvents(() => {
+    const u = getSession();
+    if (u?.role === "client") refresh(u);
+  });
+
   // Живой расчёт цены при вводе адресов (debounce)
   useEffect(() => {
     if (estimateTimer.current) clearTimeout(estimateTimer.current);
@@ -103,19 +115,26 @@ export default function ClientPage() {
       estimateTimer.current = setTimeout(async () => {
         setEstimating(true);
         try {
-          const res = await api<{ estimates: EstimateDto[] }>("/api/pricing", {
+          const res = await api<{
+            estimates: EstimateDto[];
+            from?: { lat: number; lng: number };
+            to?: { lat: number; lng: number };
+          }>("/api/pricing", {
             method: "POST",
             body: JSON.stringify({ fromAddress: pickup, toAddress: destination }),
           });
           setEstimates(res.estimates);
+          setGeo({ from: res.from, to: res.to });
         } catch {
           setEstimates([]);
+          setGeo({});
         } finally {
           setEstimating(false);
         }
       }, 550);
     } else {
       setEstimates([]);
+      setGeo({});
     }
   }, [pickup, destination]);
 
@@ -170,6 +189,70 @@ export default function ClientPage() {
     return <LoginScreen role="client" onAuthed={setUser} />;
   }
   const step = active ? statusIndex(active.status) : -1;
+
+  // Маркеры карты: режим отслеживания поездки
+  const trackMarkers: MapMarker[] = active
+    ? [
+        {
+          id: "pickup",
+          lat: active.pickupLatitude,
+          lng: active.pickupLongitude,
+          kind: "pickup" as const,
+          label: "Подача",
+        },
+        ...(active.destinationLatitude != null
+          ? [
+              {
+                id: "dest",
+                lat: active.destinationLatitude,
+                lng: active.destinationLongitude ?? 0,
+                kind: "dest" as const,
+                label: "Финиш",
+              },
+            ]
+          : []),
+        ...(active.driver
+          ? [
+              {
+                id: "driver",
+                lat: active.driver.latitude,
+                lng: active.driver.longitude,
+                kind: "driver" as const,
+                label: active.driver.licensePlate,
+              },
+            ]
+          : []),
+      ]
+    : [];
+  const liveLine: [number, number][] | null =
+    active?.driver
+      ? active.status === "in_progress" && active.destinationLatitude != null
+        ? [
+            [active.driver.latitude, active.driver.longitude],
+            [active.destinationLatitude, active.destinationLongitude ?? 0],
+          ]
+        : [
+            [active.driver.latitude, active.driver.longitude],
+            [active.pickupLatitude, active.pickupLongitude],
+          ]
+      : null;
+
+  // Маркеры карты: режим выбора маршрута
+  const formMarkers: MapMarker[] = [
+    ...(geo.from
+      ? [{ id: "from", lat: geo.from.lat, lng: geo.from.lng, kind: "pickup" as const, label: "Подача" }]
+      : []),
+    ...(geo.to
+      ? [{ id: "to", lat: geo.to.lat, lng: geo.to.lng, kind: "dest" as const, label: "Финиш" }]
+      : []),
+  ];
+  const formLine: [number, number][] | null =
+    geo.from && geo.to
+      ? [
+          [geo.from.lat, geo.from.lng],
+          [geo.to.lat, geo.to.lng],
+        ]
+      : null;
 
   return (
     <div className="min-h-screen">
@@ -315,6 +398,18 @@ export default function ClientPage() {
                   <p className="mt-3 text-xs text-zinc-600">Радиус поиска расширяется автоматически</p>
                 </div>
               )}
+
+              {/* Живая карта поездки */}
+              <div className="card animate-rise overflow-hidden" style={{ animationDelay: "0.1s" }}>
+                <TaxiMap markers={trackMarkers} polyline={liveLine} className="h-64 w-full" />
+                <div className="flex items-center justify-between px-4 py-2.5 text-[11px] font-semibold text-zinc-500">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-emerald-400" /> подача
+                    <span className="mx-1 inline-block h-2 w-2 rotate-45 rounded-[3px] bg-amber-400" /> финиш
+                  </span>
+                  <span>{active.driver ? `${active.driver.carColor} · ${active.driver.carModel}` : "поиск водителя"}</span>
+                </div>
+              </div>
             </div>
           </div>
         ) : (
@@ -483,8 +578,28 @@ export default function ClientPage() {
               </button>
             </form>
 
-            {/* История */}
-            <div className="card h-fit animate-rise p-6" style={{ animationDelay: "0.12s" }}>
+            {/* Карта маршрута + история */}
+            <div className="space-y-6">
+              <div className="card animate-rise overflow-hidden" style={{ animationDelay: "0.08s" }}>
+                <TaxiMap
+                  markers={formMarkers}
+                  polyline={formLine}
+                  className="h-56 w-full"
+                  followBounds={formMarkers.length > 0}
+                />
+                <div className="flex items-center justify-between px-4 py-2.5">
+                  <span className="text-[11px] font-bold uppercase tracking-[0.15em] text-zinc-500">
+                    Тюмень · маршрут
+                  </span>
+                  <span className="text-[11px] text-zinc-500">
+                    {geo.from && geo.to
+                      ? `${estimates[0]?.distanceKm ?? "—"} км по дорогам`
+                      : "введите адреса — покажем маршрут"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="card h-fit animate-rise p-6" style={{ animationDelay: "0.12s" }}>
               <h3 className="mb-4 text-sm font-black uppercase tracking-[0.15em] text-zinc-400">
                 История поездок
               </h3>
@@ -533,6 +648,7 @@ export default function ClientPage() {
                   ))}
                 </div>
               )}
+            </div>
             </div>
           </div>
         )}

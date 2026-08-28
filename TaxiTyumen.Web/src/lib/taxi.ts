@@ -2,13 +2,9 @@
 import { db } from "@/db";
 import { tariffs, type Tariff } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { CITY } from "@/lib/city";
 
-export const CITY = {
-  name: "Тюмень",
-  centerLat: 57.1522,
-  centerLng: 65.5272,
-  utcOffsetHours: 5,
-};
+export { CITY };
 
 // ── Координаты популярных мест Тюмени (для подсказок адресов) ───────────────
 export const PLACES: { name: string; lat: number; lng: number }[] = [

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { chatMessages, orders, users } from "@/db/schema";
 import { eq, asc, desc } from "drizzle-orm";
+import { publishEvent } from "@/lib/bus";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -42,6 +43,7 @@ export async function POST(req: Request) {
       .values({ orderId, senderId, senderName, senderRole, text })
       .returning();
 
+    publishEvent("chat");
     return NextResponse.json(message, { status: 201 });
   } catch (e) {
     return NextResponse.json(

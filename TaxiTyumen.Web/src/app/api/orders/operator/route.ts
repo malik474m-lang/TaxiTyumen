@@ -11,6 +11,7 @@ import {
 import { serializeOrder } from "@/lib/serialize";
 import { normalizePhone } from "@/lib/auth";
 import { ensureSeeded } from "@/lib/seed";
+import { publishEvent } from "@/lib/bus";
 
 export async function POST(req: Request) {
   try {
@@ -87,6 +88,7 @@ export async function POST(req: Request) {
       })
       .returning();
 
+    publishEvent("orders");
     return NextResponse.json(await serializeOrder(order), { status: 201 });
   } catch (e) {
     return NextResponse.json(

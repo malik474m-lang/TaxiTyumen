@@ -12,6 +12,8 @@ import {
 } from "@/lib/taxi";
 import { serializeOrder } from "@/lib/serialize";
 import { ensureSeeded } from "@/lib/seed";
+import { advanceDriversGps } from "@/lib/simulate";
+import { publishEvent } from "@/lib/bus";
 
 export async function POST(req: Request) {
   try {
@@ -83,6 +85,7 @@ export async function POST(req: Request) {
       })
       .returning();
 
+    publishEvent("orders");
     return NextResponse.json(await serializeOrder(order), { status: 201 });
   } catch (e) {
     return NextResponse.json(
@@ -95,6 +98,7 @@ export async function POST(req: Request) {
 export async function GET(req: Request) {
   try {
     await ensureSeeded();
+    await advanceDriversGps();
     const url = new URL(req.url);
     const view = url.searchParams.get("view") ?? "active";
 

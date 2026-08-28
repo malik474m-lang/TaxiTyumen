@@ -5,6 +5,7 @@ import {
   Phone,
   Lock,
   User,
+  KeyRound,
   ArrowRight,
   ArrowLeft,
   UserRound,
@@ -120,6 +121,11 @@ export default function LoginScreen({
 
   const [view, setView] = useState<"checking" | "conflict" | "login" | "register">("checking");
   const [existing, setExisting] = useState<SessionUser | null>(null);
+  // SMS-вход (SendSmsCodeAsync / VerifySmsCodeAsync из оригинала)
+  const [authMethod, setAuthMethod] = useState<"password" | "sms">("password");
+  const [smsSent, setSmsSent] = useState(false);
+  const [devCode, setDevCode] = useState<string | null>(null);
+  const [code, setCode] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -160,6 +166,53 @@ export default function LoginScreen({
       onAuthed(res.user);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка входа");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function sendSmsCode() {
+    if (!phone || phone.replace(/\D/g, "").length < 10) {
+      setError("Укажите корректный телефон");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    try {
+      const res = await api<{ devCode?: string; smsProvider?: string | null }>("/api/auth/sms", {
+        method: "POST",
+        body: JSON.stringify({ action: "send", phone }),
+      });
+      setSmsSent(true);
+      setDevCode(res.devCode ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось отправить код");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function verifySmsCode(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const res = await api<{ user: SessionUser }>("/api/auth/sms", {
+        method: "POST",
+        body: JSON.stringify({ action: "verify", phone, code }),
+      });
+      // Роли не пересекаются — проверка и для SMS-входа
+      if (res.user.role !== role) {
+        const their = ROLE_THEMES[res.user.role];
+        setError(
+          `Это аккаунт роли «${their.appName}». Войдите через приложение «${their.appName}» — роли в системе не пересекаются.`
+        );
+        return;
+      }
+      setSession(res.user);
+      onAuthed(res.user);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Неверный код");
     } finally {
       setLoading(false);
     }
@@ -270,6 +323,35 @@ export default function LoginScreen({
           {view === "login" && (
             <>
               <h2 className="text-xl font-black tracking-tight">Вход в «{theme.appName}»</h2>
+
+              {theme.allowRegister && (
+                <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl bg-zinc-950/60 p-1.5">
+                  {(
+                    [
+                      ["password", "По паролю"],
+                      ["sms", "По SMS-коду"],
+                    ] as const
+                  ).map(([m, label]) => (
+                    <button
+                      type="button"
+                      key={m}
+                      onClick={() => {
+                        setAuthMethod(m);
+                        setError("");
+                      }}
+                      className={`rounded-xl py-2.5 text-sm font-bold transition-all ${
+                        authMethod === m
+                          ? "bg-amber-400 text-zinc-950 shadow"
+                          : "text-zinc-400 hover:text-zinc-200"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {authMethod === "password" ? (
               <form onSubmit={handleLogin} className="mt-5 space-y-4">
                 <div className="relative">
                   <Phone className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
@@ -291,6 +373,69 @@ export default function LoginScreen({
                   <ArrowRight className="h-4 w-4" />
                 </button>
               </form>
+              ) : (
+              <form onSubmit={verifySmsCode} className="mt-5 space-y-4">
+                <div className="relative">
+                  <Phone className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                  <input
+                    className="input-dark pl-11"
+                    placeholder="+7 (___) ___-__-__"
+                    value={phone}
+                    onChange={(e) => {
+                      setPhone(e.target.value);
+                      setSmsSent(false);
+                      setDevCode(null);
+                    }}
+                    required
+                  />
+                </div>
+
+                {!smsSent ? (
+                  <button type="button" onClick={sendSmsCode} disabled={loading} className="btn-taxi w-full">
+                    {loading ? "Отправляем…" : "Получить код по SMS"}
+                    <KeyRound className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <>
+                    <div className="relative">
+                      <KeyRound className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                      <input
+                        className="input-dark pl-11 text-center !text-lg !font-black tracking-[0.5em]"
+                        placeholder="••••"
+                        value={code}
+                        onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                        inputMode="numeric"
+                        maxLength={4}
+                        required
+                      />
+                    </div>
+                    {devCode && (
+                      <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm font-semibold text-amber-300">
+                        SMS-провайдер не настроен — демо-режим. Ваш код: <b className="text-base tracking-widest">{devCode}</b>
+                      </div>
+                    )}
+                    <button type="submit" disabled={loading || code.length < 4} className="btn-taxi w-full">
+                      {loading ? "Проверяем…" : "Войти по коду"}
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={sendSmsCode}
+                      disabled={loading}
+                      className="w-full text-center text-xs font-semibold text-zinc-500 transition hover:text-amber-400"
+                    >
+                      Отправить код повторно
+                    </button>
+                  </>
+                )}
+
+                {error && (
+                  <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-medium leading-relaxed text-red-300">
+                    {error}
+                  </div>
+                )}
+              </form>
+              )}
 
               <div className="mt-5 rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
                 <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-600">

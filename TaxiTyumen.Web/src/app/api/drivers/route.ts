@@ -5,9 +5,11 @@ import { drivers, users } from "@/db/schema";
 import { eq, ne, and } from "drizzle-orm";
 import { DRIVER_STATUS_TEXT } from "@/lib/taxi";
 import { ensureSeeded } from "@/lib/seed";
+import { advanceDriversGps } from "@/lib/simulate";
 
 export async function GET(req: Request) {
   await ensureSeeded();
+  await advanceDriversGps();
   const url = new URL(req.url);
   const onlineOnly = url.searchParams.get("online") === "1";
 

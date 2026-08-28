@@ -78,6 +78,8 @@ export const users = pgTable("users", {
   rating: doublePrecision("rating").notNull().default(5),
   totalTrips: integer("total_trips").notNull().default(0),
   isPhoneVerified: boolean("is_phone_verified").notNull().default(false),
+  smsCode: text("sms_code"),
+  smsCodeExpiry: timestamp("sms_code_expiry", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

@@ -37,8 +37,12 @@ export interface OrderDto {
   clientName: string | null;
   clientPhone: string | null;
   pickupAddress: string;
+  pickupLatitude: number;
+  pickupLongitude: number;
   pickupEntrance: string | null;
   destinationAddress: string | null;
+  destinationLatitude: number | null;
+  destinationLongitude: number | null;
   tariff: string;
   tariffName: string;
   estimatedPrice: number;
