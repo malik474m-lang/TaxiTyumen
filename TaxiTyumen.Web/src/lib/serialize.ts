@@ -1,10 +1,16 @@
 // Сериализация заказа → OrderResponse (порт MapToResponseAsync)
 import { db } from "@/db";
-import { orders, drivers, users, type Order } from "@/db/schema";
+import { orders, drivers, users, orderOptions, type Order } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { STATUS_TEXT, TARIFF_NAMES, PAYMENT_NAMES } from "@/lib/taxi";
 
 export async function serializeOrder(order: Order) {
+  // Опции заказа (OrderOption.cs)
+  const opts = await db
+    .select({ code: orderOptions.code, name: orderOptions.name, price: orderOptions.price })
+    .from(orderOptions)
+    .where(eq(orderOptions.orderId, order.id));
+
   let driverInfo = null;
   if (order.driverId) {
     const [row] = await db
@@ -71,6 +77,8 @@ export async function serializeOrder(order: Order) {
       ? (JSON.parse(order.routeGeometry) as [number, number][])
       : null,
     paymentMethod: order.paymentMethod,
+    options: opts,
+    escalatedAt: order.escalatedAt,
     paymentMethodName: PAYMENT_NAMES[order.paymentMethod] ?? order.paymentMethod,
     comment: order.comment,
     cancellationReason: order.cancellationReason,

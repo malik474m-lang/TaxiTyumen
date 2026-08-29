@@ -173,6 +173,7 @@ export const orders = pgTable("orders", {
     .notNull()
     .default("cash"),
   status: orderStatusEnum("status").notNull().default("searching"),
+  escalatedAt: timestamp("escalated_at", { withTimezone: true }),
   comment: text("comment"),
   cancellationReason: text("cancellation_reason"),
   passengerCount: integer("passenger_count").notNull().default(1),
@@ -186,6 +187,46 @@ export const orders = pgTable("orders", {
   tripStartedAt: timestamp("trip_started_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+});
+
+// ── Order options (OrderOption.cs) ───────────────────────────────────────────
+
+export const orderOptions = pgTable("order_options", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  orderId: uuid("order_id")
+    .notNull()
+    .references(() => orders.id),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  price: doublePrecision("price").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ── Operator shifts (OperatorShift.cs) ───────────────────────────────────────
+
+export const operatorShifts = pgTable("operator_shifts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  operatorId: uuid("operator_id")
+    .notNull()
+    .references(() => users.id),
+  startedAt: timestamp("started_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+});
+
+// ── AutoCall settings (AutoCallSettings.cs) ──────────────────────────────────
+
+export const autoCallSettings = pgTable("auto_call_settings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  enabled: boolean("enabled").notNull().default(true),
+  escalateAfterMinutes: integer("escalate_after_minutes").notNull().default(3),
+  autoAssignEnabled: boolean("auto_assign_enabled").notNull().default(false),
+  autoAssignRadiusKm: doublePrecision("auto_assign_radius_km")
+    .notNull()
+    .default(5),
 });
 
 // ── Order rejections (OrderRejection.cs) ─────────────────────────────────────

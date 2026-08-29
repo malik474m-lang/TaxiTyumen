@@ -14,6 +14,8 @@ import { ensureSeeded } from "@/lib/seed";
 import { publishEvent } from "@/lib/bus";
 import { readClaims, forbidden } from "@/lib/session";
 import { getRouteGeometry } from "@/lib/taxi";
+import { orderOptions } from "@/db/schema";
+import { resolveOptions, optionsTotal } from "@/lib/options";
 
 export async function POST(req: Request) {
   try {
@@ -75,6 +77,13 @@ export async function POST(req: Request) {
       if (t) estimatedPrice = t.minimumFare;
     }
 
+    // Опции заказа
+    const optionCodes: string[] = Array.isArray(body.options)
+      ? body.options.filter((x: unknown): x is string => typeof x === "string")
+      : [];
+    const chosenOptions = resolveOptions(optionCodes);
+    estimatedPrice += optionsTotal(optionCodes);
+
     const [order] = await db
       .insert(orders)
       .values({
@@ -100,6 +109,17 @@ export async function POST(req: Request) {
         status: "searching",
       })
       .returning();
+
+    if (chosenOptions.length > 0) {
+      await db.insert(orderOptions).values(
+        chosenOptions.map((o) => ({
+          orderId: order.id,
+          code: o.code,
+          name: o.name,
+          price: o.price,
+        }))
+      );
+    }
 
     publishEvent("orders");
     return NextResponse.json(await serializeOrder(order), { status: 201 });

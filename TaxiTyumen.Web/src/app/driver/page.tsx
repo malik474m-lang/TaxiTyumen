@@ -340,6 +340,11 @@ export default function DriverPage() {
                   <span className="chip bg-white/6 text-zinc-300">
                     <Banknote className="h-3 w-3" /> {current.paymentMethodName}
                   </span>
+                  {(current.options ?? []).map((o) => (
+                    <span key={o.code} className="chip bg-sky-400/10 text-sky-300">
+                      {o.name}
+                    </span>
+                  ))}
                 </div>
 
                 {current.comment && (

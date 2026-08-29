@@ -72,6 +72,45 @@ export async function GET(req: Request) {
       .from(orders)
       .groupBy(orders.tariff);
 
+    // Выручка по дням (7 суток включая сегодня)
+    const dailyRows = await db
+      .select({
+        day: sql<string>`to_char(${orders.completedAt}, 'YYYY-MM-DD')`,
+        revenue: sql<number>`coalesce(sum(${orders.finalPrice}), 0)::float`,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(orders)
+      .where(and(eq(orders.status, "completed"), gte(orders.completedAt, weekStart)))
+      .groupBy(sql`to_char(${orders.completedAt}, 'YYYY-MM-DD')`)
+      .orderBy(sql`to_char(${orders.completedAt}, 'YYYY-MM-DD')`);
+
+    const revenueByDay: { day: string; revenue: number; count: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      const row = dailyRows.find((r) => r.day === key);
+      revenueByDay.push({
+        day: key,
+        revenue: Math.round(row?.revenue ?? 0),
+        count: row?.count ?? 0,
+      });
+    }
+
+    // Заказы по часам суток (по времени Тюмени UTC+5)
+    const hourlyRows = await db
+      .select({
+        hour: sql<number>`extract(hour from ${orders.createdAt} + interval '5 hours')::int`,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(orders)
+      .groupBy(sql`extract(hour from ${orders.createdAt} + interval '5 hours')`);
+
+    const ordersByHour = Array.from({ length: 24 }, (_, h) => ({
+      hour: h,
+      count: hourlyRows.find((r) => r.hour === h)?.count ?? 0,
+    }));
+
     return NextResponse.json({
       totalOrders,
       todayOrders,
@@ -85,6 +124,8 @@ export async function GET(req: Request) {
       avgCheck: Math.round(avgCheck),
       topRoutes,
       byTariff,
+      revenueByDay,
+      ordersByHour,
     });
   } catch (e) {
     return NextResponse.json(

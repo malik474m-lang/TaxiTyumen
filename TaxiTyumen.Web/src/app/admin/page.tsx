@@ -19,8 +19,11 @@ import {
   CheckCircle2,
   XCircle,
   FileDown,
+  Settings2,
+  PhoneCall,
 } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
+import MiniBars from "@/components/MiniBars";
 import {
   api,
   getSession,
@@ -45,6 +48,16 @@ interface Stats {
   avgCheck: number;
   topRoutes: { to: string; count: number }[];
   byTariff: { tariff: string; count: number; revenue: number }[];
+  revenueByDay: { day: string; revenue: number; count: number }[];
+  ordersByHour: { hour: number; count: number }[];
+}
+
+interface AutoCallCfg {
+  id: string;
+  enabled: boolean;
+  escalateAfterMinutes: number;
+  autoAssignEnabled: boolean;
+  autoAssignRadiusKm: number;
 }
 
 const TABS = [
@@ -52,6 +65,7 @@ const TABS = [
   { key: "orders", label: "Заказы", icon: ListOrdered },
   { key: "drivers", label: "Водители", icon: CarFront },
   { key: "tariffs", label: "Тарифы", icon: CirclePercent },
+  { key: "settings", label: "Настройки", icon: Settings2 },
 ] as const;
 
 export default function AdminPage() {
@@ -66,6 +80,7 @@ export default function AdminPage() {
   const [topupFor, setTopupFor] = useState<string | null>(null);
   const [topupAmount, setTopupAmount] = useState(500);
   const [editTariff, setEditTariff] = useState<TariffDto | null>(null);
+  const [autocall, setAutocall] = useState<AutoCallCfg | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -94,9 +109,26 @@ export default function AdminPage() {
   useEffect(() => {
     if (!user) return;
     refresh();
+    api<AutoCallCfg>("/api/autocall").then(setAutocall).catch(() => {});
     const t = setInterval(refresh, 6000);
     return () => clearInterval(t);
   }, [user, refresh]);
+
+  async function saveAutocall(cfg: AutoCallCfg) {
+    setSaving(true);
+    try {
+      const updated = await api<AutoCallCfg>("/api/autocall", {
+        method: "PUT",
+        body: JSON.stringify(cfg),
+      });
+      setAutocall(updated);
+      setMessage("Настройки автодозвона сохранены");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Ошибка сохранения");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function topup(driverId: string) {
     setSaving(true);
@@ -273,6 +305,40 @@ export default function AdminPage() {
                 </div>
               </div>
             </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* Выручка по дням */}
+              <div className="card p-6">
+                <h3 className="mb-1 text-sm font-black uppercase tracking-[0.15em] text-zinc-400">
+                  Выручка по дням
+                </h3>
+                <p className="mb-4 text-xs text-zinc-600">завершённые поездки, последние 7 суток</p>
+                <MiniBars
+                  data={stats.revenueByDay.map((d) => ({
+                    label: new Date(d.day).toLocaleDateString("ru-RU", { weekday: "short" }),
+                    value: d.revenue,
+                    title: `${fmtPrice(d.revenue)} · ${d.count} заказ(ов)`,
+                  }))}
+                  formatValue={(v) => fmtPrice(v)}
+                />
+              </div>
+
+              {/* Заказы по часам */}
+              <div className="card p-6">
+                <h3 className="mb-1 text-sm font-black uppercase tracking-[0.15em] text-zinc-400">
+                  Заказы по часам
+                </h3>
+                <p className="mb-4 text-xs text-zinc-600">время Тюмени (UTC+5), за всё время</p>
+                <MiniBars
+                  data={stats.ordersByHour.map((h) => ({
+                    label: h.hour % 4 === 0 ? String(h.hour).padStart(2, "0") : "",
+                    value: h.count,
+                    title: `${h.hour}:00 — ${h.count} заказ(ов)`,
+                  }))}
+                  accent="#38bdf8"
+                />
+              </div>
+            </div>
           </div>
         )}
 
@@ -418,6 +484,91 @@ export default function AdminPage() {
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* ── НАСТРОЙКИ ─────────────────────────────────────────────── */}
+        {tab === "settings" && autocall && (
+          <div className="max-w-2xl">
+            <div className="card animate-rise p-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-400/15 text-sky-300">
+                  <PhoneCall className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black tracking-tight">Автодозвон</h3>
+                  <p className="text-xs text-zinc-500">
+                    Логика AutoCallService: заказы без водителя эскалируются операторам
+                  </p>
+                </div>
+                <span className={`chip ml-auto ${autocall.enabled ? "bg-emerald-400/10 text-emerald-300" : "bg-white/6 text-zinc-500"}`}>
+                  {autocall.enabled ? "Включён" : "Выключен"}
+                </span>
+              </div>
+
+              <div className="mt-6 space-y-4">
+                <label className="flex items-center justify-between rounded-xl border border-white/8 bg-zinc-950/40 px-4 py-3">
+                  <span className="text-sm font-semibold text-zinc-300">Сервис работает</span>
+                  <input
+                    type="checkbox"
+                    checked={autocall.enabled}
+                    onChange={(e) => setAutocall({ ...autocall, enabled: e.target.checked })}
+                    className="h-5 w-5 accent-amber-400"
+                  />
+                </label>
+
+                <div className="grid grid-cols-[1fr_120px] items-center gap-3 rounded-xl border border-white/8 bg-zinc-950/40 px-4 py-3">
+                  <span className="text-sm text-zinc-300">
+                    Эскалация, если водителя нет дольше (мин)
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    className="input-dark !py-2 !text-sm"
+                    value={autocall.escalateAfterMinutes}
+                    onChange={(e) =>
+                      setAutocall({ ...autocall, escalateAfterMinutes: Number(e.target.value) })
+                    }
+                  />
+                </div>
+
+                <label className="flex items-center justify-between rounded-xl border border-white/8 bg-zinc-950/40 px-4 py-3">
+                  <span className="text-sm font-semibold text-zinc-300">
+                    Автоназначение ближайшему водителю
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={autocall.autoAssignEnabled}
+                    onChange={(e) =>
+                      setAutocall({ ...autocall, autoAssignEnabled: e.target.checked })
+                    }
+                    className="h-5 w-5 accent-amber-400"
+                  />
+                </label>
+
+                {autocall.autoAssignEnabled && (
+                  <div className="grid grid-cols-[1fr_120px] items-center gap-3 rounded-xl border border-white/8 bg-zinc-950/40 px-4 py-3">
+                    <span className="text-sm text-zinc-300">Радиус поиска (км)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      className="input-dark !py-2 !text-sm"
+                      value={autocall.autoAssignRadiusKm}
+                      onChange={(e) =>
+                        setAutocall({ ...autocall, autoAssignRadiusKm: Number(e.target.value) })
+                      }
+                    />
+                  </div>
+                )}
+
+                <button onClick={() => saveAutocall(autocall)} disabled={saving} className="btn-taxi w-full">
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  Сохранить настройки
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

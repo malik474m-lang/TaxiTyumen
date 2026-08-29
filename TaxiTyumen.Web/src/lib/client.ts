@@ -52,6 +52,8 @@ export interface OrderDto {
   estimatedDistance: number | null;
   estimatedDuration: number | null;
   routePoints?: [number, number][] | null;
+  options?: { code: string; name: string; price: number }[];
+  escalatedAt?: string | null;
   paymentMethod: string;
   paymentMethodName: string;
   comment: string | null;

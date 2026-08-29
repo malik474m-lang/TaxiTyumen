@@ -26,6 +26,7 @@ import {
 import AppHeader from "@/components/AppHeader";
 import OrderChat from "@/components/OrderChat";
 import TaxiMap, { type MapMarker } from "@/components/TaxiMap";
+import OptionPicker from "@/components/OptionPicker";
 import { useEvents } from "@/lib/use-events";
 import { estimateEtaMinutes } from "@/lib/city";
 import {
@@ -59,6 +60,7 @@ export default function ClientPage() {
   const [passengers, setPassengers] = useState(1);
   const [payment, setPayment] = useState<"cash" | "card" | "bonus">("cash");
   const [tariff, setTariff] = useState("economy");
+  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const [places, setPlaces] = useState<{ name: string }[]>([]);
 
   // Цены и заказы
@@ -161,6 +163,7 @@ export default function ClientPage() {
           comment: comment || null,
           passengerCount: passengers,
           paymentMethod: payment,
+          options: selectedOptions,
         }),
       });
       setComment("");
@@ -364,6 +367,11 @@ export default function ClientPage() {
                 <div className="mt-4 flex flex-wrap gap-2">
                   <span className="chip bg-white/6 text-zinc-300">{active.tariffName}</span>
                   <span className="chip bg-white/6 text-zinc-300">{active.paymentMethodName}</span>
+                  {(active.options ?? []).map((o) => (
+                    <span key={o.code} className="chip bg-sky-400/10 text-sky-300">
+                      {o.name}{o.price > 0 ? ` +${o.price} ₽` : ""}
+                    </span>
+                  ))}
                   {active.estimatedDistance && (
                     <span className="chip bg-white/6 text-zinc-300">
                       <Route className="h-3 w-3" />
@@ -535,6 +543,8 @@ export default function ClientPage() {
                       </div>
                     </div>
                   </div>
+
+                  <OptionPicker value={selectedOptions} onChange={setSelectedOptions} />
                 </div>
               </div>
 

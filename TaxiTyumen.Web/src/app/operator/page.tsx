@@ -17,9 +17,12 @@ import {
   Loader2,
   Route,
   DoorOpen,
+  Clock3,
+  Flame,
 } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import TaxiMap, { type MapMarker } from "@/components/TaxiMap";
+import OptionPicker from "@/components/OptionPicker";
 import { useEvents } from "@/lib/use-events";
 import {
   api,
@@ -57,6 +60,13 @@ export default function OperatorPage() {
 
   const [active, setActive] = useState<OrderDto[]>([]);
   const [drivers, setDrivers] = useState<DriverDto[]>([]);
+  const [opOptions, setOpOptions] = useState<string[]>([]);
+  const [shift, setShift] = useState<{
+    active: boolean;
+    startedAt?: string;
+    ordersCreated?: number;
+    ordersCompleted?: number;
+  } | null>(null);
   const [creating, setCreating] = useState(false);
   const [assignFor, setAssignFor] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -83,12 +93,44 @@ export default function OperatorPage() {
     }
   }, []);
 
+  const loadShift = useCallback(async () => {
+    try {
+      const s = await api<{
+        active: boolean;
+        shift?: { startedAt: string };
+        ordersCreated?: number;
+        ordersCompleted?: number;
+      }>("/api/operators/shift");
+      setShift({
+        active: s.active,
+        startedAt: s.shift?.startedAt,
+        ordersCreated: s.ordersCreated,
+        ordersCompleted: s.ordersCompleted,
+      });
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   useEffect(() => {
     if (!user) return;
     refresh();
+    loadShift();
     const t = setInterval(refresh, 4000);
     return () => clearInterval(t);
-  }, [user, refresh]);
+  }, [user, refresh, loadShift]);
+
+  async function toggleShift() {
+    try {
+      await api<{ shift?: { startedAt: string } }>("/api/operators/shift", {
+        method: "POST",
+        body: JSON.stringify({ action: shift?.active ? "end" : "start" }),
+      });
+      await loadShift();
+    } catch {
+      /* ignore */
+    }
+  }
 
   useEvents(() => {
     const u = getSession();
@@ -113,6 +155,7 @@ export default function OperatorPage() {
           tariff,
           passengerCount: passengers,
           comment: comment || null,
+          options: opOptions,
         }),
       });
       setPickup("");
@@ -120,7 +163,9 @@ export default function OperatorPage() {
       setDestination("");
       setComment("");
       setClientName("");
+      setOpOptions([]);
       await refresh();
+      await loadShift();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось создать заказ");
     } finally {
@@ -210,6 +255,30 @@ export default function OperatorPage() {
               </span>
             </div>
 
+            {/* Смена оператора */}
+            <div className="flex items-center justify-between gap-2 rounded-xl border border-white/8 bg-zinc-950/40 px-3.5 py-2.5">
+              <div className="flex min-w-0 items-center gap-2 text-xs">
+                <Clock3 className={`h-4 w-4 shrink-0 ${shift?.active ? "text-emerald-400" : "text-zinc-600"}`} />
+                {shift?.active ? (
+                  <span className="truncate text-zinc-300">
+                    Смена идёт · заказов <b className="text-emerald-300">{shift.ordersCreated ?? 0}</b>
+                    {typeof shift.ordersCompleted === "number" && (
+                      <span className="text-zinc-500"> · готово {shift.ordersCompleted}</span>
+                    )}
+                  </span>
+                ) : (
+                  <span className="text-zinc-500">Смена не начата</span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={toggleShift}
+                className={`shrink-0 !rounded-lg !px-3 !py-1.5 !text-[11px] ${shift?.active ? "btn-danger" : "btn-taxi"}`}
+              >
+                {shift?.active ? "Завершить" : "Начать смену"}
+              </button>
+            </div>
+
             <div className="grid grid-cols-[1.2fr_1fr] gap-3">
               <div className="relative">
                 <Phone className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
@@ -266,6 +335,8 @@ export default function OperatorPage() {
               <textarea className="input-dark min-h-[60px] pl-11" placeholder="Комментарий" value={comment} onChange={(e) => setComment(e.target.value)} />
             </div>
 
+            <OptionPicker value={opOptions} onChange={setOpOptions} />
+
             <button type="submit" disabled={creating} className="btn-taxi w-full">
               {creating ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -291,12 +362,25 @@ export default function OperatorPage() {
             ) : (
               <div className="space-y-2.5">
                 {active.map((o) => (
-                  <div key={o.id} className="rounded-2xl border border-white/8 bg-zinc-950/40 p-4">
+                  <div
+                    key={o.id}
+                    className={`rounded-2xl border p-4 ${
+                      o.escalatedAt
+                        ? "border-red-400/50 bg-red-400/[0.07]"
+                        : "border-white/8 bg-zinc-950/40"
+                    }`}
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2.5">
                         <span className={`chip ${STATUS_COLORS[o.status] ?? "bg-white/6 text-zinc-300"}`}>
                           {o.statusText}
                         </span>
+                        {o.escalatedAt && (
+                          <span className="chip bg-red-400/15 text-red-300">
+                            <Flame className="h-3 w-3" />
+                            Эскалация
+                          </span>
+                        )}
                         <span className="text-xs font-semibold text-zinc-500">
                           {o.orderNumber.slice(-9)} · {fmtDate(o.createdAt)}
                         </span>

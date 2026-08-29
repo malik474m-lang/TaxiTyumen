@@ -13,9 +13,12 @@ import {
 import { serializeOrder } from "@/lib/serialize";
 import { ensureSeeded } from "@/lib/seed";
 import { advanceDriversGps } from "@/lib/simulate";
+import { runAutoCallTick } from "@/lib/autocall";
 import { publishEvent } from "@/lib/bus";
 import { readClaims, forbidden } from "@/lib/session";
 import { getRouteGeometry } from "@/lib/taxi";
+import { orderOptions } from "@/db/schema";
+import { resolveOptions, optionsTotal } from "@/lib/options";
 
 export async function POST(req: Request) {
   try {
@@ -73,6 +76,13 @@ export async function POST(req: Request) {
       estimatedPrice = t?.minimumFare ?? 99;
     }
 
+    // Опции заказа (OrderOption.cs) — надбавка к цене
+    const optionCodes: string[] = Array.isArray(body.options)
+      ? body.options.filter((x: unknown): x is string => typeof x === "string")
+      : [];
+    const chosenOptions = resolveOptions(optionCodes);
+    estimatedPrice += optionsTotal(optionCodes);
+
     const [order] = await db
       .insert(orders)
       .values({
@@ -98,6 +108,17 @@ export async function POST(req: Request) {
       })
       .returning();
 
+    if (chosenOptions.length > 0) {
+      await db.insert(orderOptions).values(
+        chosenOptions.map((o) => ({
+          orderId: order.id,
+          code: o.code,
+          name: o.name,
+          price: o.price,
+        }))
+      );
+    }
+
     publishEvent("orders");
     return NextResponse.json(await serializeOrder(order), { status: 201 });
   } catch (e) {
@@ -112,6 +133,7 @@ export async function GET(req: Request) {
   try {
     await ensureSeeded();
     await advanceDriversGps();
+    await runAutoCallTick();
     const url = new URL(req.url);
     const view = url.searchParams.get("view") ?? "active";
 
