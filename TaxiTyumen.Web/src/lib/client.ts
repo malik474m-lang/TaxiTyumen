@@ -127,6 +127,74 @@ export interface ChatMsg {
   createdAt: string;
 }
 
+export interface FleetMsgDto {
+  id: string;
+  senderId: string;
+  senderName: string;
+  carInfo: string;
+  text: string;
+  createdAt: string;
+}
+
+export interface ClientDto {
+  id: string;
+  phone: string;
+  firstName: string;
+  lastName: string;
+  name: string;
+  email: string | null;
+  rating: number;
+  isPhoneVerified: boolean;
+  isBlocked: boolean;
+  blockReason: string | null;
+  trips: number;
+  completedTrips: number;
+  cancelledTrips: number;
+  totalSpent: number;
+  lastTripAt: string | null;
+  createdAt: string;
+  lastLoginAt: string | null;
+}
+
+export interface ServiceBrandDto {
+  serviceName: string;
+  city: string;
+  region: string;
+  regionCode: string;
+  supportPhone: string | null;
+  centerLat: number;
+  centerLng: number;
+  utcOffset: number;
+  smsSenderName: string;
+}
+
+export interface AccessSectionDto {
+  key: string;
+  label: string;
+  superadminOnly: boolean;
+  locked: boolean;
+  visibleForAdmin: boolean;
+}
+
+export interface AdminAccountDto {
+  id: string;
+  username: string | null;
+  phone: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+  isBlocked: boolean;
+  lastLoginAt: string | null;
+}
+
+export interface AccessInfoDto {
+  role: string;
+  integrity: { ok: boolean; message?: string };
+  sections: AccessSectionDto[];
+  visibleForMe: string[];
+  accounts?: AdminAccountDto[];
+}
+
 const KEY = "tt_user";
 
 export function getSession(): SessionUser | null {

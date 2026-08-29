@@ -110,6 +110,17 @@ if (preg_match('#^chat/([0-9a-f-]+)$#i',$route,$m) && $method==='GET') {
     $dispatch($api.'/chat.php',[],['orderId'=>$m[1]]);
 }
 
+// ── FleetChat (общий чат водителей автопарка) ────────────────────────────────
+if ($routeLower === 'fleetchat' && $method === 'GET') {
+    $dispatch($api.'/fleet-chat.php', [], ['after' => (string) ($_GET['after'] ?? '0')]);
+}
+if ($routeLower === 'fleetchat/send') {
+    $dispatch($api.'/fleet-chat.php', ['text' => $body['text'] ?? $body['Text'] ?? '']);
+}
+if (preg_match('#^fleetchat/([0-9a-f-]+)/delete$#i', $route, $m)) {
+    $dispatch($api.'/fleet-chat.php', [], ['id' => $m[1]]);
+}
+
 // ── OperatorsController ─────────────────────────────────────────────────────
 if ($routeLower==='operators/shift/start') $dispatch($api.'/operators/shift.php',['action'=>'start']);
 if ($routeLower==='operators/shift/end') $dispatch($api.'/operators/shift.php',['action'=>'end']);

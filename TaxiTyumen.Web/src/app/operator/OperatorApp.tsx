@@ -23,6 +23,7 @@ import {
 import AppHeader from "@/components/AppHeader";
 import TaxiMap, { type MapMarker } from "@/components/TaxiMap";
 import OptionPicker from "@/components/OptionPicker";
+import FleetMonitor from "@/components/FleetMonitor";
 import { useEvents } from "@/lib/use-events";
 import type { BrandingData } from "@/lib/branding";
 import {
@@ -350,6 +351,9 @@ export default function OperatorApp({ branding }: { branding: BrandingData }) {
               Создать заказ
             </button>
           </form>
+
+          {/* Монитор чата водителей */}
+          <FleetMonitor />
 
           {/* Активные заказы */}
           <div className="card animate-rise p-6" style={{ animationDelay: "0.06s" }}>

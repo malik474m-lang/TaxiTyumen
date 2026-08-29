@@ -20,6 +20,7 @@ export const ADMIN_SECTIONS: SectionMeta[] = [
   { key: "overview", label: "Обзор", superadminOnly: false, locked: true },
   { key: "orders", label: "Заказы", superadminOnly: false, locked: false },
   { key: "drivers", label: "Водители", superadminOnly: false, locked: false },
+  { key: "clients", label: "Клиенты", superadminOnly: false, locked: false },
   { key: "tariffs", label: "Тарифы", superadminOnly: false, locked: false },
   { key: "branding", label: "Приложения", superadminOnly: false, locked: false },
   { key: "settings", label: "Настройки", superadminOnly: false, locked: false },

@@ -19,6 +19,7 @@ API Controllers/Hubs/Background Services, TaxiAdmin, TaxiClient, TaxiDriver, Tax
 | DriverTimeoutService | ✅ адаптировано | DriverTimeout: request-driven tick, 5 минут |
 | SignalR Hub | ✅ адаптировано | MySQL events/notifications polling; публичные события MAUI сохранены |
 | OperatorsController shift start/end | ✅ | profile/hours/orders/earned + накопительные показатели |
+| FleetChat (чат водителей автопарка) | ✅ | api/fleet-chat.php: история/?after=, анти-спам 1.5 c, модерация DELETE; монитор admin/fleet-chat.php |
 
 ## Доменная модель
 

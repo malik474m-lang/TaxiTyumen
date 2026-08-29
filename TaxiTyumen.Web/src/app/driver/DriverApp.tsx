@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import OrderChat from "@/components/OrderChat";
+import FleetChat from "@/components/FleetChat";
 import TaxiMap, { type MapMarker } from "@/components/TaxiMap";
 import { useEvents } from "@/lib/use-events";
 import type { BrandingData } from "@/lib/branding";
@@ -499,6 +500,9 @@ export default function DriverApp({ branding }: { branding: BrandingData }) {
           </div>
         </div>
       </main>
+
+      {/* Общий чат водителей автопарка */}
+      <FleetChat user={user} />
     </div>
   );
 }

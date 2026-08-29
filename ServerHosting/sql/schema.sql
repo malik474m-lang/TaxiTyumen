@@ -218,6 +218,18 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   INDEX (order_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS fleet_messages (
+  id          CHAR(36) PRIMARY KEY,
+  sender_id   CHAR(36) NOT NULL,
+  sender_name VARCHAR(120) NOT NULL DEFAULT '',
+  car_info    VARCHAR(160) NOT NULL DEFAULT '',
+  text        VARCHAR(500) NOT NULL,
+  created_at  DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  FOREIGN KEY (sender_id) REFERENCES users(id),
+  INDEX (sender_id),
+  INDEX (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS notifications (
   id           CHAR(36) PRIMARY KEY,
   recipient_id CHAR(36) NULL,

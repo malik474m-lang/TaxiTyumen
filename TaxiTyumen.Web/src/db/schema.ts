@@ -370,6 +370,23 @@ export const chatMessages = pgTable("chat_messages", {
     .defaultNow(),
 });
 
+// ── Fleet chat (общий чат водителей автопарка) ───────────────────────────────
+// Аналог внутренней связи водителей из диспетчерской: один общий канал,
+// снапшот имени и машины автора — история читается и после смены авто.
+
+export const fleetMessages = pgTable("fleet_messages", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  senderId: uuid("sender_id")
+    .notNull()
+    .references(() => users.id),
+  senderName: text("sender_name").notNull().default(""),
+  carInfo: text("car_info").notNull().default(""),
+  text: text("text").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export type ServiceBrand = typeof serviceBrand.$inferSelect;
@@ -379,3 +396,4 @@ export type Order = typeof orders.$inferSelect;
 export type Tariff = typeof tariffs.$inferSelect;
 export type BalanceTransaction = typeof balanceTransactions.$inferSelect;
 export type ChatMessage = typeof chatMessages.$inferSelect;
+export type FleetMessage = typeof fleetMessages.$inferSelect;

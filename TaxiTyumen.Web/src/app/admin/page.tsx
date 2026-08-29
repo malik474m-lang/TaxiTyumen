@@ -22,10 +22,15 @@ import {
   Settings2,
   PhoneCall,
   Palette,
+  ShieldCheck,
+  Building,
 } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import MiniBars from "@/components/MiniBars";
 import BrandingEditor from "@/components/BrandingEditor";
+import ClientsPanel from "@/components/ClientsPanel";
+import ServiceBrandEditor from "@/components/ServiceBrandEditor";
+import AccessPanel from "@/components/AccessPanel";
 import {
   api,
   getSession,
@@ -66,9 +71,12 @@ const TABS = [
   { key: "overview", label: "Обзор", icon: Gauge },
   { key: "orders", label: "Заказы", icon: ListOrdered },
   { key: "drivers", label: "Водители", icon: CarFront },
+  { key: "clients", label: "Клиенты", icon: Users },
   { key: "tariffs", label: "Тарифы", icon: CirclePercent },
   { key: "branding", label: "Брендинг", icon: Palette },
   { key: "settings", label: "Настройки", icon: Settings2 },
+  { key: "service", label: "Бренд сервиса", icon: Building },
+  { key: "access", label: "Доступ и роли", icon: ShieldCheck },
 ] as const;
 
 export default function AdminPage() {
@@ -513,8 +521,17 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* ── КЛИЕНТЫ ───────────────────────────────────────────────── */}
+        {tab === "clients" && <ClientsPanel />}
+
         {/* ── БРЕНДИНГ ──────────────────────────────────────────────── */}
         {tab === "branding" && <BrandingEditor />}
+
+        {/* ── БРЕНД СЕРВИСА (superadmin) ────────────────────────────── */}
+        {tab === "service" && <ServiceBrandEditor />}
+
+        {/* ── ДОСТУП И РОЛИ (superadmin) ────────────────────────────── */}
+        {tab === "access" && <AccessPanel />}
 
         {/* ── НАСТРОЙКИ ─────────────────────────────────────────────── */}
         {tab === "settings" && autocall && (
