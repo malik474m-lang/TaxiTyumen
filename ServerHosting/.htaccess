@@ -1,0 +1,11 @@
+# TaxiTyumen ServerHosting — Apache настройки
+# Запрет доступа к служебным файлам
+<FilesMatch "\.(sql|md|log)$">
+    Require all denied
+</FilesMatch>
+
+# Запрет листинга каталогов
+Options -Indexes
+
+# Кодировка по умолчанию
+AddDefaultCharset utf-8

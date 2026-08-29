@@ -15,6 +15,12 @@
 | `TaxiDriver` | .NET MAUI | Приложение водителя |
 | `TaxiOperator` | WPF | Диспетчерская |
 | **`TaxiTyumen.Web`** | **Next.js 16 + PostgreSQL (Drizzle)** | **Веб-порт всей системы (ветка `web-port`)** |
+| **`ServerHosting`** | **PHP 8 + MySQL** | **Серверная часть для shared-хостинга (ветка `web-port`)** |
+
+
+## ServerHosting (PHP + MySQL)
+
+Самостоятельный PHP-бэкенд для shared-хостинга: тот же API, токены и права ролей, база MySQL/PDO, одноразовый установщик. Инструкция деплоя: [`ServerHosting/README.md`](ServerHosting/README.md).
 
 ## Веб-порт (TaxiTyumen.Web)
 
