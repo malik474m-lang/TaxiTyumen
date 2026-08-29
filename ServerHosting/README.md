@@ -23,6 +23,7 @@
 | `POST /api/auth/login.php` | все | Вход → `{user, token}` (HMAC-токен 24 ч) |
 | `POST /api/auth/register.php` | все | Регистрация клиента/водителя (+ авто-профиль) |
 | `POST /api/auth/sms.php` | все | `action=send\|verify` — вход по SMS-коду (sms.ru при заданном `SMS_API_ID`, иначе демо-режим с `devCode`) |
+| `POST /api/auth/password.php` | все (Bearer) | Смена своего пароля: верным старым паролем или свежим SMS-кодом |
 | `GET /api/orders/?view=active\|available\|history\|all\|clientActive\|driverCurrent\|today` | все | Списки заказов |
 | `POST /api/orders/` | client | Создание заказа (цена по дорогам OSRM + геометрия + опции) |
 | `POST /api/orders/operator.php` | operator/admin | Операторский заказ со звонка |
@@ -71,6 +72,15 @@
 | Админ | +79001234567 | `Admin123!` |
 
 **Поменяйте пароли и удалите демо-аккаунты перед продом.**
+
+### Чеклист после установки
+
+1. Удалите `api/install.php` с хостинга
+2. Поменяйте `AUTH_SECRET` в `config.php` на длинную случайную строку
+3. Войдите админом (`/api/auth/login.php`) и смените пароль через `/api/auth/password.php`
+4. Те же действия — для оператора и демо-водителей/демо-клиента (или удалите их из `users`)
+5. Укажите конкретный домен в `CORS_ORIGIN` вместо `*`
+6. Для SMS регистрации в кабинете sms.ru получите API-ключ и впишите в `SMS_API_ID`
 
 ## Отличия от веб-версии (Next.js)
 
