@@ -1,7 +1,8 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0-windows10.0.19041.0</TargetFrameworks>
+    <!-- Android + Windows Desktop -->
+    <TargetFrameworks>net8.0-android;net8.0-windows10.0.19041.0</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <RootNamespace>TaxiDriver</RootNamespace>
     <UseMaui>true</UseMaui>
@@ -14,8 +15,25 @@
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
     <ApplicationVersion>1</ApplicationVersion>
 
-    <WindowsPackageType>None</WindowsPackageType>
+    <!-- Android: минимум Android 8.0 (API 26) -->
+    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
+
+    <!-- Windows Desktop (unpackaged) -->
+    <WindowsPackageType Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">None</WindowsPackageType>
     <SkipValidateMauiImplicitPackageReferences>true</SkipValidateMauiImplicitPackageReferences>
+
+    <!-- Отключаем авто-сплэш с фиолетовым фоном — ниже свой, с тёмным фоном -->
+    <MauiSplashInclude></MauiSplashInclude>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <MauiSplash Include="Resources\Splash\splash.svg" Color="#0A0A0C" BaseSize="200,200" />
+  </ItemGroup>
+
+  <!-- Android Release: сборка быстрее (без AOT), сборки внутрь APK -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' and $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
+    <RunAOTCompilation>false</RunAOTCompilation>
   </PropertyGroup>
 
   <ItemGroup>

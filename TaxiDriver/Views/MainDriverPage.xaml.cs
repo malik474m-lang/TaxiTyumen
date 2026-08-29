@@ -1,4 +1,4 @@
-﻿using TaxiDriver.Models;
+using TaxiDriver.Models;
 using TaxiDriver.Services;
 
 namespace TaxiDriver.Views;
@@ -316,7 +316,9 @@ public partial class MainDriverPage : ContentPage
             StatusLabel.Text = "Ожидаю заказы";
             LowBalanceWarning.IsVisible = false;
 
-            _location.StartTracking();
+            if (!await _location.StartTrackingAsync())
+                StatusLabel.Text = "Ожидаю заказы · без доступа к геолокации заказы недоступны";
+
             await _api.SetOnlineAsync(_auth.DriverId!.Value, true);
 
             // Сразу грузим заявки без нажатия кнопки
