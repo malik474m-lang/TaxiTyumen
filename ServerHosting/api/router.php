@@ -163,6 +163,12 @@ if ($routeLower==='service-settings'||$routeLower==='servicebrand') {
     exit;
 }
 
+// Телефония
+if ($routeLower==='telephony/call') $dispatch($api.'/telephony/call.php');
+if ($routeLower==='telephony/settings') { require $api.'/telephony/settings.php'; exit; }
+if ($routeLower==='telephony/logs') $dispatch($api.'/telephony/logs.php');
+if ($routeLower==='telephony/webhook') { require $api.'/telephony/webhook.php'; exit; }
+
 // Новые серверные сервисы (не были в старом .NET-контракте)
 if ($routeLower==='notifications') $dispatch($api.'/notifications.php');
 if ($routeLower==='services') $dispatch($api.'/services.php');

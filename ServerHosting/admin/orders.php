@@ -4,23 +4,84 @@ declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
 
 $admin = admin_require($db, 'orders');
+$telephony = Telephony::settings($db);
+$telephonyReady = Telephony::isConfigured($telephony);
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['cmd'] ?? '') === 'cancel') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $cmd = (string) ($_POST['cmd'] ?? '');
     $id = (string) ($_POST['id'] ?? '');
-    $order = $db->prepare("SELECT driver_id FROM orders WHERE id = ?");
-    $order->execute([$id]);
-    $row = $order->fetch();
-    if ($row) {
-        $db->prepare("UPDATE orders SET status='cancelled', cancelled_at = ?, cancellation_reason = ? WHERE id = ?")
-            ->execute([Db::utcNow(), 'Отменено администратором', $id]);
+    $orderStmt = $db->prepare('SELECT * FROM orders WHERE id = ? LIMIT 1');
+    $orderStmt->execute([$id]);
+    $row = $orderStmt->fetch();
+
+    if ($row && $cmd === 'cancel') {
+        $db->prepare("UPDATE orders SET status='cancelled',cancelled_at=?,cancellation_reason=?,cancelled_by_user_id=? WHERE id=?")
+            ->execute([Db::utcNow(), 'Отменено администратором', $admin['id'], $id]);
+        $db->prepare("UPDATE transactions SET status='refunded',completed_at=? WHERE order_id=?")
+            ->execute([Db::utcNow(), $id]);
         if (!empty($row['driver_id'])) {
-            $db->prepare("UPDATE drivers SET status='available', current_order_id=NULL WHERE id = ?")
+            $db->prepare("UPDATE drivers SET status='available',current_order_id=NULL WHERE id=?")
                 ->execute([$row['driver_id']]);
         }
+        $orderStmt->execute([$id]);
+        $fresh = $orderStmt->fetch();
+        NotificationService::notifyClientOrderCancelled($db, $fresh, 'Отменено администратором');
+        NotificationService::notifyOperatorsOrderUpdate($db, $fresh);
+        Bus::publish('orders');
+        header('Location: orders.php?ok=' . urlencode('Заказ отменён'));
+        exit;
     }
-    Bus::publish('orders');
-    header('Location: orders.php?ok=' . urlencode('Заказ отменён'));
-    exit;
+
+    if ($row && $cmd === 'assign') {
+        $driverId = (string) ($_POST['driver_id'] ?? '');
+        $d = $db->prepare('SELECT id FROM drivers WHERE id=? AND is_verified=1 LIMIT 1');
+        $d->execute([$driverId]);
+        if (!$d->fetch()) {
+            header('Location: orders.php?error=' . urlencode('Выберите верифицированного водителя'));
+            exit;
+        }
+        if (!empty($row['driver_id']) && $row['driver_id'] !== $driverId) {
+            $db->prepare("UPDATE drivers SET status='available',current_order_id=NULL WHERE id=?")
+                ->execute([$row['driver_id']]);
+        }
+        $db->prepare("UPDATE orders SET driver_id=?,status='driver_assigned',accepted_at=? WHERE id=?")
+            ->execute([$driverId, Db::utcNow(), $id]);
+        $db->prepare("UPDATE drivers SET status='on_route',current_order_id=? WHERE id=?")
+            ->execute([$id, $driverId]);
+        $orderStmt->execute([$id]);
+        $fresh = $orderStmt->fetch();
+        NotificationService::notifyClientOrderAccepted($db, $fresh);
+        NotificationService::notifyDriverForceAssigned($db, $driverId, $fresh);
+        NotificationService::notifyOperatorsOrderUpdate($db, $fresh);
+        Bus::publish('orders');
+        header('Location: orders.php?ok=' . urlencode('Водитель назначен'));
+        exit;
+    }
+
+    if ($row && $cmd === 'call') {
+        if (!$telephonyReady) {
+            header('Location: orders.php?error=' . urlencode('Телефония не настроена'));
+            exit;
+        }
+        $pStmt = $db->prepare(
+            'SELECT COALESCE(u.phone, o.client_phone) AS client_phone, du.phone AS driver_phone
+             FROM orders o LEFT JOIN users u ON u.id=o.client_id
+             LEFT JOIN drivers d ON d.id=o.driver_id LEFT JOIN users du ON du.id=d.user_id
+             WHERE o.id=? LIMIT 1'
+        );
+        $pStmt->execute([$id]);
+        $phones = $pStmt->fetch();
+        if (!$phones || empty($phones['client_phone']) || empty($phones['driver_phone'])) {
+            header('Location: orders.php?error=' . urlencode('Нужны телефоны клиента и назначенного водителя'));
+            exit;
+        }
+        $callResult = Telephony::connect(
+            $db, (string) $phones['driver_phone'], (string) $phones['client_phone'], 'order',
+            ['orderId' => $id, 'driverId' => $row['driver_id'], 'userId' => $row['client_id']]
+        );
+        header('Location: orders.php?ok=' . urlencode('Звонок инициирован: ' . ($callResult['status'] ?? '')));
+        exit;
+    }
 }
 
 $statusFilter = (string) ($_GET['status'] ?? '');
@@ -110,6 +171,18 @@ layout_header('Заказы', 'orders');
           <select name="driver_id" required style="width:170px"><option value="">Назначить...</option><?php foreach($assignDrivers as $ad):?><option value="<?=h($ad['id'])?>" <?=$o['driver_id']===$ad['id']?'selected':''?>><?=h($ad['first_name'].' '.$ad['last_name'].' · '.$ad['license_plate'].' · '.(Taxi::DRIVER_STATUS_TEXT[$ad['status']]??$ad['status']))?></option><?php endforeach;?></select>
           <button class="btn sm">Назначить</button>
         </form>
+        <?php if ($telephonyReady && $o['driver_id']): ?>
+        <form method="post" class="inline">
+          <input type="hidden" name="cmd" value="call"><input type="hidden" name="id" value="<?= h($o['id']) ?>">
+          <button class="btn ghost sm" title="Соединить водителя с клиентом">📞 Позвонить</button>
+        </form>
+        <?php endif; ?>
+        <?php if ($telephonyReady && $o['driver_id']): ?>
+        <form method="post" class="inline">
+          <input type="hidden" name="cmd" value="call"><input type="hidden" name="id" value="<?= h($o['id']) ?>">
+          <button class="btn ghost sm" title="Соединить водителя с клиентом">📞 Звонок</button>
+        </form>
+        <?php endif; ?>
         <form method="post" class="inline" onsubmit="return confirm('Отменить заказ?')">
           <input type="hidden" name="cmd" value="cancel">
           <input type="hidden" name="id" value="<?= h($o['id']) ?>">

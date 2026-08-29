@@ -146,6 +146,30 @@ switch ($action) {
         $fresh = $load();
         NotificationService::notifyClientDriverArrived($db, $fresh);
         ZvonokService::callClientOnDriverArrived($db, $fresh);
+        // Телефония: соединить клиента с водителем при прибытии (если включено)
+        try {
+            $tel = Telephony::settings($db);
+            if ((int) $tel['call_on_arrival'] === 1 && Telephony::isConfigured($tel)) {
+                $cStmt = $db->prepare(
+                    'SELECT COALESCE(u.phone, o.client_phone) AS client_phone, du.phone AS driver_phone
+                     FROM orders o
+                     LEFT JOIN users u ON u.id = o.client_id
+                     LEFT JOIN drivers d ON d.id = o.driver_id
+                     LEFT JOIN users du ON du.id = d.user_id
+                     WHERE o.id = ? LIMIT 1'
+                );
+                $cStmt->execute([$id]);
+                $phones = $cStmt->fetch();
+                if ($phones && $phones['client_phone'] && $phones['driver_phone']) {
+                    Telephony::connect(
+                        $db, (string) $phones['driver_phone'], (string) $phones['client_phone'],
+                        'driver_arrived',
+                        ['orderId' => $id, 'driverId' => $order['driver_id'], 'userId' => $order['client_id']]
+                    );
+                }
+            }
+        } catch (Throwable) {
+        }
         NotificationService::notifyOperatorsOrderUpdate($db, $fresh);
         $result();
     }

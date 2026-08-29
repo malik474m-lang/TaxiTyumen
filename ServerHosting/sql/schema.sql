@@ -272,6 +272,45 @@ CREATE TABLE IF NOT EXISTS auto_call_settings (
   last_tick_at            DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS telephony_settings (
+  id                  CHAR(36) PRIMARY KEY,
+  enabled             TINYINT(1) NOT NULL DEFAULT 0,
+  provider            VARCHAR(30) NOT NULL DEFAULT 'plusofon',
+  base_url            VARCHAR(255) NOT NULL DEFAULT 'https://api.plusofon.ru/rest/v1',
+  client_id           VARCHAR(120) NOT NULL DEFAULT '',
+  api_token           VARCHAR(255) NOT NULL DEFAULT '',
+  caller_number       VARCHAR(30) NOT NULL DEFAULT '',
+  endpoint_call       VARCHAR(120) NOT NULL DEFAULT '/call/callback',
+  endpoint_flash_call VARCHAR(120) NOT NULL DEFAULT '/flash-call/create',
+  endpoint_balance    VARCHAR(120) NOT NULL DEFAULT '/customer/balance',
+  webhook_secret      VARCHAR(120) NOT NULL DEFAULT '',
+  call_on_arrival     TINYINT(1) NOT NULL DEFAULT 0,
+  record_calls        TINYINT(1) NOT NULL DEFAULT 1,
+  balance             DOUBLE NULL,
+  balance_checked_at  DATETIME NULL,
+  updated_at          DATETIME NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS call_logs (
+  id          CHAR(36) PRIMARY KEY,
+  provider    VARCHAR(30) NOT NULL DEFAULT 'plusofon',
+  scenario    VARCHAR(40) NOT NULL DEFAULT 'manual',
+  direction   ENUM('outbound','inbound') NOT NULL DEFAULT 'outbound',
+  external_id VARCHAR(120) NULL,
+  from_number VARCHAR(30) NULL,
+  to_number   VARCHAR(30) NULL,
+  order_id    CHAR(36) NULL,
+  driver_id   CHAR(36) NULL,
+  user_id     CHAR(36) NULL,
+  status      VARCHAR(40) NOT NULL DEFAULT 'queued',
+  duration    INT NULL,
+  record_url  VARCHAR(500) NULL,
+  payload     MEDIUMTEXT NULL,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  DATETIME NULL,
+  INDEX (external_id), INDEX (order_id), INDEX (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS service_call_logs (
   id             BIGINT AUTO_INCREMENT PRIMARY KEY,
   service        VARCHAR(40) NOT NULL,

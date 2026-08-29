@@ -23,6 +23,7 @@ $result = [
     'sms' => ['configured' => SMS_API_ID !== '', 'ok' => null],
     'geocoding' => ['configured' => DADATA_API_KEY !== '', 'ok' => null],
     'zvonok' => ['configured' => false, 'ok' => null],
+    'telephony' => ['configured' => false, 'ok' => null],
     'osrm' => ['configured' => true, 'ok' => null],
 ];
 
@@ -53,6 +54,23 @@ try {
     $result['realtime'] = ['ok' => $last > 0, 'lastEventId' => $last, 'transport' => 'MySQL polling'];
 } catch (Throwable $e) {
     $result['realtime'] = ['ok' => false, 'message' => $e->getMessage()];
+}
+
+$tel = Telephony::settings($db);
+$result['telephony'] = [
+    'configured' => Telephony::isConfigured($tel),
+    'ok' => null,
+    'provider' => $tel['provider'],
+    'cachedBalance' => $tel['balance'] !== null ? (float) $tel['balance'] : null,
+    'balanceCheckedAt' => $tel['balance_checked_at'],
+];
+if ($check === 'all' || $check === 'telephony') {
+    if (Telephony::isConfigured($tel)) {
+        $result['telephony'] = array_merge($result['telephony'], Telephony::checkBalance($db));
+    } else {
+        $result['telephony']['message'] = 'Телефония выключена или не настроена';
+        $result['telephony']['ok'] = false;
+    }
 }
 
 $settings = AutoCall::getSettings($db);

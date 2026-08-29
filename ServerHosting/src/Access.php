@@ -27,6 +27,7 @@ final class Access
         'stats'     => ['label' => 'Статистика',     'file' => 'stats.php',     'superadminOnly' => false, 'locked' => false],
         'export'    => ['label' => 'Экспорт CSV',    'file' => 'export.php',    'superadminOnly' => false, 'locked' => false],
         'autocall'  => ['label' => 'Автодозвон',     'file' => 'autocall.php',  'superadminOnly' => false, 'locked' => false],
+        'telephony' => ['label' => 'Телефония',      'file' => 'telephony.php', 'superadminOnly' => false, 'locked' => false],
         'branding'  => ['label' => 'Приложения',     'file' => 'branding.php',  'superadminOnly' => false, 'locked' => false],
         'services'  => ['label' => 'API и сервисы',  'file' => 'services.php',  'superadminOnly' => false, 'locked' => false],
         'service'   => ['label' => 'Бренд сервиса',  'file' => 'service.php',   'superadminOnly' => true,  'locked' => false],
