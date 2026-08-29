@@ -45,6 +45,20 @@ foreach ($activeTariffs as $t) {
 }
 usort($estimates, fn($a, $b) => $a['price'] <=> $b['price']);
 
+// Совместимость с исходным PricingController ASP.NET
+if (($GLOBALS['pricing_compat_mode'] ?? '') === 'all') {
+    Response::json($estimates);
+}
+if (($GLOBALS['pricing_compat_mode'] ?? '') === 'single') {
+    $requested = $GLOBALS['pricing_compat_tariff'] ?? 0;
+    $enumMap = [0 => 'economy', 1 => 'comfort', 2 => 'business', 3 => 'minivan'];
+    $type = $enumMap[(int) $requested] ?? strtolower((string) $requested);
+    foreach ($estimates as $estimate) {
+        if ($estimate['tariffType'] === $type) Response::json($estimate);
+    }
+    Response::error('Тариф не найден', 404);
+}
+
 Response::json([
     'from' => ['lat' => $fromLat, 'lng' => $fromLng],
     'to' => ['lat' => $toLat, 'lng' => $toLng],

@@ -1,5 +1,4 @@
-﻿using Microsoft.AspNetCore.SignalR.Client;
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Threading;
 using TaxiOperator.Models;
@@ -30,56 +29,17 @@ public partial class MainWindow : Window
 
         OrdersGrid.ItemsSource = _orders;
 
-        // SignalR: уведомление об отказе водителя
-        try
-        {
-            var signalRConnection = new Microsoft.AspNetCore.SignalR.Client.HubConnectionBuilder()
-                .WithUrl("http://localhost:5172/hubs/taxi", options =>
-                {
-                    options.AccessTokenProvider = () => Task.FromResult(_api.Token);
-                })
-                .WithAutomaticReconnect()
-                .Build();
-
-            signalRConnection.On<object>("DriverRejectedOrder", (data) =>
-            {
-                Dispatcher.Invoke(() =>
-                {
-                    try
-                    {
-                        var json = System.Text.Json.JsonDocument.Parse(data.ToString()!);
-                        var orderNum = json.RootElement.GetProperty("orderNumber").GetString();
-                        var driverName = json.RootElement.GetProperty("driverName").GetString();
-                        var reason = json.RootElement.GetProperty("reason").GetString();
-
-                        System.Media.SystemSounds.Exclamation.Play();
-                        MessageBox.Show(
-                            $"Водитель {driverName} отказался от заказа {orderNum}\nПричина: {reason}",
-                            " Отказ водителя",
-                            MessageBoxButton.OK,
-                            MessageBoxImage.Warning);
-
-                        _ = RefreshAsync();
-                    }
-                    catch { }
-                });
-            });
-
-            signalRConnection.On<object>("OrderUpdated", (data) =>
-            {
-                Dispatcher.Invoke(() => _ = RefreshAsync());
-            });
-
-            _ = signalRConnection.StartAsync();
-        }
-        catch { }
-
-        // Обновление каждые 15 секунд
+        // PHP-хостинг: realtime через notifications polling
+        // Обновление заказов и уведомлений каждые 3 секунды
         _refreshTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromSeconds(15)
+            Interval = TimeSpan.FromSeconds(3)
         };
-        _refreshTimer.Tick += async (s, e) => await RefreshAsync();
+        _refreshTimer.Tick += async (s, e) =>
+        {
+            await RefreshAsync();
+            await PollNotificationsAsync();
+        };
         _refreshTimer.Start();
 
         if (_api.CurrentUser != null)
@@ -89,6 +49,28 @@ public partial class MainWindow : Window
     private async void OnWindowLoaded(object sender, RoutedEventArgs e)
     {
         await RefreshAsync();
+    }
+
+    private async Task PollNotificationsAsync()
+    {
+        try
+        {
+            var notifications = await _api.GetNotificationsAsync();
+            foreach (var n in notifications)
+            {
+                if (n.Type == "DriverRejectedOrder")
+                {
+                    System.Media.SystemSounds.Exclamation.Play();
+                    MessageBox.Show(n.Message, n.Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+                else if (n.Type == "AdminMessage")
+                {
+                    MessageBox.Show(n.Message, n.Title, MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                await _api.MarkNotificationReadAsync(n.Id);
+            }
+        }
+        catch { }
     }
 
     // ===== Обновление данных =====

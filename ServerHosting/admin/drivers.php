@@ -250,6 +250,7 @@ layout_header('Водители', 'drivers');
     </div>
 
     <div class="flex" style="margin-top:14px">
+      <a class="btn ghost sm" href="messages.php?recipient=<?= h($d['user_id']) ?>">Написать</a>
       <form method="post" class="inline">
         <input type="hidden" name="cmd" value="topup"><input type="hidden" name="id" value="<?= h($d['id']) ?>">
         <input type="number" name="amount" value="500" min="1" style="width:90px"><button class="btn sm">Пополнить</button>

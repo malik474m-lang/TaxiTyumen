@@ -35,9 +35,10 @@ if ($user['role'] === 'driver') {
     $driverId = $d->fetchColumn() ?: null;
 }
 
+$token = Auth::signToken($user['id'], $user['role'], $driverId);
+if (!empty($GLOBALS['auth_compat_response'])) {
+    Response::json(Serialize::auth($user, $driverId, $token));
+}
 Response::json([
-    'user' => array_merge(
-        Serialize::user($user, $driverId),
-        ['token' => Auth::signToken($user['id'], $user['role'], $driverId)]
-    ),
+    'user' => array_merge(Serialize::user($user, $driverId), ['token' => $token]),
 ]);

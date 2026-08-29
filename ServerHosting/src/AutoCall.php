@@ -92,6 +92,16 @@ final class AutoCall
         $db->prepare(
             "UPDATE drivers SET status = 'on_route', current_order_id = ? WHERE id = ?"
         )->execute([$order['id'], $best['driver']['id']]);
+
+        // Автоназначение должно породить те же уведомления, что ручное назначение
+        $freshStmt = $db->prepare('SELECT * FROM orders WHERE id=? LIMIT 1');
+        $freshStmt->execute([$order['id']]);
+        $fresh = $freshStmt->fetch();
+        if ($fresh) {
+            NotificationService::notifyClientOrderAccepted($db, $fresh);
+            NotificationService::notifyDriverForceAssigned($db, $best['driver']['id'], $fresh);
+            NotificationService::notifyOperatorsOrderUpdate($db, $fresh);
+        }
         return true;
     }
 }

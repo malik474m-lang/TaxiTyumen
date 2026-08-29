@@ -4,6 +4,14 @@ declare(strict_types=1);
 
 final class Response
 {
+    private static ?array $bodyOverride = null;
+
+    // Используется REST compatibility-router для адаптации ASP.NET URL к PHP handlers
+    public static function setBodyOverride(array $body): void
+    {
+        self::$bodyOverride = $body;
+    }
+
     public static function json(mixed $data, int $status = 200): never
     {
         http_response_code($status);
@@ -31,6 +39,9 @@ final class Response
 
     public static function requirePostJson(): array
     {
+        if (self::$bodyOverride !== null) {
+            return self::$bodyOverride;
+        }
         $raw = file_get_contents('php://input') ?: '';
         $body = json_decode($raw, true);
         if (is_array($body) && $body !== []) {

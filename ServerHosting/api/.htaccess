@@ -1,0 +1,12 @@
+# REST compatibility: ASP.NET-подобные /api/Orders/... маршруты
+RewriteEngine On
+
+# Существующие PHP-файлы и каталоги — без изменений
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Всё остальное — compatibility router
+RewriteRule ^(.+?)/?$ router.php?route=$1 [QSA,L]
+
+Options -Indexes

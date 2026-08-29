@@ -78,6 +78,7 @@ layout_header('Клиенты', 'clients');
       <td class="mut"><?= h(fmt_date($c['created_at'])) ?></td>
       <td>
         <div class="flex">
+          <a class="btn ghost sm" href="messages.php?recipient=<?= h($c['id']) ?>">Написать</a>
           <form method="post" class="inline">
             <input type="hidden" name="cmd" value="block"><input type="hidden" name="id" value="<?= h($c['id']) ?>">
             <?php if (!$c['is_blocked']): ?><input name="reason" placeholder="Причина" value="Нарушение правил" style="width:130px"><?php endif; ?>

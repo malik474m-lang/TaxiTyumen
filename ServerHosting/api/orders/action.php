@@ -28,21 +28,24 @@ if (!$order) {
 }
 
 $claims = Guard::claims();
-$driverActions = ['accept', 'reject', 'arrived', 'start', 'complete'];
+$driverActions = ['accept', 'reject', 'en_route', 'arrived', 'start', 'complete'];
 
 if (in_array($action, $driverActions, true)) {
     $requestedDriverId = (string) ($body['driverId'] ?? $order['driver_id'] ?? '');
     if (($claims['role'] ?? '') !== 'driver' || ($claims['driverId'] ?? '') !== $requestedDriverId) {
         Response::error('Действие доступно только водителю от своего имени', 403);
     }
-    if (in_array($action, ['arrived', 'start', 'complete'], true) && $order['driver_id'] !== $claims['driverId']) {
+    if (in_array($action, ['en_route', 'arrived', 'start', 'complete'], true) && $order['driver_id'] !== $claims['driverId']) {
         Response::error('Этот заказ принадлежит другому водителю', 403);
     }
 } elseif ($action === 'assign') {
     Guard::role($claims, 'operator', 'admin');
 } elseif ($action === 'cancel') {
     $isOwner = $order['client_id'] !== null && $order['client_id'] === ($claims['uid'] ?? '');
-    if (!$isOwner) {
+    $isAssignedDriver = ($claims['role'] ?? '') === 'driver'
+        && $order['driver_id'] !== null
+        && $order['driver_id'] === ($claims['driverId'] ?? '');
+    if (!$isOwner && !$isAssignedDriver) {
         Guard::role($claims, 'operator', 'admin');
     }
 } elseif ($action === 'rate') {
@@ -111,12 +114,31 @@ switch ($action) {
         if ($penalty > 0) {
             $chargeTransaction($driverId, $id, 'penalty', -$penalty, 'Штраф за отказ от заказа');
         }
+        $nameStmt = $db->prepare(
+            'SELECT CONCAT(u.first_name," ",u.last_name) FROM drivers d JOIN users u ON u.id=d.user_id WHERE d.id=?'
+        );
+        $nameStmt->execute([$driverId]);
+        NotificationService::notifyOperatorsDriverRejected(
+            $db, $order, (string) ($nameStmt->fetchColumn() ?: 'Водитель'), $reason
+        );
+        NotificationService::notifyOperatorsOrderUpdate($db, $load());
+        $result();
+    }
+
+    case 'en_route': {
+        $db->prepare("UPDATE orders SET status = 'driver_en_route' WHERE id = ?")
+            ->execute([$id]);
+        NotificationService::notifyOperatorsOrderUpdate($db, $load());
         $result();
     }
 
     case 'arrived': {
         $db->prepare("UPDATE orders SET status = 'driver_arrived', driver_arrived_at = ? WHERE id = ?")
             ->execute([Db::utcNow(), $id]);
+        $fresh = $load();
+        NotificationService::notifyClientDriverArrived($db, $fresh);
+        ZvonokService::callClientOnDriverArrived($db, $fresh);
+        NotificationService::notifyOperatorsOrderUpdate($db, $fresh);
         $result();
     }
 
@@ -127,6 +149,7 @@ switch ($action) {
             $db->prepare("UPDATE drivers SET status = 'in_trip' WHERE id = ?")
                 ->execute([$order['driver_id']]);
         }
+        NotificationService::notifyOperatorsOrderUpdate($db, $load());
         $result();
     }
 
@@ -184,6 +207,10 @@ switch ($action) {
             ->execute([$driverId, Db::utcNow(), $id]);
         $db->prepare("UPDATE drivers SET status = 'on_route', current_order_id = ? WHERE id = ?")
             ->execute([$id, $driverId]);
+        $fresh = $load();
+        NotificationService::notifyClientOrderAccepted($db, $fresh);
+        NotificationService::notifyDriverForceAssigned($db, $driverId, $fresh);
+        NotificationService::notifyOperatorsOrderUpdate($db, $fresh);
         $result();
     }
 

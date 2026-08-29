@@ -20,7 +20,7 @@ public class ApiService
     {
         _http = new HttpClient
         {
-            BaseAddress = new Uri("http://localhost:5172/api/")
+            BaseAddress = new Uri("https://taxi.event72.ru/api/")
         };
     }
 
@@ -174,5 +174,19 @@ public class ApiService
             return balanceProp.GetDecimal();
 
         return null;
+    }
+
+    // ===== УВЕДОМЛЕНИЯ PHP-СЕРВЕРА =====
+    public async Task<List<NotificationDto>> GetNotificationsAsync()
+    {
+        var response = await _http.GetAsync("notifications?unread=1&limit=50");
+        if (!response.IsSuccessStatusCode) return new();
+        var result = await response.Content.ReadFromJsonAsync<NotificationListResponse>(_jsonOptions);
+        return result?.Items ?? new();
+    }
+
+    public async Task MarkNotificationReadAsync(Guid id)
+    {
+        await _http.PostAsJsonAsync("notifications", new { action = "read", id });
     }
 }

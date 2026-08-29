@@ -148,9 +148,30 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   sender_name VARCHAR(120) NOT NULL DEFAULT '',
   sender_role ENUM('client','driver','operator','admin') NOT NULL DEFAULT 'client',
   text        VARCHAR(1000) NOT NULL,
+  is_read     TINYINT(1) NOT NULL DEFAULT 0,
+  read_at     DATETIME NULL,
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (order_id) REFERENCES orders(id),
   INDEX (order_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id           CHAR(36) PRIMARY KEY,
+  recipient_id CHAR(36) NULL,
+  recipient_role ENUM('client','driver','operator','admin') NULL,
+  order_id     CHAR(36) NULL,
+  type         VARCHAR(60) NOT NULL,
+  title        VARCHAR(160) NOT NULL,
+  message      VARCHAR(1000) NOT NULL,
+  payload      TEXT NULL,
+  channel      ENUM('in_app','sms','call') NOT NULL DEFAULT 'in_app',
+  delivery_status ENUM('pending','sent','failed','skipped') NOT NULL DEFAULT 'sent',
+  provider_response TEXT NULL,
+  is_read      TINYINT(1) NOT NULL DEFAULT 0,
+  read_at      DATETIME NULL,
+  created_by   CHAR(36) NULL,
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX (recipient_id), INDEX (recipient_role), INDEX (order_id), INDEX (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS operator_shifts (
@@ -180,7 +201,27 @@ CREATE TABLE IF NOT EXISTS auto_call_settings (
   escalate_after_minutes  INT NOT NULL DEFAULT 3,
   auto_assign_enabled     TINYINT(1) NOT NULL DEFAULT 0,
   auto_assign_radius_km   DOUBLE NOT NULL DEFAULT 5,
+  provider                VARCHAR(30) NOT NULL DEFAULT 'signalr',
+  zvonok_api_key          VARCHAR(255) NULL,
+  zvonok_campaign_id      VARCHAR(100) NULL,
+  zvonok_balance          DOUBLE NOT NULL DEFAULT 0,
+  balance_checked_at      DATETIME NULL,
+  free_waiting_minutes    INT NOT NULL DEFAULT 5,
+  message_template        VARCHAR(1000) NOT NULL DEFAULT 'Ваше такси прибыло! {CarColor} {CarBrand} {CarModel}, номер {LicensePlate}. Бесплатное ожидание: {FreeWaitingMinutes} минут.',
   last_tick_at            DATETIME NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS service_call_logs (
+  id             BIGINT AUTO_INCREMENT PRIMARY KEY,
+  service        VARCHAR(40) NOT NULL,
+  action         VARCHAR(60) NOT NULL,
+  request_summary VARCHAR(500) NULL,
+  status         ENUM('success','failed','skipped') NOT NULL,
+  http_code      INT NULL,
+  response_body  TEXT NULL,
+  duration_ms    INT NULL,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX (service), INDEX (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS branding_settings (

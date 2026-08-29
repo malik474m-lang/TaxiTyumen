@@ -37,21 +37,16 @@ if ($action === 'send') {
         ]);
     }
 
-    // Реальная отправка через sms.ru, если задан ключ
-    $sent = false;
-    if (SMS_API_ID !== '') {
-        $url = 'https://sms.ru/sms/send?api_id=' . urlencode(SMS_API_ID)
-            . '&to=' . urlencode($phone)
-            . '&msg=' . urlencode("$code — ваш код Такси Тюмень") . '&json=1';
-        $ctx = stream_context_create(['http' => ['timeout' => 5, 'method' => 'GET']]);
-        $sent = @file_get_contents($url, false, $ctx) !== false;
-    }
+    // Реальная отправка через единый sms.ru сервис + журнал API
+    $sms = SmsService::send($db, $phone, "$code — ваш код Такси Тюмень");
+    $sent = ($sms['status'] ?? '') === 'sent';
 
     error_log("[SMS] Код для $phone: $code"); // как Console.WriteLine в оригинале
     Response::json([
         'ok' => true,
         'expiresIn' => 300,
         'smsProvider' => $sent ? 'sms.ru' : null,
+        'deliveryStatus' => $sms['status'] ?? 'failed',
         // Демо-режим без провайдера — код возвращается (как вывод в консоль в .NET)
         'devCode' => $sent ? null : $code,
     ]);
@@ -82,11 +77,12 @@ if ($action === 'verify') {
         $d->execute([$user['id']]);
         $driverId = $d->fetchColumn() ?: null;
     }
+    $token = Auth::signToken($user['id'], $user['role'], $driverId);
+    if (!empty($GLOBALS['auth_compat_response'])) {
+        Response::json(Serialize::auth($user, $driverId, $token));
+    }
     Response::json([
-        'user' => array_merge(
-            Serialize::user($user, $driverId),
-            ['token' => Auth::signToken($user['id'], $user['role'], $driverId)]
-        ),
+        'user' => array_merge(Serialize::user($user, $driverId), ['token' => $token]),
     ]);
 }
 

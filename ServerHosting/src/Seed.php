@@ -143,6 +143,19 @@ final class Seed
         // Загружаемый логотип для серверного брендинга
         self::addColumn($db, 'branding_settings', 'logo_path', "VARCHAR(255) NULL AFTER logo_icon");
 
+        // Прочтение сообщений из исходного ChatMessage.IsRead
+        self::addColumn($db, 'chat_messages', 'is_read', "TINYINT(1) NOT NULL DEFAULT 0 AFTER text");
+        self::addColumn($db, 'chat_messages', 'read_at', "DATETIME NULL AFTER is_read");
+
+        // Полные настройки Zvonok из исходного AutoCallSettings
+        self::addColumn($db, 'auto_call_settings', 'provider', "VARCHAR(30) NOT NULL DEFAULT 'signalr' AFTER auto_assign_radius_km");
+        self::addColumn($db, 'auto_call_settings', 'zvonok_api_key', "VARCHAR(255) NULL AFTER provider");
+        self::addColumn($db, 'auto_call_settings', 'zvonok_campaign_id', "VARCHAR(100) NULL AFTER zvonok_api_key");
+        self::addColumn($db, 'auto_call_settings', 'zvonok_balance', "DOUBLE NOT NULL DEFAULT 0 AFTER zvonok_campaign_id");
+        self::addColumn($db, 'auto_call_settings', 'balance_checked_at', "DATETIME NULL AFTER zvonok_balance");
+        self::addColumn($db, 'auto_call_settings', 'free_waiting_minutes', "INT NOT NULL DEFAULT 5 AFTER balance_checked_at");
+        self::addColumn($db, 'auto_call_settings', 'message_template', "VARCHAR(1000) NOT NULL DEFAULT 'Ваше такси прибыло! {CarColor} {CarBrand} {CarModel}, номер {LicensePlate}. Бесплатное ожидание: {FreeWaitingMinutes} минут.' AFTER free_waiting_minutes");
+
         // Схемы оплаты операторов из исходного OperatorProfile
         $db->exec(
             "CREATE TABLE IF NOT EXISTS operator_profiles (
@@ -155,6 +168,44 @@ final class Seed
                 fixed_monthly DOUBLE NOT NULL DEFAULT 30000,
                 updated_at DATETIME NULL,
                 FOREIGN KEY (user_id) REFERENCES users(id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+
+        // Персистентный NotificationService вместо только эфемерного SignalR
+        $db->exec(
+            "CREATE TABLE IF NOT EXISTS notifications (
+                id CHAR(36) PRIMARY KEY,
+                recipient_id CHAR(36) NULL,
+                recipient_role ENUM('client','driver','operator','admin') NULL,
+                order_id CHAR(36) NULL,
+                type VARCHAR(60) NOT NULL,
+                title VARCHAR(160) NOT NULL,
+                message VARCHAR(1000) NOT NULL,
+                payload TEXT NULL,
+                channel ENUM('in_app','sms','call') NOT NULL DEFAULT 'in_app',
+                delivery_status ENUM('pending','sent','failed','skipped') NOT NULL DEFAULT 'sent',
+                provider_response TEXT NULL,
+                is_read TINYINT(1) NOT NULL DEFAULT 0,
+                read_at DATETIME NULL,
+                created_by CHAR(36) NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX (recipient_id), INDEX (recipient_role), INDEX (order_id), INDEX (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+
+        // Диагностика внешних API и провайдеров
+        $db->exec(
+            "CREATE TABLE IF NOT EXISTS service_call_logs (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                service VARCHAR(40) NOT NULL,
+                action VARCHAR(60) NOT NULL,
+                request_summary VARCHAR(500) NULL,
+                status ENUM('success','failed','skipped') NOT NULL,
+                http_code INT NULL,
+                response_body TEXT NULL,
+                duration_ms INT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX (service), INDEX (created_at)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
         );
     }

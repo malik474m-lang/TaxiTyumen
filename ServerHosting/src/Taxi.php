@@ -136,6 +136,23 @@ final class Taxi
         ];
     }
 
+    public static function normalizeTariff(mixed $value): string
+    {
+        $map = [0 => 'economy', 1 => 'comfort', 2 => 'business', 3 => 'minivan'];
+        if (is_numeric($value)) return $map[(int) $value] ?? 'economy';
+        $v = strtolower(trim((string) $value));
+        return in_array($v, $map, true) ? $v : 'economy';
+    }
+
+    public static function normalizePayment(mixed $value): string
+    {
+        $map = [0 => 'cash', 1 => 'card', 2 => 'bonus'];
+        if (is_numeric($value)) return $map[(int) $value] ?? 'cash';
+        $v = strtolower(trim((string) $value));
+        if ($v === 'bonuspoints') $v = 'bonus';
+        return in_array($v, $map, true) ? $v : 'cash';
+    }
+
     public static function generateOrderNumber(): string
     {
         $now = new \DateTime('now');

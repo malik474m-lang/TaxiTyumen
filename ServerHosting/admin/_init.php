@@ -119,6 +119,7 @@ function layout_header(string $title, string $active): void
         'export'    => ['export.php', 'Экспорт CSV'],
         'autocall'  => ['autocall.php', 'Автодозвон'],
         'branding'  => ['branding.php', 'Брендинг'],
+        'services'  => ['services.php', 'API и сервисы'],
     ];
     ?>
 <!DOCTYPE html>

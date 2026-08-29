@@ -33,7 +33,9 @@
 | `POST /api/drivers/action.php` | driver/admin | `status/location` — самим водителем; `topup/verify` — только админ |
 | `GET /api/tariffs/` | все | Тарифы; `PUT` — редактирование (admin) |
 | `POST /api/pricing.php` | все | Оценка цены всех тарифов + геометрия маршрута |
-| `GET/POST /api/chat.php` | участники | Чат по заказу (пишется только от своего имени) |
+| `GET/POST /api/chat.php` | участники | Чат по заказу + `action=read`, уведомление второго участника |
+| `GET/POST /api/notifications.php` | Bearer/admin | Лента/прочтение; admin: user/role/all, in-app/SMS |
+| `GET /api/services.php` | admin | Диагностика MySQL, OSRM, sms.ru, Zvonok, storage, realtime |
 | `GET/PUT /api/branding.php` | app=… публично, список/PUT — admin | Серверный брендинг 3 приложений (`logoUrl` входит в DTO) |
 | `GET/POST /api/branding-logo.php` | GET публично, POST admin | Выдача/загрузка/удаление логотипа, PNG/JPEG/WebP ≤ 2 МБ |
 | `GET/POST /api/operators/shift.php` | operator | Смены + выработка |

@@ -58,22 +58,21 @@ final class Auth
         if ($header === null || !str_starts_with($header, 'Bearer ')) {
             return null;
         }
-        $parts = explode('.', substr($header, 7));
-        if (count($parts) !== 2) {
-            return null;
-        }
+        return self::decodeToken(substr($header, 7));
+    }
+
+    public static function decodeToken(string $token, bool $allowExpired = false): ?array
+    {
+        $parts = explode('.', $token);
+        if (count($parts) !== 2) return null;
         [$body, $sig] = $parts;
         $expected = self::b64url(hash_hmac('sha256', $body, AUTH_SECRET, true));
-        if (!hash_equals($expected, $sig)) {
-            return null;
-        }
+        if (!hash_equals($expected, $sig)) return null;
+        $padding = strlen($body) % 4;
+        if ($padding) $body .= str_repeat('=', 4 - $padding);
         $payload = json_decode(base64_decode(strtr($body, '-_', '+/')), true);
-        if (!is_array($payload) || empty($payload['uid'])) {
-            return null;
-        }
-        if ((int) round(microtime(true) * 1000) > (int) ($payload['exp'] ?? 0)) {
-            return null;
-        }
+        if (!is_array($payload) || empty($payload['uid'])) return null;
+        if (!$allowExpired && (int) round(microtime(true) * 1000) > (int) ($payload['exp'] ?? 0)) return null;
         return $payload;
     }
 

@@ -1,71 +1,90 @@
-﻿using Microsoft.AspNetCore.SignalR.Client;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
 using TaxiDriver.Models;
 
 namespace TaxiDriver.Services;
 
+// Polling-транспорт PHP-сервера с прежним публичным API SignalRService.
 public class SignalRService
 {
-    private HubConnection? _connection;
+    private readonly HttpClient _http = new()
+    {
+        BaseAddress = new Uri("https://taxi.event72.ru/api/"),
+        Timeout = TimeSpan.FromSeconds(12)
+    };
+    private readonly JsonSerializerOptions _json = new() { PropertyNameCaseInsensitive = true };
+    private CancellationTokenSource? _cts;
 
     public event Action<NewOrderNotification>? NewOrderReceived;
     public event Action<NewOrderNotification>? ForceAssignedReceived;
     public event Action<string>? OrderStatusChanged;
     public event Action<object>? ChatMessageReceived;
 
-    public bool IsConnected =>
-        _connection?.State == HubConnectionState.Connected;
+    public bool IsConnected => _cts is { IsCancellationRequested: false };
 
-    public async Task ConnectAsync(string token)
+    public Task ConnectAsync(string token)
     {
-        _connection = new HubConnectionBuilder()
-            .WithUrl("http://localhost:5172/hubs/taxi", options =>
+        _cts?.Cancel();
+        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        _cts = new CancellationTokenSource();
+        _ = Task.Run(() => PollAsync(_cts.Token));
+        return Task.CompletedTask;
+    }
+
+    public Task SendLocationAsync(double lat, double lng, double? speed) => Task.CompletedTask;
+    public Task SubscribeToOrderAsync(string orderId) => Task.CompletedTask;
+    public Task DisconnectAsync() { _cts?.Cancel(); _cts = null; return Task.CompletedTask; }
+
+    private async Task PollAsync(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
             {
-                options.AccessTokenProvider = () => Task.FromResult<string?>(token);
-            })
-            .WithAutomaticReconnect()
-            .Build();
-
-        // Обычный новый заказ  только в список
-        _connection.On<NewOrderNotification>("NewOrderAvailable", (order) =>
-        {
-            NewOrderReceived?.Invoke(order);
-        });
-
-        // Принудительное назначение оператором  popup
-        _connection.On<NewOrderNotification>("ForceAssignedOrder", (order) =>
-        {
-            ForceAssignedReceived?.Invoke(order);
-        });
-
-        // Изменение статуса заказа
-        _connection.On<object>("OrderStatusChanged", (data) =>
-        {
-            OrderStatusChanged?.Invoke(data?.ToString() ?? "");
-        });
-
-                _connection.On<object>("NewChatMessage", (msg) =>
-        {
-            ChatMessageReceived?.Invoke(msg);
-        });
-
-        await _connection.StartAsync();
+                using var response = await _http.GetAsync("notifications?unread=1&limit=50", token);
+                if (response.IsSuccessStatusCode)
+                {
+                    using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
+                    if (doc.RootElement.TryGetProperty("items", out var items))
+                    {
+                        foreach (var item in items.EnumerateArray().Reverse())
+                        {
+                            Dispatch(item.Clone());
+                            if (item.TryGetProperty("id", out var id))
+                                await _http.PostAsJsonAsync("notifications", new { action = "read", id = id.GetString() }, token);
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException) { break; }
+            catch { }
+            try { await Task.Delay(TimeSpan.FromSeconds(3), token); }
+            catch (OperationCanceledException) { break; }
+        }
     }
 
-    public async Task SendLocationAsync(double lat, double lng, double? speed)
+    private void Dispatch(JsonElement item)
     {
-        if (!IsConnected) return;
-        await _connection!.InvokeAsync("UpdateDriverLocation", lat, lng, speed);
-    }
-
-    public async Task SubscribeToOrderAsync(string orderId)
-    {
-        if (!IsConnected) return;
-        await _connection!.InvokeAsync("SubscribeToOrder", orderId);
-    }
-
-    public async Task DisconnectAsync()
-    {
-        if (_connection != null)
-            await _connection.StopAsync();
+        var type = item.TryGetProperty("type", out var t) ? t.GetString() : "";
+        var title = item.TryGetProperty("title", out var ti) ? ti.GetString() ?? "Такси Тюмень" : "Такси Тюмень";
+        var message = item.TryGetProperty("message", out var me) ? me.GetString() ?? "" : "";
+        var payload = item.TryGetProperty("payload", out var p) && p.ValueKind == JsonValueKind.Object ? p.Clone() : item.Clone();
+        switch (type)
+        {
+            case "NewOrderAvailable":
+                if (payload.Deserialize<NewOrderNotification>(_json) is { } o) NewOrderReceived?.Invoke(o); break;
+            case "ForceAssignedOrder":
+                if (payload.Deserialize<NewOrderNotification>(_json) is { } a) ForceAssignedReceived?.Invoke(a); break;
+            case "OrderStatusChanged": OrderStatusChanged?.Invoke(payload.ToString()); break;
+            case "NewChatMessage": ChatMessageReceived?.Invoke(payload); break;
+            case "AdminMessage":
+                MainThread.BeginInvokeOnMainThread(async () =>
+                {
+                    var page = Application.Current?.MainPage;
+                    if (page != null) await page.DisplayAlert(title, message, "OK");
+                });
+                break;
+        }
     }
 }

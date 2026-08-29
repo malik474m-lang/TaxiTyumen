@@ -33,7 +33,7 @@ if ($destinationAddress && $destLat == 0.0) {
     $destLng = $g['lng'];
 }
 
-$tariff = (string) ($body['tariff'] ?? 'economy');
+$tariff = Taxi::normalizeTariff($body['tariff'] ?? 'economy');
 $estimatedPrice = 0.0;
 $estimatedDistance = null;
 $estimatedDuration = null;
@@ -90,7 +90,10 @@ foreach (Options::resolve($optionCodes) as $opt) {
         ->execute([Db::uuid(), $orderId, $opt['code'], $opt['name'], $opt['price']]);
 }
 
-Bus::publish('orders');
 $stmt = $db->prepare('SELECT * FROM orders WHERE id = ?');
 $stmt->execute([$orderId]);
-Response::json(Serialize::order($db, $stmt->fetch()), 201);
+$createdOrder = $stmt->fetch();
+NotificationService::notifyNearbyDriversNewOrder($db, $createdOrder);
+NotificationService::notifyOperatorsOrderUpdate($db, $createdOrder);
+Bus::publish('orders');
+Response::json(Serialize::order($db, $createdOrder), 201);

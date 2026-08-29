@@ -59,9 +59,10 @@ $stmt = $db->prepare('SELECT * FROM users WHERE id = ?');
 $stmt->execute([$uid]);
 $user = $stmt->fetch();
 
+$token = Auth::signToken($uid, $role, $driverId);
+if (!empty($GLOBALS['auth_compat_response'])) {
+    Response::json(Serialize::auth($user, $driverId, $token), 201);
+}
 Response::json([
-    'user' => array_merge(
-        Serialize::user($user, $driverId),
-        ['token' => Auth::signToken($uid, $role, $driverId)]
-    ),
+    'user' => array_merge(Serialize::user($user, $driverId), ['token' => $token]),
 ], 201);

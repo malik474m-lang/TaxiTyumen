@@ -237,6 +237,7 @@ layout_header('Операторы', 'operators');
     <?php endif; ?>
 
     <div class="flex" style="margin-top:12px">
+      <a class="btn ghost sm" href="messages.php?recipient=<?= h($op['id']) ?>">Написать</a>
       <form method="post"><input type="hidden" name="cmd" value="block"><input type="hidden" name="id" value="<?= h($op['id']) ?>"><button class="btn <?= $op['is_blocked'] ? 'ghost' : 'danger' ?> sm"><?= $op['is_blocked'] ? 'Разблокировать' : 'Заблокировать' ?></button></form>
       <form method="post"><input type="hidden" name="cmd" value="active"><input type="hidden" name="id" value="<?= h($op['id']) ?>"><button class="btn ghost sm"><?= $op['is_active'] ? 'Деактивировать' : 'Активировать' ?></button></form>
       <form method="post" class="inline"><input type="hidden" name="cmd" value="password"><input type="hidden" name="id" value="<?= h($op['id']) ?>"><input name="new_password" placeholder="Новый пароль" minlength="6" required style="width:150px"><button class="btn ghost sm">Сменить пароль</button></form>

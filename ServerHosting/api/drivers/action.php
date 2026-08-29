@@ -19,19 +19,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'SELECT * FROM balance_transactions WHERE driver_id = ? ORDER BY created_at DESC LIMIT 30'
         );
         $t->execute([$id]);
+        $transactions = array_map(fn(array $tr) => [
+            'id' => $tr['id'],
+            'driverId' => $tr['driver_id'],
+            'orderId' => $tr['order_id'],
+            'type' => ucfirst($tr['type']),
+            'amount' => (float) $tr['amount'],
+            'balanceAfter' => (float) $tr['balance_after'],
+            'description' => $tr['description'],
+            'createdBy' => $tr['created_by'],
+            'createdAt' => $tr['created_at'],
+        ], $t->fetchAll());
+        if (!empty($GLOBALS['balance_history_compat'])) {
+            Response::json($transactions);
+        }
         Response::json([
             'balance' => (float) $driver['balance'],
-            'transactions' => array_map(fn(array $tr) => [
-                'id' => $tr['id'],
-                'driverId' => $tr['driver_id'],
-                'orderId' => $tr['order_id'],
-                'type' => $tr['type'],
-                'amount' => (float) $tr['amount'],
-                'balanceAfter' => (float) $tr['balance_after'],
-                'description' => $tr['description'],
-                'createdBy' => $tr['created_by'],
-                'createdAt' => $tr['created_at'],
-            ], $t->fetchAll()),
+            'transactions' => $transactions,
         ]);
     }
 
@@ -64,7 +68,10 @@ if (in_array($action, ['status', 'location'], true)) {
         Response::error('Управлять своим статусом может только сам водитель', 403);
     }
 }
-if (in_array($action, ['topup', 'verify'], true)) {
+if ($action === 'topup') {
+    Guard::role($claims, 'operator', 'admin');
+}
+if ($action === 'verify') {
     Guard::role($claims, 'admin');
 }
 

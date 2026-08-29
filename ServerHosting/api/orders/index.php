@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/_bootstrap.php';
 
 Simulate::advance($db);
+DriverTimeout::tick($db);
 AutoCall::tick($db);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -88,7 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $tariff, $estimatedPrice, $estimatedDistance, $estimatedDuration, $routeGeometry,
         $body['comment'] ?? null,
         (int) ($body['passengerCount'] ?? 1) ?: 1,
-        (string) ($body['paymentMethod'] ?? 'cash'),
+        Taxi::normalizePayment($body['paymentMethod'] ?? 'cash'),
         'searching',
     ]);
 
@@ -97,10 +98,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ->execute([Db::uuid(), $orderId, $opt['code'], $opt['name'], $opt['price']]);
     }
 
-    Bus::publish('orders');
     $stmt = $db->prepare('SELECT * FROM orders WHERE id = ?');
     $stmt->execute([$orderId]);
-    Response::json(Serialize::order($db, $stmt->fetch()), 201);
+    $createdOrder = $stmt->fetch();
+    NotificationService::notifyNearbyDriversNewOrder($db, $createdOrder);
+    NotificationService::notifyOperatorsOrderUpdate($db, $createdOrder);
+    Bus::publish('orders');
+    Response::json(Serialize::order($db, $createdOrder), 201);
 }
 
 // ── GET-списки ──────────────────────────────────────────────────────────────

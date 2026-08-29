@@ -19,7 +19,7 @@ public class ApiService
     {
         _http = new HttpClient
         {
-            BaseAddress = new Uri("http://localhost:5172/api/"),
+            BaseAddress = new Uri("https://taxi.event72.ru/api/"),
             Timeout = TimeSpan.FromSeconds(10)
         };
     }

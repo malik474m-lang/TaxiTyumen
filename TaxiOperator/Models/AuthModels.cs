@@ -16,3 +16,18 @@ public class AuthResponse
     public string Phone { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
 }
+
+public class NotificationListResponse
+{
+    public List<NotificationDto> Items { get; set; } = new();
+    public int UnreadCount { get; set; }
+}
+
+public class NotificationDto
+{
+    public Guid Id { get; set; }
+    public string Type { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string Message { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+}
