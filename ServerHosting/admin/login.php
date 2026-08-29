@@ -9,6 +9,7 @@ if (admin_current($db)) {
     exit;
 }
 
+$service = ServiceSettings::get($db);
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $phone = Auth::normalizePhone((string) ($_POST['phone'] ?? ''));
@@ -34,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Вход — Такси Тюмень</title>
+<title>Вход — <?= h($service['service_name']) ?></title>
 <style>
 *{box-sizing:border-box;margin:0}
 body{background:radial-gradient(1000px 600px at 50% -20%,rgba(250,204,21,.09),transparent 60%),#0a0a0c;
@@ -64,14 +65,14 @@ button:hover{filter:brightness(1.1)}
 <div class="card">
   <div class="tile">🚕</div>
   <h1>Панель администратора</h1>
-  <div class="sub">Такси Тюмень · 72 регион</div>
+  <div class="sub"><?= h($service['service_name']) ?><?= $service['region_code'] ? ' · '.h($service['region_code']).' регион' : '' ?></div>
   <?php if ($error): ?><div class="err"><?= h($error) ?></div><?php endif; ?>
   <form method="post">
     <input name="phone" placeholder="+7 (___) ___-__-__" required autofocus value="<?= h($_POST['phone'] ?? '') ?>">
     <input type="password" name="password" placeholder="Пароль" required>
     <button type="submit">Войти</button>
   </form>
-  <div class="demo">демо: <code>+79001234567</code> · <code>Admin123!</code></div>
+  <div class="demo"><?= h($service["service_name"]) ?> · <?= h($service["city_name"]) ?></div>
 </div>
 </body>
 </html>

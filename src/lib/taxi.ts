@@ -30,8 +30,14 @@ export const PLACES: { name: string; lat: number; lng: number }[] = [
   { name: "ул. Широтная, 154", lat: 57.1744, lng: 65.5748 },
 ];
 
-// Детерминированная «геокодировка» произвольного адреса рядом с центром
-export function geocodeAddress(address: string): { lat: number; lng: number } {
+// Детерминированная «геокодировка» произвольного адреса рядом с центром сервиса
+export function geocodeAddress(
+  address: string,
+  centerLat?: number,
+  centerLng?: number
+): { lat: number; lng: number } {
+  const lat0 = centerLat ?? CITY.centerLat;
+  const lng0 = centerLng ?? CITY.centerLng;
   const q = address.trim().toLowerCase();
   const place = PLACES.find((p) =>
     q.includes(p.name.toLowerCase().slice(0, 6))
@@ -41,7 +47,7 @@ export function geocodeAddress(address: string): { lat: number; lng: number } {
   for (let i = 0; i < q.length; i++) hash = (hash * 31 + q.charCodeAt(i)) | 0;
   const latJ = (((hash % 1000) / 1000) - 0.5) * 0.06;
   const lngJ = (((((hash >> 10) % 1000) / 1000) - 0.5) * 0.1);
-  return { lat: CITY.centerLat + latJ, lng: CITY.centerLng + lngJ };
+  return { lat: lat0 + latJ, lng: lng0 + lngJ };
 }
 
 // ── DistanceCalculator.cs ────────────────────────────────────────────────────
@@ -145,10 +151,14 @@ export function tyumenNow(): Date {
 export function computePrice(
   tariff: Tariff,
   distanceKm: number,
-  durationMinutes: number
+  durationMinutes: number,
+  utcOffset?: number
 ): Omit<PriceEstimate, "tariffType" | "tariffName" | "description" | "distanceKm" | "durationMinutes"> {
   let price = tariff.baseFare + distanceKm * tariff.pricePerKm;
-  const hour = tyumenNow().getHours();
+  const hour =
+    utcOffset === undefined
+      ? tyumenNow().getHours()
+      : (new Date().getUTCHours() + utcOffset + 24) % 24;
   const isNight = hour >= 23 || hour < 6;
   const isPeak = (hour >= 7 && hour < 9) || (hour >= 17 && hour < 19);
   let multiplier = 1;
@@ -173,7 +183,8 @@ export async function calculatePriceEstimate(
   fromLng: number,
   toLat: number,
   toLng: number,
-  tariffType: string
+  tariffType: string,
+  utcOffset?: number
 ): Promise<PriceEstimate> {
   const [tariff] = await db
     .select()
@@ -181,7 +192,7 @@ export async function calculatePriceEstimate(
     .where(eq(tariffs.type, tariffType as never));
   if (!tariff) throw new Error(`Тариф ${tariffType} не найден`);
   const route = await getRealRoute(fromLat, fromLng, toLat, toLng);
-  const p = computePrice(tariff, route.distanceKm, route.durationMinutes);
+  const p = computePrice(tariff, route.distanceKm, route.durationMinutes, utcOffset);
   return {
     tariffType,
     tariffName: tariff.name,

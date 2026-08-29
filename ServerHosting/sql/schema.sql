@@ -268,6 +268,20 @@ CREATE TABLE IF NOT EXISTS service_call_logs (
   INDEX (service), INDEX (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS service_settings (
+  id               CHAR(36) PRIMARY KEY,
+  service_name     VARCHAR(80)  NOT NULL,
+  city_name        VARCHAR(80)  NOT NULL,
+  region_name      VARCHAR(120) NOT NULL,
+  region_code      VARCHAR(10)  NOT NULL DEFAULT '',
+  support_phone    VARCHAR(30)  NULL,
+  center_latitude  DOUBLE       NOT NULL,
+  center_longitude DOUBLE       NOT NULL,
+  utc_offset       INT          NOT NULL DEFAULT 5,
+  sms_sender_name  VARCHAR(80)  NOT NULL,
+  updated_at       DATETIME     NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS branding_settings (
   id                 CHAR(36) PRIMARY KEY,
   app                VARCHAR(20) NOT NULL UNIQUE,      -- client | driver | operator

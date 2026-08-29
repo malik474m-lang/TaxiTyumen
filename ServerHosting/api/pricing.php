@@ -10,12 +10,12 @@ $toLat = (float) ($body['toLat'] ?? 0);
 $toLng = (float) ($body['toLng'] ?? 0);
 
 if (!empty($body['fromAddress']) && $fromLat == 0.0) {
-    $g = Taxi::geocodeAddress((string) $body['fromAddress']);
+    $g = Taxi::geocodeAddress((string) $body['fromAddress'], $service['center_latitude'], $service['center_longitude']);
     $fromLat = $g['lat'];
     $fromLng = $g['lng'];
 }
 if (!empty($body['toAddress']) && $toLat == 0.0) {
-    $g = Taxi::geocodeAddress((string) $body['toAddress']);
+    $g = Taxi::geocodeAddress((string) $body['toAddress'], $service['center_latitude'], $service['center_longitude']);
     $toLat = $g['lat'];
     $toLng = $g['lng'];
 }
@@ -23,13 +23,14 @@ if ($fromLat == 0.0 || $toLat == 0.0) {
     Response::error('Укажите адреса подачи и назначения');
 }
 
+$service = ServiceSettings::get($db);
 $route = Taxi::getRealRoute($fromLat, $fromLng, $toLat, $toLng);
 $geometry = Taxi::getRouteGeometry($fromLat, $fromLng, $toLat, $toLng);
 $activeTariffs = $db->query('SELECT * FROM tariffs WHERE is_active = 1')->fetchAll();
 
 $estimates = [];
 foreach ($activeTariffs as $t) {
-    $p = Taxi::computePrice($t, (float) $route['distanceKm']);
+    $p = Taxi::computePrice($t, (float) $route['distanceKm'], (int) $service['utc_offset']);
     $estimates[] = [
         'tariffType' => $t['type'],
         'tariffName' => $t['name'],

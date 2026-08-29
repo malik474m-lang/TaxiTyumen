@@ -38,7 +38,8 @@ if ($action === 'send') {
     }
 
     // Реальная отправка через единый sms.ru сервис + журнал API
-    $sms = SmsService::send($db, $phone, "$code — ваш код Такси Тюмень");
+    $service = ServiceSettings::get($db);
+    $sms = SmsService::send($db, $phone, "$code — ваш код " . $service['sms_sender_name']);
     $sent = ($sms['status'] ?? '') === 'sent';
 
     error_log("[SMS] Код для $phone: $code"); // как Console.WriteLine в оригинале

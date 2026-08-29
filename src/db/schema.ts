@@ -217,6 +217,22 @@ export const operatorShifts = pgTable("operator_shifts", {
   endedAt: timestamp("ended_at", { withTimezone: true }),
 });
 
+// ── Service brand (единый бренд сервиса: название, город, центр, TZ) ────────
+
+export const serviceBrand = pgTable("service_brand", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  serviceName: text("service_name").notNull(),
+  city: text("city").notNull(),
+  region: text("region").notNull(),
+  regionCode: text("region_code").notNull().default(""),
+  supportPhone: text("support_phone"),
+  centerLat: doublePrecision("center_lat").notNull().default(57.1522),
+  centerLng: doublePrecision("center_lng").notNull().default(65.5272),
+  utcOffset: integer("utc_offset").notNull().default(5),
+  smsSenderName: text("sms_sender_name").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+});
+
 // ── Branding settings (серверный брендинг приложений) ───────────────────────
 
 export const brandingSettings = pgTable("branding_settings", {
@@ -298,6 +314,7 @@ export const chatMessages = pgTable("chat_messages", {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+export type ServiceBrand = typeof serviceBrand.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Driver = typeof drivers.$inferSelect;
 export type Order = typeof orders.$inferSelect;

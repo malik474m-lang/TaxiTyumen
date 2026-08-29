@@ -13,11 +13,14 @@ final class GeocodingService
     {
         $query = trim($query);
         if (mb_strlen($query) < 2) return [];
+        $svc = ServiceSettings::get($db);
+        $city = (string) $svc['city_name'];
+        $region = (string) $svc['region_name'];
         $results = [];
         if (DADATA_API_KEY !== '') {
             $body = json_encode([
                 'query'=>$query,'count'=>5,
-                'locations'=>[['region'=>'Тюменская','city'=>'Тюмень'],['region'=>'Тюменская','area'=>'Тюменский']],
+                'locations'=>[['region'=>$region,'city'=>$city],['region'=>$region]],
                 'restrict_value'=>false,
             ], JSON_UNESCAPED_UNICODE);
             [$code,$raw,$ms]=self::request(self::DADATA_SUGGEST,'POST',$body,[
@@ -30,8 +33,13 @@ final class GeocodingService
             self::log($db,'dadata','suggest',$query,$code>=200&&$code<300?'success':'failed',$code,$raw,$ms);
         }
         if(count($results)<3){
-            $searchQuery=str_contains(mb_strtolower($query),'тюмен')?$query:$query.', Тюменская область';
-            $url=self::NOMINATIM_SEARCH.'?'.http_build_query(['q'=>$searchQuery,'format'=>'json','addressdetails'=>1,'limit'=>7,'countrycodes'=>'ru','accept-language'=>'ru','viewbox'=>'64.8,57.8,66.6,56.4','bounded'=>1]);
+            $cityLower=mb_strtolower($city);
+            $regionLower=mb_strtolower($region);
+            $searchQuery=(str_contains(mb_strtolower($query),$cityLower)||str_contains(mb_strtolower($query),$regionLower))
+                ? $query : $query.', '.$region;
+            $latN=$svc['center_latitude']+0.9;$latS=$svc['center_latitude']-0.9;
+            $lngW=$svc['center_longitude']-1.1;$lngE=$svc['center_longitude']+1.1;
+            $url=self::NOMINATIM_SEARCH.'?'.http_build_query(['q'=>$searchQuery,'format'=>'json','addressdetails'=>1,'limit'=>7,'countrycodes'=>'ru','accept-language'=>'ru','viewbox'=>sprintf('%.4f,%.4f,%.4f,%.4f',$lngW,$latN,$lngE,$latS),'bounded'=>1]);
             [$code,$raw,$ms]=self::request($url,'GET',null,['User-Agent: TaxiTyumen/1.0','Accept-Language: ru']);
             $json=json_decode($raw,true);
             if($code>=200&&$code<300&&is_array($json))foreach($json as $r){$lat=(float)($r['lat']??0);$lng=(float)($r['lon']??0);if(!$lat||!$lng)continue;$duplicate=false;foreach($results as $x)if(abs($x['latitude']-$lat)<.001&&abs($x['longitude']-$lng)<.001){$duplicate=true;break;}if(!$duplicate)$results[]=['displayName'=>$r['display_name']??'','fullAddress'=>$r['display_name']??'','latitude'=>$lat,'longitude'=>$lng,'source'=>'nominatim'];}
@@ -57,7 +65,8 @@ final class GeocodingService
 
     public static function check(\PDO $db): array
     {
-        $items=self::search($db,'Республики 1');
+        $svc=ServiceSettings::get($db);
+        $items=self::search($db,(string)$svc['city_name']);
         return['configured'=>DADATA_API_KEY!=='','ok'=>count($items)>0,'results'=>count($items),'sources'=>array_values(array_unique(array_column($items,'source'))),'message'=>count($items)>0?'Геокодинг доступен':'DaData/Nominatim недоступны'];
     }
 

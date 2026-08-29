@@ -12,6 +12,7 @@ final class Seed
     {
         // Runtime-миграции для уже установленной базы — повторный install.php не нужен
         self::migrateExistingDatabase($db);
+        ServiceSettings::get($db);
 
         // Тарифы
         $count = (int) $db->query('SELECT COUNT(*) FROM tariffs')->fetchColumn();

@@ -9,6 +9,7 @@ $claims = Guard::claims();
 Guard::role($claims, 'operator', 'admin');
 
 $body = Response::requirePostJson();
+$service = ServiceSettings::get($db);
 $clientPhone = Auth::normalizePhone((string) ($body['clientPhone'] ?? ''));
 $clientName = trim((string) ($body['clientName'] ?? '')) ?: 'Клиент';
 $pickupAddress = trim((string) ($body['pickupAddress'] ?? ''));
@@ -19,7 +20,7 @@ if (strlen($clientPhone) < 11 || $pickupAddress === '') {
 $pickupLat = (float) ($body['pickupLatitude'] ?? 0);
 $pickupLng = (float) ($body['pickupLongitude'] ?? 0);
 if ($pickupLat == 0.0) {
-    $g = Taxi::geocodeAddress($pickupAddress);
+    $g = Taxi::geocodeAddress($pickupAddress, $service['center_latitude'], $service['center_longitude']);
     $pickupLat = $g['lat'];
     $pickupLng = $g['lng'];
 }
@@ -28,7 +29,7 @@ $destinationAddress = trim((string) ($body['destinationAddress'] ?? '')) ?: null
 $destLat = (float) ($body['destinationLatitude'] ?? 0);
 $destLng = (float) ($body['destinationLongitude'] ?? 0);
 if ($destinationAddress && $destLat == 0.0) {
-    $g = Taxi::geocodeAddress($destinationAddress);
+    $g = Taxi::geocodeAddress($destinationAddress, $service['center_latitude'], $service['center_longitude']);
     $destLat = $g['lat'];
     $destLng = $g['lng'];
 }
@@ -44,7 +45,7 @@ if ($destinationAddress && $destLat != 0.0) {
     $t = $db->prepare("SELECT * FROM tariffs WHERE type = ? AND is_active = 1 LIMIT 1");
     $t->execute([$tariff]);
     if ($tariffRow = $t->fetch()) {
-        $p = Taxi::computePrice($tariffRow, (float) $route['distanceKm']);
+        $p = Taxi::computePrice($tariffRow, (float) $route['distanceKm'], (int) $service['utc_offset']);
         $estimatedPrice = (float) $p['price'];
         $estimatedDistance = (float) $route['distanceKm'];
         $estimatedDuration = (int) $route['durationMinutes'];
@@ -93,7 +94,7 @@ foreach ((array) ($body['intermediatePoints'] ?? []) as $index => $point) {
     if (!is_array($point) || empty($point['address'])) continue;
     $g = (!empty($point['latitude']) && !empty($point['longitude']))
         ? ['lat'=>(float)$point['latitude'],'lng'=>(float)$point['longitude']]
-        : Taxi::geocodeAddress((string)$point['address']);
+        : Taxi::geocodeAddress((string)$point['address'], $service['center_latitude'], $service['center_longitude']);
     $db->prepare('INSERT INTO route_points(id,order_id,address,latitude,longitude,sort_order) VALUES (?,?,?,?,?,?)')
         ->execute([Db::uuid(),$orderId,mb_substr((string)$point['address'],0,500),$g['lat'],$g['lng'],(int)$index]);
 }

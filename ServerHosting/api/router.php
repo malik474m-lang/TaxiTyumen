@@ -156,6 +156,13 @@ if ($routeLower==='pricing/estimate'||$routeLower==='pricing/estimate-all') {
     require $api.'/pricing.php';exit;
 }
 
+// Бренд сервиса (использовался отдельный запуск веб-портала)
+if ($routeLower==='service-settings'||$routeLower==='servicebrand') {
+    if ($method === 'PUT') $_SERVER['REQUEST_METHOD'] = 'PUT';
+    require $api . '/service-settings.php';
+    exit;
+}
+
 // Новые серверные сервисы (не были в старом .NET-контракте)
 if ($routeLower==='notifications') $dispatch($api.'/notifications.php');
 if ($routeLower==='services') $dispatch($api.'/services.php');

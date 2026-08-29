@@ -3,9 +3,12 @@
 declare(strict_types=1);
 require_once __DIR__ . '/_bootstrap.php';
 
+$serviceInfo = ServiceSettings::get($db);
 Response::json([
     'service' => 'TaxiTyumen ServerHosting (PHP + MySQL)',
     'status' => 'online',
+    'serviceName' => $serviceInfo['service_name'],
+    'city' => $serviceInfo['city_name'],
     'time' => gmdate('c'),
     'php' => PHP_VERSION,
     'endpoints' => [
@@ -27,6 +30,7 @@ Response::json([
         'GET  /api/geocoding.php?q= или ?lat=&lng= (DaData/Nominatim)',
         'GET  /api/services.php (admin diagnostics)',
         'GET  /api/places.php',
+        'GET  /api/service-settings.php · PUT (admin)',
         'GET  /api/branding.php?app= · PUT (admin)',
         'GET/POST /api/branding-logo.php?app= (логотип бренда)',
         'GET/POST /api/operators/shift.php (operator)',

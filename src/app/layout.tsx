@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+import { getServiceBrand } from "@/lib/branding";
 
-export const metadata: Metadata = {
-  title: "Такси Тюмень — Сервис заказа такси",
-  description:
-    "Веб-порт системы TaxiTyumen: заказ такси, кабинет водителя, диспетчерская и админ-панель.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const service = await getServiceBrand();
+  return {
+    title: `${service.serviceName} — заказ такси в ${service.city}`,
+    description: `Веб-порт такси-сервиса ${service.serviceName} (${service.city}): заказ такси, кабинет водителя, диспетчерская и админ-панель.`,
+  };
+}
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

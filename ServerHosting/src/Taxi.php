@@ -30,8 +30,10 @@ final class Taxi
         ['name' => 'ул. Широтная, 154',      'lat' => 57.1744, 'lng' => 65.5748],
     ];
 
-    public static function geocodeAddress(string $address): array
+    public static function geocodeAddress(string $address, ?float $centerLat = null, ?float $centerLng = null): array
     {
+        $centerLat ??= self::CITY_LAT;
+        $centerLng ??= self::CITY_LNG;
         $q = mb_strtolower(trim($address));
         foreach (self::PLACES as $p) {
             if (str_contains($q, mb_strtolower(mb_substr($p['name'], 0, 6)))) {
@@ -41,7 +43,7 @@ final class Taxi
         $hash = crc32($q) & 0x7fffffff;
         $latJ = (($hash % 1000) / 1000 - 0.5) * 0.06;
         $lngJ = (((($hash >> 10) % 1000) / 1000) - 0.5) * 0.1;
-        return ['lat' => self::CITY_LAT + $latJ, 'lng' => self::CITY_LNG + $lngJ];
+        return ['lat' => $centerLat + $latJ, 'lng' => $centerLng + $lngJ];
     }
 
     public static function getDistanceKm(float $lat1, float $lng1, float $lat2, float $lng2): float
@@ -113,10 +115,10 @@ final class Taxi
     }
 
     // Цена по тарифу с множителями Тюмени (UTC+5) — порт computePrice из web-версии
-    public static function computePrice(array $tariff, float $distanceKm): array
+    public static function computePrice(array $tariff, float $distanceKm, ?int $utcOffset = null): array
     {
         $price = $tariff['base_fare'] + $distanceKm * $tariff['price_per_km'];
-        $hour = (int) (new \DateTime('now', new \DateTimeZone('Asia/Yekaterinburg')))->format('G');
+        $hour = ((int) gmdate('G') + ($utcOffset ?? CITY_UTC_OFFSET) + 24) % 24;
         $isNight = $hour >= 23 || $hour < 6;
         $isPeak = ($hour >= 7 && $hour < 9) || ($hour >= 17 && $hour < 19);
         $multiplier = 1.0;

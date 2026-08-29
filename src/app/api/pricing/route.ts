@@ -5,10 +5,12 @@ import { tariffs } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getRealRoute, getRouteGeometry, computePrice, geocodeAddress } from "@/lib/taxi";
 import { ensureSeeded } from "@/lib/seed";
+import { getServiceBrand } from "@/lib/branding";
 
 export async function POST(req: Request) {
   try {
     await ensureSeeded();
+    const service = await getServiceBrand();
     const body = await req.json();
 
     let fromLat = Number(body.fromLat);
@@ -17,12 +19,12 @@ export async function POST(req: Request) {
     let toLng = Number(body.toLng);
 
     if (body.fromAddress && (!Number.isFinite(fromLat) || !Number.isFinite(fromLng))) {
-      const g = geocodeAddress(String(body.fromAddress));
+      const g = geocodeAddress(String(body.fromAddress), service.centerLat, service.centerLng);
       fromLat = g.lat;
       fromLng = g.lng;
     }
     if (body.toAddress && (!Number.isFinite(toLat) || !Number.isFinite(toLng))) {
-      const g = geocodeAddress(String(body.toAddress));
+      const g = geocodeAddress(String(body.toAddress), service.centerLat, service.centerLng);
       toLat = g.lat;
       toLng = g.lng;
     }
@@ -38,7 +40,7 @@ export async function POST(req: Request) {
 
     const estimates = activeTariffs
       .map((t) => {
-        const p = computePrice(t, route.distanceKm, route.durationMinutes);
+        const p = computePrice(t, route.distanceKm, route.durationMinutes, service.utcOffset);
         return {
           tariffType: t.type,
           tariffName: t.name,

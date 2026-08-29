@@ -37,6 +37,7 @@ $db->prepare(
 $driverId = null;
 if ($role === 'driver') {
     $driverId = Db::uuid();
+    $service = ServiceSettings::get($db);
     $jx = (mt_rand(-1000, 1000) / 1000000) * 5; // ~±0.005 градуса
     $jx2 = (mt_rand(-1000, 1000) / 1000000) * 5;
     $db->prepare(
@@ -50,7 +51,7 @@ if ($role === 'driver') {
         (string) ($body['carColor'] ?? 'Белый'),
         (string) ($body['licensePlate'] ?? '—'),
         (int) ($body['carYear'] ?? 2020),
-        Taxi::CITY_LAT + $jx2, Taxi::CITY_LNG + $jx,
+        $service['center_latitude'] + $jx2, $service['center_longitude'] + $jx,
         500, 50,
     ]);
 }

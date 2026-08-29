@@ -11,6 +11,7 @@ import {
 import { serializeOrder } from "@/lib/serialize";
 import { normalizePhone } from "@/lib/auth";
 import { ensureSeeded } from "@/lib/seed";
+import { getServiceBrand } from "@/lib/branding";
 import { publishEvent } from "@/lib/bus";
 import { readClaims, forbidden } from "@/lib/session";
 import { getRouteGeometry } from "@/lib/taxi";
@@ -20,6 +21,7 @@ import { resolveOptions, optionsTotal } from "@/lib/options";
 export async function POST(req: Request) {
   try {
     await ensureSeeded();
+    const service = await getServiceBrand();
 
     // Авторизация: заказы по телефону создают только оператор и админ
     const claims = readClaims(req);
@@ -41,7 +43,7 @@ export async function POST(req: Request) {
     let pickupLat = Number(body.pickupLatitude);
     let pickupLng = Number(body.pickupLongitude);
     if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) {
-      const g = geocodeAddress(pickupAddress);
+      const g = geocodeAddress(pickupAddress, service.centerLat, service.centerLng);
       pickupLat = g.lat;
       pickupLng = g.lng;
     }
@@ -52,7 +54,7 @@ export async function POST(req: Request) {
     let destLat = Number(body.destinationLatitude);
     let destLng = Number(body.destinationLongitude);
     if (destinationAddress && (!Number.isFinite(destLat) || !Number.isFinite(destLng))) {
-      const g = geocodeAddress(destinationAddress);
+      const g = geocodeAddress(destinationAddress, service.centerLat, service.centerLng);
       destLat = g.lat;
       destLng = g.lng;
     }
@@ -64,7 +66,7 @@ export async function POST(req: Request) {
     let routeGeometry: string | null = null;
 
     if (destinationAddress && Number.isFinite(destLat)) {
-      const est = await calculatePriceEstimate(pickupLat, pickupLng, destLat, destLng, tariff);
+      const est = await calculatePriceEstimate(pickupLat, pickupLng, destLat, destLng, tariff, service.utcOffset);
       estimatedPrice = est.price;
       estimatedDistance = est.distanceKm;
       estimatedDuration = est.durationMinutes;

@@ -1,8 +1,70 @@
 // Серверное брендирование приложений: данные в БД, редактор в админке,
 // рендер — на сервере (SSR + CSS-переменные)
 import { db } from "@/db";
-import { brandingSettings } from "@/db/schema";
+import { brandingSettings, serviceBrand } from "@/db/schema";
 import { eq } from "drizzle-orm";
+
+export interface ServiceBrandData {
+  serviceName: string;
+  city: string;
+  region: string;
+  regionCode: string;
+  supportPhone: string | null;
+  centerLat: number;
+  centerLng: number;
+  utcOffset: number;
+  smsSenderName: string;
+}
+
+export const SERVICE_BRAND_DEFAULTS: ServiceBrandData = {
+  serviceName: "Такси Тюмень",
+  city: "Тюмень",
+  region: "Тюменская область",
+  regionCode: "72",
+  supportPhone: "+7 (3452) 000-000",
+  centerLat: 57.1522,
+  centerLng: 65.5272,
+  utcOffset: 5,
+  smsSenderName: "Такси Тюмень",
+};
+
+// Детерминированный id — гарантия единственной строки бренда
+export const SERVICE_BRAND_ID = "11111111-1111-4111-8111-111111111111";
+
+export async function ensureServiceBrandSeeded(): Promise<void> {
+  await db
+    .insert(serviceBrand)
+    .values({ ...SERVICE_BRAND_DEFAULTS, id: SERVICE_BRAND_ID })
+    .onConflictDoNothing({ target: serviceBrand.id });
+  // Чистим возможные дубли старых установок
+  const rows = await db.select({ id: serviceBrand.id }).from(serviceBrand);
+  for (const row of rows) {
+    if (row.id !== SERVICE_BRAND_ID) {
+      await db.delete(serviceBrand).where(eq(serviceBrand.id, row.id));
+    }
+  }
+}
+
+export async function getServiceBrand(): Promise<ServiceBrandData> {
+  try {
+    await ensureServiceBrandSeeded();
+    const [row] = await db.select().from(serviceBrand).limit(1);
+    if (!row) return SERVICE_BRAND_DEFAULTS;
+    return {
+      serviceName: row.serviceName,
+      city: row.city,
+      region: row.region,
+      regionCode: row.regionCode,
+      supportPhone: row.supportPhone,
+      centerLat: row.centerLat,
+      centerLng: row.centerLng,
+      utcOffset: row.utcOffset,
+      smsSenderName: row.smsSenderName,
+    };
+  } catch {
+    return SERVICE_BRAND_DEFAULTS;
+  }
+}
 
 export type BrandApp = "client" | "driver" | "operator";
 

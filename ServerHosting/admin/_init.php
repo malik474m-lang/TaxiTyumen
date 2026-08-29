@@ -12,11 +12,11 @@ foreach (glob(dirname(__DIR__) . '/src/*.php') as $file) {
 
 $db = Db::pdo();
 Seed::ensure($db);
+$serviceSettings = ServiceSettings::get($db);
 Simulate::advance($db);
 AutoCall::tick($db);
 
 const ADMIN_COOKIE = 'tt_admin';
-const ADMIN_PAGE_TITLES = 'Такси Тюмень — Панель администратора';
 
 function admin_hmac_sign(string $data): string
 {
@@ -108,6 +108,9 @@ function fmt_date(?string $d): string
 
 function layout_header(string $title, string $active): void
 {
+    global $serviceSettings;
+    $service = $serviceSettings;
+    $utcOffset = (int) ($service['utc_offset'] ?? 5);
     // Структура исходной TaxiAdmin/NavMenu.razor + серверный брендинг
     $nav = [
         'index'     => ['index.php', 'Дашборд'],
@@ -120,7 +123,8 @@ function layout_header(string $title, string $active): void
         'stats'     => ['stats.php', 'Статистика'],
         'export'    => ['export.php', 'Экспорт CSV'],
         'autocall'  => ['autocall.php', 'Автодозвон'],
-        'branding'  => ['branding.php', 'Брендинг'],
+        'service'   => ['service.php', 'Бренд сервиса'],
+        'branding'  => ['branding.php', 'Приложения'],
         'services'  => ['services.php', 'API и сервисы'],
     ];
     ?>
@@ -129,7 +133,7 @@ function layout_header(string $title, string $active): void
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title><?= h($title) ?> — Такси Тюмень</title>
+<title><?= h($title) ?> — <?= h($service['service_name']) ?></title>
 <style>
 :root{--brand:#facc15;--ink:#0a0a0c;--panel:#121216;--line:rgba(255,255,255,.08)}
 *{box-sizing:border-box;margin:0}
@@ -199,7 +203,7 @@ footer{margin-top:40px;font-size:11px;color:#52525b;text-align:center}
 <header class="top">
   <div class="logo">
     <div class="tile">🚕</div>
-    <div>ТАКСИ ТЮМЕНЬ<small>панель администратора</small></div>
+    <div><?= h($service['service_name']) ?><small>панель администратора</small></div>
   </div>
   <nav>
     <?php foreach ($nav as $key => [$href, $label]): ?>
@@ -216,7 +220,7 @@ function layout_footer(): void
 {
     ?>
 <div class="checker"></div>
-<footer>TaxiTyumen ServerHosting · PHP + MySQL · Тюмень UTC+5</footer>
+<footer><?= h($service['service_name']) ?> · <?= h($service['city_name']) ?> · UTC<?= $utcOffset >= 0 ? '+' : '' ?><?= $utcOffset ?> · PHP + MySQL</footer>
 </main>
 <script>
 // CSRF-токен добавляется ко всем POST-формам централизованно
