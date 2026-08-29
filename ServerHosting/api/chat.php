@@ -1,7 +1,7 @@
 <?php
 // GET api/chat?orderId= — история | POST — отправить сообщение
 declare(strict_types=1);
-require_once dirname(__DIR__) . '/_bootstrap.php';
+require_once __DIR__ . '/_bootstrap.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $orderId = (string) ($_GET['orderId'] ?? '');

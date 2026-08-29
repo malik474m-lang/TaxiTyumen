@@ -3,6 +3,8 @@
 declare(strict_types=1);
 require_once dirname(__DIR__) . '/_bootstrap.php';
 
+Response::requireMethod('POST');
+
 $body = Response::requirePostJson();
 $phone = Auth::normalizePhone((string) ($body['phone'] ?? ''));
 $password = (string) ($body['password'] ?? '');

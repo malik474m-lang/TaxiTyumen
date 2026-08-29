@@ -17,6 +17,18 @@ final class Response
         self::json(['error' => $message], $status);
     }
 
+    // Явная блокировка неподходящего метода (в т.ч. открытие POST-URL в браузере)
+    public static function requireMethod(string ...$methods): void
+    {
+        $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+        if (!in_array($method, $methods, true)) {
+            self::error(
+                sprintf('Эндпоинт принимает только %s (вы отправили %s)', implode('/', $methods), $method),
+                405
+            );
+        }
+    }
+
     public static function requirePostJson(): array
     {
         $raw = file_get_contents('php://input') ?: '';

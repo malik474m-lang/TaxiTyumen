@@ -1,7 +1,7 @@
 <?php
 // GET api/stats — сводная статистика админки (только админ)
 declare(strict_types=1);
-require_once dirname(__DIR__) . '/_bootstrap.php';
+require_once __DIR__ . '/_bootstrap.php';
 
 $claims = Guard::claims();
 Guard::role($claims, 'admin');

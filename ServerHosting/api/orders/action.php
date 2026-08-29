@@ -5,6 +5,8 @@
 declare(strict_types=1);
 require_once dirname(__DIR__) . '/_bootstrap.php';
 
+Response::requireMethod('POST');
+
 $body = Response::requirePostJson();
 $id = (string) ($body['id'] ?? '');
 $action = (string) ($body['action'] ?? '');

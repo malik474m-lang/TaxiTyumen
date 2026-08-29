@@ -2,7 +2,7 @@
 // GET api/events.php?since=<lastId> — лёгкий realtime-поллинг (аналог SSE для хостинга)
 // Клиент хранит lastId и опрашивает каждые 2–4 секунды
 declare(strict_types=1);
-require_once dirname(__DIR__) . '/_bootstrap.php';
+require_once __DIR__ . '/_bootstrap.php';
 
 $since = (int) ($_GET['since'] ?? 0);
 $rows = $db->prepare('SELECT id, type FROM events WHERE id > ? LIMIT 500');

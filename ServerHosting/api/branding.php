@@ -1,7 +1,7 @@
 <?php
 // GET api/branding?app=client — публично | GET (все) — админ | PUT — админ
 declare(strict_types=1);
-require_once dirname(__DIR__) . '/_bootstrap.php';
+require_once __DIR__ . '/_bootstrap.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $app = (string) ($_GET['app'] ?? '');

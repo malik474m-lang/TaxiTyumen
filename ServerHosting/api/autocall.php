@@ -1,7 +1,7 @@
 <?php
 // GET api/autocall — настройки (оператор/админ) | PUT — изменение (админ)
 declare(strict_types=1);
-require_once dirname(__DIR__) . '/_bootstrap.php';
+require_once __DIR__ . '/_bootstrap.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $claims = Guard::claims();

@@ -7,6 +7,8 @@
 declare(strict_types=1);
 require_once dirname(__DIR__) . '/_bootstrap.php';
 
+Response::requireMethod('POST');
+
 $claims = Guard::claims();
 $body = Response::requirePostJson();
 
