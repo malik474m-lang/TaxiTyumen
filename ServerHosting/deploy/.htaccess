@@ -3,6 +3,10 @@
 Options -Indexes
 AddDefaultCharset utf-8
 
+# БЕЗОПАСНОСТЬ: закрываем .git и служебное из web-доступа
+RedirectMatch 404 ^/\.git
+RedirectMatch 404 ^/ServerHosting/(src|sql)(/|$)
+
 RewriteEngine On
 
 # Уже существующие реальные файлы отдаём как есть
