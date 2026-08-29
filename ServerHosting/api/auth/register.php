@@ -10,7 +10,7 @@ $phone = Auth::normalizePhone((string) ($body['phone'] ?? ''));
 $password = (string) ($body['password'] ?? '');
 $firstName = trim((string) ($body['firstName'] ?? ''));
 $lastName = trim((string) ($body['lastName'] ?? ''));
-$role = ($body['role'] ?? '') === 'driver' ? 'driver' : 'client';
+$role = strtolower((string) ($body['role'] ?? '')) === 'driver' ? 'driver' : 'client';
 
 if (strlen($phone) < 11) {
     Response::error('Укажите корректный телефон');

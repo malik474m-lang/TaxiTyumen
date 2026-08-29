@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
 using TaxiClient.Models;
@@ -133,7 +133,10 @@ public class ApiService
     {
         var resp = await _http.GetAsync($"chat/{orderId}");
         if (!resp.IsSuccessStatusCode) return new();
-        return await resp.Content.ReadFromJsonAsync<List<ChatMessageDto>>(_json) ?? new();
+        var messages = await resp.Content.ReadFromJsonAsync<List<ChatMessageDto>>(_json) ?? new();
+        if (CurrentUser != null)
+            await _http.PostAsync($"chat/{orderId}/read?userId={CurrentUser.UserId}", null);
+        return messages;
     }
 
     public async Task RateOrderAsync(Guid orderId, int rating, string? review)

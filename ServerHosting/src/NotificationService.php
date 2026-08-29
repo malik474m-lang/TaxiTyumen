@@ -212,9 +212,13 @@ final class NotificationService
             'orderId' => $order['id'],
             'orderNumber' => $order['order_number'],
             'pickupAddress' => $order['pickup_address'],
+            'pickupEntrance' => $order['pickup_entrance'] ?? null,
             'destinationAddress' => $order['destination_address'],
             'estimatedPrice' => (float) $order['estimated_price'],
-            'tariff' => $order['tariff'],
+            'tariff' => ucfirst($order['tariff']),
+            'comment' => $order['comment'] ?? null,
+            'passengerCount' => (int) ($order['passenger_count'] ?? 1),
+            'createdAt' => $order['created_at'],
             'status' => $order['status'],
         ];
     }

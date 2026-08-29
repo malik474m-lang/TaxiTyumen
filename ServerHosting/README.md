@@ -30,12 +30,14 @@
 | `GET /api/orders/item.php?id=` | все | Карточка заказа (+ GPS-симуляция) |
 | `POST /api/orders/action.php` | по ролям | `accept/reject/arrived/start/complete/cancel/assign/rate` — комиссия 15 %, штрафы, рейтинг |
 | `GET /api/drivers/?online=1` | все | Список водителей с координатами |
-| `POST /api/drivers/action.php` | driver/admin | `status/location` — самим водителем; `topup/verify` — только админ |
+| `POST /api/drivers/action.php` | driver/admin | `status/location` (GPS+history) — водителем; `topup` — operator/admin, `verify` — admin |
+| `GET /api/drivers/track.php` | driver/operator/admin | GPS-история водителя/заказа, расчёт километража |
 | `GET /api/tariffs/` | все | Тарифы; `PUT` — редактирование (admin) |
 | `POST /api/pricing.php` | все | Оценка цены всех тарифов + геометрия маршрута |
 | `GET/POST /api/chat.php` | участники | Чат по заказу + `action=read`, уведомление второго участника |
 | `GET/POST /api/notifications.php` | Bearer/admin | Лента/прочтение; admin: user/role/all, in-app/SMS |
-| `GET /api/services.php` | admin | Диагностика MySQL, OSRM, sms.ru, Zvonok, storage, realtime |
+| `GET /api/geocoding.php` | все | Server-side DaData + Nominatim search и reverse geocode |
+| `GET /api/services.php` | admin | Диагностика MySQL, OSRM, sms.ru, Zvonok, DaData, storage, realtime |
 | `GET/PUT /api/branding.php` | app=… публично, список/PUT — admin | Серверный брендинг 3 приложений (`logoUrl` входит в DTO) |
 | `GET/POST /api/branding-logo.php` | GET публично, POST admin | Выдача/загрузка/удаление логотипа, PNG/JPEG/WebP ≤ 2 МБ |
 | `GET/POST /api/operators/shift.php` | operator | Смены + выработка |
@@ -111,6 +113,24 @@ bash ServerHosting/deploy/deploy.sh   # копирует api/admin/src/sql на 
 4. Те же действия — для оператора и демо-водителей/демо-клиента (или удалите их из `users`)
 5. Укажите конкретный домен в `CORS_ORIGIN` вместо `*`
 6. Для SMS регистрации в кабинете sms.ru получите API-ключ и впишите в `SMS_API_ID`
+
+## Совместимость с исходными C# клиентами
+
+`api/router.php` + `api/.htaccess` поддерживают исходные ASP.NET URL:
+`/api/Auth/login|register|refresh|send-sms|verify-sms`,
+`/api/Orders/{id}/accept|reject|complete|force-assign|cancel|rate|status`,
+`/api/Drivers/{id}/location|status`, `online`, `/api/Balance/{id}/topup|history`,
+`/api/Pricing/estimate-all`, `/api/Operators/shift/{start,end}`, `/api/Chat/{id}/read`.
+
+Router адаптирует:
+- статусы `DriverAssigned ↔ driver_assigned`;
+- enum тарифов/оплаты (`Economy ↔ economy`, `BonusPoints ↔ bonus`);
+- PascalCase JSON (`ClientId`, `PickupAddress`);
+- старый формат AuthResponse (`token` на верхнем уровне);
+- query-string `driverId` в action-запросах.
+
+DaData/Nominatim весь выполнен сервером: мобильные приложения используют
+`/api/geocoding.php`, жёсткого ключа в исходниках больше нет.
 
 ## Отличия от веб-версии (Next.js)
 

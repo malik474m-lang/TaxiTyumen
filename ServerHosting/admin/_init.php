@@ -4,6 +4,8 @@ declare(strict_types=1);
 error_reporting(E_ALL & ~E_DEPRECATED & ~E_NOTICE);
 
 require_once dirname(__DIR__) . '/config.php';
+// Совместимость с прежним config.php на хостинге после deploy.sh
+if (!defined('DADATA_API_KEY')) define('DADATA_API_KEY', getenv('DADATA_API_KEY') ?: '');
 foreach (glob(dirname(__DIR__) . '/src/*.php') as $file) {
     require_once $file;
 }
