@@ -136,6 +136,18 @@ public class ApiService
         return messages;
     }
 
+    public async Task SendFleetMessageAsync(string text)
+    {
+        await _http.PostAsJsonAsync("fleetchat/send", new { Text = text });
+    }
+
+    public async Task<List<FleetMessageDto>> GetFleetMessagesAsync(long afterMs = 0)
+    {
+        var resp = await _http.GetAsync($"fleetchat?after={afterMs}");
+        if (!resp.IsSuccessStatusCode) return new();
+        return await resp.Content.ReadFromJsonAsync<List<FleetMessageDto>>(_json) ?? new();
+    }
+
     public async Task<DriverInfoDto?> GetDriverInfoAsync(Guid driverId)
     {
         var resp = await _http.GetAsync($"drivers/{driverId}");

@@ -89,6 +89,16 @@ public class ChatMessageDto
     public DateTime CreatedAt { get; set; }
     public bool IsRead { get; set; }
 }
+public class FleetMessageDto
+{
+    public Guid Id { get; set; }
+    public Guid SenderId { get; set; }
+    public string SenderName { get; set; } = "";
+    public string CarInfo { get; set; } = "";
+    public string Text { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+}
+
 public class DriverInfoDto
 {
     public Guid Id { get; set; }

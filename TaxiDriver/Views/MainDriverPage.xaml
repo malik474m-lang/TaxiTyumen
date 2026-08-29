@@ -304,6 +304,14 @@
 
                 <!-- Сортировка -->
                 <HorizontalStackLayout Spacing="8">
+                    <Button x:Name="FleetChatBtn"
+                            Text="Чат автопарка"
+                            BackgroundColor="#2196F3"
+                            TextColor="White"
+                            CornerRadius="16"
+                            HeightRequest="34"
+                            FontSize="12"
+                            Clicked="OnOpenFleetChat"/>
                     <Button x:Name="SortNearbyBtn"
                             Text=" Рядом"
                             BackgroundColor="#FFD700"

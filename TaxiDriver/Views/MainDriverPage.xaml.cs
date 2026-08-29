@@ -947,6 +947,14 @@ public partial class MainDriverPage : ContentPage
         }
         catch { }
     }
+        private async void OnOpenFleetChat(object? sender, EventArgs e)
+    {
+        try
+        {
+            await Navigation.PushAsync(new FleetChatPage(_api, _auth.UserId));
+        }
+        catch { }
+    }
         private async void OnYandexNavClicked(object? sender, EventArgs e)
     {
         await OpenNavigatorAsync("yandexnavi");
