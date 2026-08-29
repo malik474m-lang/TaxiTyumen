@@ -20,7 +20,7 @@
 
 ## ServerHosting (PHP + MySQL)
 
-Самостоятельный PHP-бэкенд для shared-хостинга: тот же API, токены и права ролей, база MySQL/PDO, одноразовый установщик. Инструкция деплоя: [`ServerHosting/README.md`](ServerHosting/README.md).
+Самостоятельный PHP-бэкенд для shared-хостинга + готовая админ-панель `/admin/`: тот же API, токены и права ролей, база MySQL/PDO, одноразовый установщик. Инструкция деплоя: [`ServerHosting/README.md`](ServerHosting/README.md).
 
 ## Веб-порт (TaxiTyumen.Web)
 
