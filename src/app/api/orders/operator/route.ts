@@ -12,6 +12,7 @@ import { serializeOrder } from "@/lib/serialize";
 import { normalizePhone } from "@/lib/auth";
 import { ensureSeeded } from "@/lib/seed";
 import { getServiceBrand } from "@/lib/branding";
+import { fixedZonePrice } from "@/lib/zones";
 import { publishEvent } from "@/lib/bus";
 import { readClaims, forbidden, hasAdminRole } from "@/lib/session";
 import { getRouteGeometry } from "@/lib/taxi";
@@ -64,10 +65,22 @@ export async function POST(req: Request) {
     let estimatedDistance: number | null = null;
     let estimatedDuration: number | null = null;
     let routeGeometry: string | null = null;
+    let pricingMode = "tariff";
+    let fromZoneId: string | null = null;
+    let toZoneId: string | null = null;
 
     if (destinationAddress && Number.isFinite(destLat)) {
       const est = await calculatePriceEstimate(pickupLat, pickupLng, destLat, destLng, tariff, service.utcOffset);
       estimatedPrice = est.price;
+      const zonePrice = await fixedZonePrice(pickupLat, pickupLng, destLat, destLng, tariff);
+      if (zonePrice) {
+        estimatedPrice = zonePrice.applyMultipliers
+          ? Math.round(zonePrice.price * est.multiplier)
+          : zonePrice.price;
+        pricingMode = "zone";
+        fromZoneId = zonePrice.fromZone.id;
+        toZoneId = zonePrice.toZone.id;
+      }
       estimatedDistance = est.distanceKm;
       estimatedDuration = est.durationMinutes;
       const geo = await getRouteGeometry(pickupLat, pickupLng, destLat, destLng);
@@ -106,6 +119,9 @@ export async function POST(req: Request) {
         estimatedDistance,
         estimatedDuration,
         routeGeometry,
+        pricingMode,
+        fromZoneId,
+        toZoneId,
         comment: body.comment ?? null,
         passengerCount: Number(body.passengerCount ?? 1) || 1,
         status: "searching",

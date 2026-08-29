@@ -178,6 +178,9 @@ export const orders = pgTable("orders", {
   estimatedDistance: doublePrecision("estimated_distance"),
   estimatedDuration: integer("estimated_duration"),
   routeGeometry: text("route_geometry"),
+  pricingMode: text("pricing_mode").notNull().default("tariff"),
+  fromZoneId: uuid("from_zone_id"),
+  toZoneId: uuid("to_zone_id"),
   paymentMethod: paymentMethodEnum("payment_method")
     .notNull()
     .default("cash"),
@@ -224,6 +227,38 @@ export const operatorShifts = pgTable("operator_shifts", {
     .notNull()
     .defaultNow(),
   endedAt: timestamp("ended_at", { withTimezone: true }),
+});
+
+// ── Зональная тарификация: полигоны зон и фиксированные цены ────────────────
+
+export const zones = pgTable("zones", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  color: text("color").notNull().default("#38bdf8"),
+  polygon: text("polygon").notNull(),
+  priority: integer("priority").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+});
+
+export const zonePrices = pgTable("zone_prices", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  fromZoneId: uuid("from_zone_id").notNull(),
+  toZoneId: uuid("to_zone_id").notNull(),
+  tariff: tariffTypeEnum("tariff").notNull().default("economy"),
+  price: doublePrecision("price").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+});
+
+export const zoneSettings = pgTable("zone_settings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  enabled: boolean("enabled").notNull().default(false),
+  applyMultipliers: boolean("apply_multipliers").notNull().default(false),
+  addOptions: boolean("add_options").notNull().default(true),
+  fallbackToTariff: boolean("fallback_to_tariff").notNull().default(true),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
 });
 
 // ── Admin sections visibility (управление доступом супер-админом) ───────────

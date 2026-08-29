@@ -163,6 +163,9 @@ if ($routeLower==='service-settings'||$routeLower==='servicebrand') {
     exit;
 }
 
+// Зональная тарификация
+if ($routeLower==='zones') { require $api.'/zones.php'; exit; }
+
 // Телефония
 if ($routeLower==='telephony/call') $dispatch($api.'/telephony/call.php');
 if ($routeLower==='telephony/settings') { require $api.'/telephony/settings.php'; exit; }

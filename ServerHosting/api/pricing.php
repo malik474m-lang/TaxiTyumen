@@ -31,11 +31,24 @@ $activeTariffs = $db->query('SELECT * FROM tariffs WHERE is_active = 1')->fetchA
 $estimates = [];
 foreach ($activeTariffs as $t) {
     $p = Taxi::computePrice($t, (float) $route['distanceKm'], (int) $service['utc_offset']);
+    $zonePrice = Zones::fixedPrice($db, $fromLat, $fromLng, $toLat, $toLng, (string) $t['type']);
+    $finalPrice = $p['price'];
+    $isFixed = false;
+    if ($zonePrice !== null) {
+        $finalPrice = $zonePrice['applyMultipliers']
+            ? round($zonePrice['price'] * (float) $p['multiplier'])
+            : $zonePrice['price'];
+        $isFixed = true;
+    }
     $estimates[] = [
         'tariffType' => $t['type'],
         'tariffName' => $t['name'],
         'description' => $t['description'],
-        'price' => $p['price'],
+        'price' => $finalPrice,
+        'isFixedPrice' => $isFixed,
+        'pricingMode' => $isFixed ? 'zone' : 'tariff',
+        'fromZone' => $zonePrice['fromZone']['name'] ?? null,
+        'toZone' => $zonePrice['toZone']['name'] ?? null,
         'distanceKm' => $route['distanceKm'],
         'durationMinutes' => $route['durationMinutes'],
         'isNightRate' => $p['isNightRate'],

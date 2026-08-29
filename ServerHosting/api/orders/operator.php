@@ -35,6 +35,9 @@ if ($destinationAddress && $destLat == 0.0) {
 }
 
 $tariff = Taxi::normalizeTariff($body['tariff'] ?? 'economy');
+$pricingMode = 'tariff';
+$fromZoneId = null;
+$toZoneId = null;
 $estimatedPrice = 0.0;
 $estimatedDistance = null;
 $estimatedDuration = null;
@@ -47,6 +50,15 @@ if ($destinationAddress && $destLat != 0.0) {
     if ($tariffRow = $t->fetch()) {
         $p = Taxi::computePrice($tariffRow, (float) $route['distanceKm'], (int) $service['utc_offset']);
         $estimatedPrice = (float) $p['price'];
+        $zonePrice = Zones::fixedPrice($db, $pickupLat, $pickupLng, $destLat, $destLng, $tariff);
+        if ($zonePrice !== null) {
+            $estimatedPrice = $zonePrice['applyMultipliers']
+                ? round($zonePrice['price'] * (float) $p['multiplier'])
+                : $zonePrice['price'];
+            $pricingMode = 'zone';
+            $fromZoneId = $zonePrice['fromZone']['id'];
+            $toZoneId = $zonePrice['toZone']['id'];
+        }
         $estimatedDistance = (float) $route['distanceKm'];
         $estimatedDuration = (int) $route['durationMinutes'];
         $routeGeometry = json_encode(
@@ -73,14 +85,16 @@ $db->prepare(
      pickup_address, pickup_latitude, pickup_longitude, pickup_entrance,
      destination_address, destination_latitude, destination_longitude,
      tariff, estimated_price, estimated_distance, estimated_duration, route_geometry,
+     pricing_mode, from_zone_id, to_zone_id,
      comment, passenger_count, status)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
 )->execute([
     $orderId, Taxi::generateOrderNumber(),
     (string) ($body['operatorId'] ?? $claims['uid']), 'operator_app', $clientPhone, $clientName,
     $pickupAddress, $pickupLat, $pickupLng, $body['pickupEntrance'] ?? null,
     $destinationAddress, $destLat != 0.0 ? $destLat : null, $destLng != 0.0 ? $destLng : null,
     $tariff, $estimatedPrice, $estimatedDistance, $estimatedDuration, $routeGeometry,
+    $pricingMode, $fromZoneId, $toZoneId,
     $body['comment'] ?? null,
     (int) ($body['passengerCount'] ?? 1) ?: 1,
     'searching',

@@ -124,6 +124,7 @@ final class Seed
     {
         Access::ensureTables($db);
         Telephony::ensureTables($db);
+        Zones::ensureTables($db);
         $exists = (int) $db->query("SELECT COUNT(*) FROM users WHERE role='superadmin'")->fetchColumn();
         $marker = Access::state($db, Access::MARKER_KEY);
         $recovery = defined('SUPERADMIN_RECOVERY') && SUPERADMIN_RECOVERY === true;
@@ -234,6 +235,11 @@ final class Seed
 
         // Загружаемый логотип для серверного брендинга
         self::addColumn($db, 'branding_settings', 'logo_path', "VARCHAR(255) NULL AFTER logo_icon");
+
+        // Зональная тарификация в заказе
+        self::addColumn($db, 'orders', 'pricing_mode', "ENUM('tariff','zone') NOT NULL DEFAULT 'tariff' AFTER actual_distance");
+        self::addColumn($db, 'orders', 'from_zone_id', "CHAR(36) NULL AFTER pricing_mode");
+        self::addColumn($db, 'orders', 'to_zone_id', "CHAR(36) NULL AFTER from_zone_id");
 
         // Дополнительные поля заказа из исходного Order.cs
         self::addColumn($db, 'orders', 'actual_distance', "DOUBLE NULL AFTER estimated_duration");

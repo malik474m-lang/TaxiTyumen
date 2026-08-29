@@ -73,6 +73,10 @@ export async function serializeOrder(order: Order) {
     finalPrice: order.finalPrice,
     estimatedDistance: order.estimatedDistance,
     estimatedDuration: order.estimatedDuration,
+    pricingMode: order.pricingMode ?? "tariff",
+    isFixedPrice: (order.pricingMode ?? "tariff") === "zone",
+    fromZoneId: order.fromZoneId ?? null,
+    toZoneId: order.toZoneId ?? null,
     routePoints: order.routeGeometry
       ? (JSON.parse(order.routeGeometry) as [number, number][])
       : null,

@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { getRealRoute, getRouteGeometry, computePrice, geocodeAddress } from "@/lib/taxi";
 import { ensureSeeded } from "@/lib/seed";
 import { getServiceBrand } from "@/lib/branding";
+import { fixedZonePrice } from "@/lib/zones";
 
 export async function POST(req: Request) {
   try {
@@ -38,14 +39,21 @@ export async function POST(req: Request) {
     const geometry = await getRouteGeometry(fromLat, fromLng, toLat, toLng);
     const activeTariffs = await db.select().from(tariffs).where(eq(tariffs.isActive, true));
 
-    const estimates = activeTariffs
-      .map((t) => {
+    const estimates = await Promise.all(activeTariffs.map(async (t) => {
         const p = computePrice(t, route.distanceKm, route.durationMinutes, service.utcOffset);
+        const zonePrice = await fixedZonePrice(fromLat, fromLng, toLat, toLng, t.type);
+        const finalPrice = zonePrice
+          ? (zonePrice.applyMultipliers ? Math.round(zonePrice.price * p.multiplier) : zonePrice.price)
+          : p.price;
         return {
           tariffType: t.type,
           tariffName: t.name,
           description: t.description,
-          price: p.price,
+          price: finalPrice,
+          isFixedPrice: Boolean(zonePrice),
+          pricingMode: zonePrice ? "zone" : "tariff",
+          fromZone: zonePrice?.fromZone.name ?? null,
+          toZone: zonePrice?.toZone.name ?? null,
           distanceKm: route.distanceKm,
           durationMinutes: route.durationMinutes,
           isNightRate: p.isNightRate,
@@ -53,8 +61,8 @@ export async function POST(req: Request) {
           multiplier: p.multiplier,
           minimumFare: t.minimumFare,
         };
-      })
-      .sort((a, b) => a.price - b.price);
+      }));
+    estimates.sort((a, b) => a.price - b.price);
 
     return NextResponse.json({
       from: { lat: fromLat, lng: fromLng },

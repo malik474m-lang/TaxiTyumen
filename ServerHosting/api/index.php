@@ -24,6 +24,7 @@ Response::json([
         'GET  /api/drivers/?online=1',
         'POST /api/drivers/action.php',
         'GET  /api/tariffs/ · PUT /api/tariffs/ (admin)',
+        'GET/PUT/POST /api/zones.php (зоны и фиксированные цены)',
         'POST /api/pricing.php',
         'GET/POST /api/chat.php (чат + mark read)',
         'GET/POST /api/notifications.php (in-app/SMS уведомления)',

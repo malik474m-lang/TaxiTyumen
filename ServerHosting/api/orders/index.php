@@ -47,6 +47,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $estimatedDuration = null;
     $routeGeometry = null;
 
+    $pricingMode = 'tariff';
+    $fromZoneId = null;
+    $toZoneId = null;
     if ($destinationAddress && $destLat != 0.0) {
         $route = Taxi::getRealRoute($pickupLat, $pickupLng, $destLat, $destLng);
         $t = $db->prepare("SELECT * FROM tariffs WHERE type = ? AND is_active = 1 LIMIT 1");
@@ -57,6 +60,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $p = Taxi::computePrice($tariffRow, (float) $route['distanceKm'], (int) $service['utc_offset']);
         $estimatedPrice = (float) $p['price'];
+
+        // Фиксированная зональная цена имеет приоритет над расчётом по километрам
+        $zonePrice = Zones::fixedPrice($db, $pickupLat, $pickupLng, $destLat, $destLng, $tariff);
+        if ($zonePrice !== null) {
+            $estimatedPrice = $zonePrice['applyMultipliers']
+                ? round($zonePrice['price'] * (float) $p['multiplier'])
+                : $zonePrice['price'];
+            $pricingMode = 'zone';
+            $fromZoneId = $zonePrice['fromZone']['id'];
+            $toZoneId = $zonePrice['toZone']['id'];
+        }
         $estimatedDistance = (float) $route['distanceKm'];
         $estimatedDuration = (int) $route['durationMinutes'];
         $routeGeometry = json_encode(
@@ -81,13 +95,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'INSERT INTO orders (id, order_number, client_id, source, pickup_address, pickup_latitude,
          pickup_longitude, pickup_entrance, destination_address, destination_latitude, destination_longitude,
          tariff, estimated_price, estimated_distance, estimated_duration, route_geometry,
+         pricing_mode, from_zone_id, to_zone_id,
          comment, passenger_count, payment_method, status)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
     )->execute([
         $orderId, Taxi::generateOrderNumber(), $clientId, 'client_app',
         $pickupAddress, $pickupLat, $pickupLng, $body['pickupEntrance'] ?? null,
         $destinationAddress, $destLat != 0.0 ? $destLat : null, $destLng != 0.0 ? $destLng : null,
         $tariff, $estimatedPrice, $estimatedDistance, $estimatedDuration, $routeGeometry,
+        $pricingMode, $fromZoneId, $toZoneId,
         $body['comment'] ?? null,
         (int) ($body['passengerCount'] ?? 1) ?: 1,
         Taxi::normalizePayment($body['paymentMethod'] ?? 'cash'),

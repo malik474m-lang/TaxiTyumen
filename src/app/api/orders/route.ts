@@ -13,6 +13,7 @@ import {
 import { serializeOrder } from "@/lib/serialize";
 import { ensureSeeded } from "@/lib/seed";
 import { getServiceBrand } from "@/lib/branding";
+import { fixedZonePrice } from "@/lib/zones";
 import { advanceDriversGps } from "@/lib/simulate";
 import { runAutoCallTick } from "@/lib/autocall";
 import { publishEvent } from "@/lib/bus";
@@ -65,9 +66,22 @@ export async function POST(req: Request) {
     let estimatedDistance: number | null = null;
     let estimatedDuration: number | null = null;
     let routeGeometry: string | null = null;
+    let pricingMode = "tariff";
+    let fromZoneId: string | null = null;
+    let toZoneId: string | null = null;
     if (destinationAddress && Number.isFinite(destLat)) {
       const est = await calculatePriceEstimate(pickupLat, pickupLng, destLat, destLng, tariff, service.utcOffset);
       estimatedPrice = est.price;
+      // Фиксированная зональная цена имеет приоритет над расчётом по км
+      const zonePrice = await fixedZonePrice(pickupLat, pickupLng, destLat, destLng, tariff);
+      if (zonePrice) {
+        estimatedPrice = zonePrice.applyMultipliers
+          ? Math.round(zonePrice.price * est.multiplier)
+          : zonePrice.price;
+        pricingMode = "zone";
+        fromZoneId = zonePrice.fromZone.id;
+        toZoneId = zonePrice.toZone.id;
+      }
       estimatedDistance = est.distanceKm;
       estimatedDuration = est.durationMinutes;
       // Геометрия по дорогам для карты
@@ -103,6 +117,9 @@ export async function POST(req: Request) {
         estimatedDistance,
         estimatedDuration,
         routeGeometry,
+        pricingMode,
+        fromZoneId,
+        toZoneId,
         comment: body.comment ?? null,
         passengerCount: Number(body.passengerCount ?? 1) || 1,
         paymentMethod: (body.paymentMethod as never) ?? "cash",

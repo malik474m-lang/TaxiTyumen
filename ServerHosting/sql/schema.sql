@@ -107,6 +107,9 @@ CREATE TABLE IF NOT EXISTS orders (
   estimated_distance   DOUBLE NULL,
   estimated_duration   INT NULL,
   actual_distance      DOUBLE NULL,
+  pricing_mode         ENUM('tariff','zone') NOT NULL DEFAULT 'tariff',
+  from_zone_id         CHAR(36) NULL,
+  to_zone_id           CHAR(36) NULL,
   route_geometry       MEDIUMTEXT NULL,
   payment_method       ENUM('cash','card','bonus') NOT NULL DEFAULT 'cash',
   status               ENUM('created','searching','driver_assigned','driver_en_route',
@@ -270,6 +273,39 @@ CREATE TABLE IF NOT EXISTS auto_call_settings (
   message_template        VARCHAR(1000) NOT NULL DEFAULT 'Ваше такси прибыло! {CarColor} {CarBrand} {CarModel}, номер {LicensePlate}. Бесплатное ожидание: {FreeWaitingMinutes} минут.',
   updated_at              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   last_tick_at            DATETIME NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS zones (
+  id         CHAR(36) PRIMARY KEY,
+  name       VARCHAR(80) NOT NULL,
+  color      VARCHAR(9) NOT NULL DEFAULT '#38bdf8',
+  polygon    MEDIUMTEXT NOT NULL,
+  priority   INT NOT NULL DEFAULT 0,
+  is_active  TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NULL,
+  INDEX (is_active, priority)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS zone_prices (
+  id           CHAR(36) PRIMARY KEY,
+  from_zone_id CHAR(36) NOT NULL,
+  to_zone_id   CHAR(36) NOT NULL,
+  tariff       ENUM('economy','comfort','business','minivan') NOT NULL DEFAULT 'economy',
+  price        DOUBLE NOT NULL,
+  is_active    TINYINT(1) NOT NULL DEFAULT 1,
+  updated_at   DATETIME NULL,
+  UNIQUE KEY uniq_route (from_zone_id, to_zone_id, tariff),
+  INDEX (from_zone_id), INDEX (to_zone_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS zone_settings (
+  id                 CHAR(36) PRIMARY KEY,
+  enabled            TINYINT(1) NOT NULL DEFAULT 0,
+  apply_multipliers  TINYINT(1) NOT NULL DEFAULT 0,
+  add_options        TINYINT(1) NOT NULL DEFAULT 1,
+  fallback_to_tariff TINYINT(1) NOT NULL DEFAULT 1,
+  updated_at         DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS telephony_settings (

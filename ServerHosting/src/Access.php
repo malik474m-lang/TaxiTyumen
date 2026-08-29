@@ -24,6 +24,7 @@ final class Access
         'messages'  => ['label' => 'Сообщения',      'file' => 'messages.php',  'superadminOnly' => false, 'locked' => false],
         'balance'   => ['label' => 'Балансы',        'file' => 'balance.php',   'superadminOnly' => false, 'locked' => false],
         'tariffs'   => ['label' => 'Тарифы',         'file' => 'tariffs.php',   'superadminOnly' => false, 'locked' => false],
+        'zones'     => ['label' => 'Зоны и цены',    'file' => 'zones.php',     'superadminOnly' => false, 'locked' => false],
         'stats'     => ['label' => 'Статистика',     'file' => 'stats.php',     'superadminOnly' => false, 'locked' => false],
         'export'    => ['label' => 'Экспорт CSV',    'file' => 'export.php',    'superadminOnly' => false, 'locked' => false],
         'autocall'  => ['label' => 'Автодозвон',     'file' => 'autocall.php',  'superadminOnly' => false, 'locked' => false],
