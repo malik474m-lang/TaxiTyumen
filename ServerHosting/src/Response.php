@@ -21,6 +21,13 @@ final class Response
     {
         $raw = file_get_contents('php://input') ?: '';
         $body = json_decode($raw, true);
+        if (is_array($body) && $body !== []) {
+            return $body;
+        }
+        // Fallback: классические HTML-формы / Postman form-data / curl -d без заголовка
+        if (!empty($_POST)) {
+            return $_POST;
+        }
         return is_array($body) ? $body : [];
     }
 }
