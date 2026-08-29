@@ -2,7 +2,7 @@
 // CSV-экспорт заказов / водителей / балансов за период (cookie admin session).
 declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
-admin_require($db);
+admin_require($db, 'export');
 
 $type=in_array(($_GET['type']??''),['orders','drivers','balance'],true)?(string)$_GET['type']:'orders';
 $from=preg_match('/^\d{4}-\d{2}-\d{2}$/',(string)($_GET['from']??''))?$_GET['from']:gmdate('Y-m-d',time()-30*86400);

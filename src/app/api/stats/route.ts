@@ -5,13 +5,13 @@ import { orders, drivers, users } from "@/db/schema";
 import { sql, gte, eq, and } from "drizzle-orm";
 import { ACTIVE_STATUSES } from "@/lib/taxi";
 import { inArray } from "drizzle-orm";
-import { readClaims, forbidden } from "@/lib/session";
+import { readClaims, forbidden, hasAdminRole } from "@/lib/session";
 
 export async function GET(req: Request) {
   try {
     // Статистика сервиса — только админ
     const claims = readClaims(req);
-    if (!claims || claims.role !== "admin") {
+    if (!claims || !hasAdminRole(claims.role)) {
       return forbidden("Статистика доступна только администратору");
     }
 

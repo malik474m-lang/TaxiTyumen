@@ -6,11 +6,12 @@
 CREATE TABLE IF NOT EXISTS users (
   id                CHAR(36) PRIMARY KEY,
   phone             VARCHAR(20)  NOT NULL UNIQUE,
+  username          VARCHAR(60)  NULL UNIQUE,
   first_name        VARCHAR(60)  NOT NULL,
   last_name         VARCHAR(60)  NOT NULL,
   email             VARCHAR(120) NULL,
   password_hash     VARCHAR(255) NOT NULL,
-  role              ENUM('client','driver','operator','admin') NOT NULL DEFAULT 'client',
+  role              ENUM('client','driver','operator','admin','superadmin') NOT NULL DEFAULT 'client',
   is_active         TINYINT(1)   NOT NULL DEFAULT 1,
   is_blocked        TINYINT(1)   NOT NULL DEFAULT 0,
   block_reason      VARCHAR(255) NULL,
@@ -266,6 +267,18 @@ CREATE TABLE IF NOT EXISTS service_call_logs (
   duration_ms    INT NULL,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX (service), INDEX (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS system_state (
+  state_key   VARCHAR(60) PRIMARY KEY,
+  state_value VARCHAR(255) NOT NULL,
+  updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS admin_sections (
+  section_key       VARCHAR(40) PRIMARY KEY,
+  visible_for_admin TINYINT(1) NOT NULL DEFAULT 1,
+  updated_at        DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS service_settings (

@@ -1,7 +1,7 @@
 <?php
 // Просмотр GPS-трека водителя/заказа в админке.
 declare(strict_types=1);
-require_once __DIR__.'/_init.php';admin_require($db);
+require_once __DIR__.'/_init.php';admin_require($db, 'drivers');
 $id=(string)($_GET['id']??'');$orderId=(string)($_GET['order']??'');
 $d=$db->prepare('SELECT d.*,u.first_name,u.last_name FROM drivers d JOIN users u ON u.id=d.user_id WHERE d.id=?');$d->execute([$id]);$driver=$d->fetch();if(!$driver){http_response_code(404);exit('Водитель не найден');}
 $sql='SELECT * FROM driver_location_history WHERE driver_id=?';$params=[$id];if($orderId!==''){$sql.=' AND order_id=?';$params[]=$orderId;}$sql.=' ORDER BY timestamp DESC LIMIT 1000';$s=$db->prepare($sql);$s->execute($params);$points=array_reverse($s->fetchAll());$distance=0.0;for($i=1;$i<count($points);$i++)$distance+=Taxi::getDistanceKm((float)$points[$i-1]['latitude'],(float)$points[$i-1]['longitude'],(float)$points[$i]['latitude'],(float)$points[$i]['longitude']);

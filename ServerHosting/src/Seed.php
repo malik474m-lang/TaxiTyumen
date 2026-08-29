@@ -13,6 +13,7 @@ final class Seed
         // Runtime-миграции для уже установленной базы — повторный install.php не нужен
         self::migrateExistingDatabase($db);
         ServiceSettings::get($db);
+        self::ensureSuperadmin($db);
 
         // Тарифы
         $count = (int) $db->query('SELECT COUNT(*) FROM tariffs')->fetchColumn();
@@ -114,6 +115,40 @@ final class Seed
         }
     }
 
+    /**
+     * Супер-администратор создаётся один раз при первичной установке.
+     * Если запись удалили из БД — система блокируется (Access::integrity),
+     * восстановление только через SUPERADMIN_RECOVERY в config.local.php.
+     */
+    private static function ensureSuperadmin(\PDO $db): void
+    {
+        Access::ensureTables($db);
+        $exists = (int) $db->query("SELECT COUNT(*) FROM users WHERE role='superadmin'")->fetchColumn();
+        $marker = Access::state($db, Access::MARKER_KEY);
+        $recovery = defined('SUPERADMIN_RECOVERY') && SUPERADMIN_RECOVERY === true;
+
+        if ($exists === 0 && ($marker === null || $recovery)) {
+            $login = Access::SUPERADMIN_LOGIN;
+            $password = defined('SUPERADMIN_PASSWORD') && SUPERADMIN_PASSWORD !== ''
+                ? SUPERADMIN_PASSWORD
+                : 'Malik9091868294';
+            $id = Db::uuid();
+            // Технический телефон: вход выполняется по логину
+            $phone = '+70000000001';
+            $db->prepare(
+                "INSERT INTO users (id, phone, username, first_name, last_name, password_hash, role, is_phone_verified, is_active)
+                 VALUES (?,?,?,?,?,?, 'superadmin', 1, 1)
+                 ON DUPLICATE KEY UPDATE username=VALUES(username), password_hash=VALUES(password_hash), role='superadmin'"
+            )->execute([$id, $phone, $login, 'Супер', 'Администратор', Auth::hashPassword($password)]);
+
+            $idStmt = $db->prepare("SELECT id FROM users WHERE username=? LIMIT 1");
+            $idStmt->execute([$login]);
+            Access::setState($db, Access::MARKER_KEY, (string) ($idStmt->fetchColumn() ?: $id));
+        }
+
+        Access::installGuards($db);
+    }
+
     private static function hasColumn(\PDO $db, string $table, string $column): bool
     {
         $stmt = $db->prepare(
@@ -148,6 +183,32 @@ final class Seed
                 FOREIGN KEY (user_id) REFERENCES users(id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
         );
+
+        // Роль супер-администратора и вход по логину
+        self::addColumn($db, 'users', 'username', "VARCHAR(60) NULL AFTER phone");
+        $roleStmt = $db->prepare(
+            "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND COLUMN_NAME='role'"
+        );
+        $roleStmt->execute();
+        if (!str_contains((string) ($roleStmt->fetchColumn() ?: ''), "'superadmin'")) {
+            $db->exec(
+                "ALTER TABLE users MODIFY role
+                 ENUM('client','driver','operator','admin','superadmin') NOT NULL DEFAULT 'client'"
+            );
+        }
+        $idxStmt = $db->prepare(
+            "SELECT COUNT(*) FROM information_schema.STATISTICS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND INDEX_NAME='users_username_unique'"
+        );
+        $idxStmt->execute();
+        if ((int) $idxStmt->fetchColumn() === 0) {
+            try {
+                $db->exec('ALTER TABLE users ADD UNIQUE INDEX users_username_unique (username)');
+            } catch (\Throwable) {
+            }
+        }
+        Access::ensureTables($db);
 
         // Новые поля профиля водителя из исходной Driver.cs
         self::addColumn($db, 'drivers', 'license_expiry', "DATETIME NULL AFTER driver_license");

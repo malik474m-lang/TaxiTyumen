@@ -12,15 +12,24 @@ if (admin_current($db)) {
 $service = ServiceSettings::get($db);
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $phone = Auth::normalizePhone((string) ($_POST['phone'] ?? ''));
+    $raw = trim((string) ($_POST['phone'] ?? ''));
     $password = (string) ($_POST['password'] ?? '');
 
-    $stmt = $db->prepare("SELECT * FROM users WHERE phone = ? AND role = 'admin' LIMIT 1");
-    $stmt->execute([$phone]);
-    $user = $stmt->fetch();
+    // Вход по логину (супер-админ) либо по телефону
+    $user = null;
+    if ($raw !== '' && !preg_match('/^[\d\+\(\)\-\s]+$/', $raw)) {
+        $stmt = $db->prepare("SELECT * FROM users WHERE username = ? AND role IN ('admin','superadmin') LIMIT 1");
+        $stmt->execute([$raw]);
+        $user = $stmt->fetch() ?: null;
+    }
+    if (!$user) {
+        $stmt = $db->prepare("SELECT * FROM users WHERE phone = ? AND role IN ('admin','superadmin') LIMIT 1");
+        $stmt->execute([Auth::normalizePhone($raw)]);
+        $user = $stmt->fetch() ?: null;
+    }
 
     if (!$user || !Auth::verifyPassword($password, $user['password_hash'])) {
-        $error = 'Неверный телефон или пароль администратора';
+        $error = 'Неверный логин/телефон или пароль';
     } elseif ($user['is_blocked']) {
         $error = 'Аккаунт заблокирован: ' . ($user['block_reason'] ?? '');
     } else {
@@ -68,7 +77,7 @@ button:hover{filter:brightness(1.1)}
   <div class="sub"><?= h($service['service_name']) ?><?= $service['region_code'] ? ' · '.h($service['region_code']).' регион' : '' ?></div>
   <?php if ($error): ?><div class="err"><?= h($error) ?></div><?php endif; ?>
   <form method="post">
-    <input name="phone" placeholder="+7 (___) ___-__-__" required autofocus value="<?= h($_POST['phone'] ?? '') ?>">
+    <input name="phone" placeholder="Логин или телефон" required autofocus value="<?= h($_POST['phone'] ?? '') ?>">
     <input type="password" name="password" placeholder="Пароль" required>
     <button type="submit">Войти</button>
   </form>

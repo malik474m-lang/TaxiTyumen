@@ -6,7 +6,7 @@ export interface SessionUser {
   lastName: string;
   name: string;
   email?: string | null;
-  role: "client" | "driver" | "operator" | "admin";
+  role: "client" | "driver" | "operator" | "admin" | "superadmin";
   rating: number;
   driverId?: string | null;
   /** HMAC-токен сессии (выдаётся сервером при логине) */

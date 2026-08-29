@@ -13,8 +13,8 @@ export async function GET() {
 
 export async function PUT(req: Request) {
   const claims = readClaims(req);
-  if (!claims || claims.role !== "admin") {
-    return forbidden("Бренд сервиса меняет только администратор");
+  if (!claims || claims.role !== "superadmin") {
+    return forbidden("Бренд сервиса меняет только супер-администратор");
   }
   await ensureServiceBrandSeeded();
   const [existing] = await db

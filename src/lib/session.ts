@@ -37,6 +37,10 @@ export function readClaims(req: Request): Claims | null {
   }
 }
 
+export function hasAdminRole(role?: string | null): boolean {
+  return role === "admin" || role === "superadmin";
+}
+
 export function unauthorized(message = "Требуется вход") {
   return NextResponse.json({ error: message }, { status: 401 });
 }

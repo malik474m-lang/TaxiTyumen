@@ -3,7 +3,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
 
-$admin = admin_require($db);
+$admin = admin_require($db, 'branding');
 
 $app = in_array($appParam = (string) ($_GET['app'] ?? 'client'), Branding::APPS, true) ? $appParam : 'client';
 

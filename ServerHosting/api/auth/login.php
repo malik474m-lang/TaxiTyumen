@@ -6,12 +6,22 @@ require_once dirname(__DIR__) . '/_bootstrap.php';
 Response::requireMethod('POST');
 
 $body = Response::requirePostJson();
-$phone = Auth::normalizePhone((string) ($body['phone'] ?? ''));
+$raw = trim((string) ($body['phone'] ?? $body['login'] ?? $body['username'] ?? ''));
 $password = (string) ($body['password'] ?? '');
 
-$stmt = $db->prepare('SELECT * FROM users WHERE phone = ? LIMIT 1');
-$stmt->execute([$phone]);
-$user = $stmt->fetch();
+// Персонал может входить по логину (супер-админ), остальные — по телефону
+$user = null;
+if ($raw !== '' && !preg_match('/^[\d\+\(\)\-\s]+$/', $raw)) {
+    $stmt = $db->prepare('SELECT * FROM users WHERE username = ? LIMIT 1');
+    $stmt->execute([$raw]);
+    $user = $stmt->fetch() ?: null;
+}
+if (!$user) {
+    $phone = Auth::normalizePhone($raw);
+    $stmt = $db->prepare('SELECT * FROM users WHERE phone = ? LIMIT 1');
+    $stmt->execute([$phone]);
+    $user = $stmt->fetch() ?: null;
+}
 
 if (!$user) {
     Response::error('Пользователь не найден', 404);

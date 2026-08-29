@@ -13,7 +13,7 @@ import { normalizePhone } from "@/lib/auth";
 import { ensureSeeded } from "@/lib/seed";
 import { getServiceBrand } from "@/lib/branding";
 import { publishEvent } from "@/lib/bus";
-import { readClaims, forbidden } from "@/lib/session";
+import { readClaims, forbidden, hasAdminRole } from "@/lib/session";
 import { getRouteGeometry } from "@/lib/taxi";
 import { orderOptions } from "@/db/schema";
 import { resolveOptions, optionsTotal } from "@/lib/options";
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
 
     // Авторизация: заказы по телефону создают только оператор и админ
     const claims = readClaims(req);
-    if (!claims || (claims.role !== "operator" && claims.role !== "admin")) {
+    if (!claims || (claims.role !== "operator" && !hasAdminRole(claims.role))) {
       return forbidden("Создание операторского заказа доступно только диспетчерской");
     }
 

@@ -16,6 +16,7 @@ export const userRoleEnum = pgEnum("user_role", [
   "driver",
   "operator",
   "admin",
+  "superadmin",
 ]);
 
 export const driverStatusEnum = pgEnum("driver_status", [
@@ -67,6 +68,7 @@ export const transactionTypeEnum = pgEnum("transaction_type", [
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   phone: text("phone").notNull().unique(),
+  username: text("username").unique(),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   email: text("email"),
@@ -215,6 +217,20 @@ export const operatorShifts = pgTable("operator_shifts", {
     .notNull()
     .defaultNow(),
   endedAt: timestamp("ended_at", { withTimezone: true }),
+});
+
+// ── Admin sections visibility (управление доступом супер-админом) ───────────
+
+export const adminSections = pgTable("admin_sections", {
+  sectionKey: text("section_key").primaryKey(),
+  visibleForAdmin: boolean("visible_for_admin").notNull().default(true),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+});
+
+export const systemState = pgTable("system_state", {
+  stateKey: text("state_key").primaryKey(),
+  stateValue: text("state_value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ── Service brand (единый бренд сервиса: название, город, центр, TZ) ────────

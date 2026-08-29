@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { drivers, balanceTransactions } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { publishEvent } from "@/lib/bus";
-import { readClaims, unauthorized, forbidden } from "@/lib/session";
+import { readClaims, unauthorized, forbidden, hasAdminRole } from "@/lib/session";
 
 export async function POST(
   req: Request,
@@ -26,7 +26,7 @@ export async function POST(
       }
     }
     if (action === "topup" || action === "verify") {
-      if (claims.role !== "admin") {
+      if (!hasAdminRole(claims.role)) {
         return forbidden("Баланс и верификация управляются только администратором");
       }
     }

@@ -3,7 +3,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
 
-$admin = admin_require($db);
+$admin = admin_require($db, 'balance');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $driverId = (string) ($_POST['driver_id'] ?? '');

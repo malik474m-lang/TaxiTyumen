@@ -21,6 +21,7 @@ import {
   MapPinned,
   MessageSquare,
   ListOrdered,
+  ShieldCheck,
 } from "lucide-react";
 import { api, getSession, setSession, type SessionUser } from "@/lib/client";
 import type { BrandingData } from "@/lib/branding";
@@ -31,6 +32,7 @@ export const ROLE_PATHS: Record<SessionUser["role"], string> = {
   driver: "/driver",
   operator: "/operator",
   admin: "/admin",
+  superadmin: "/admin",
 };
 
 interface RoleTheme {
@@ -107,6 +109,21 @@ export const ROLE_THEMES: Record<SessionUser["role"], RoleTheme> = {
       { icon: Wallet, text: "Пополнение балансов" },
     ],
     demo: { phone: "+79001234567", password: "Admin123!", note: "Админ системы" },
+    allowRegister: false,
+  },
+  superadmin: {
+    appCode: "TaxiAdmin · Super",
+    appName: "Панель супер-администратора",
+    icon: Gauge,
+    tileClass: "bg-fuchsia-400 text-fuchsia-950 shadow-fuchsia-400/25",
+    accentText: "text-fuchsia-400",
+    description: "Полный доступ: бренд сервиса, видимость разделов и учётные записи администраторов.",
+    features: [
+      { icon: Sparkles, text: "Бренд сервиса и города" },
+      { icon: ShieldCheck, text: "Видимость разделов админов" },
+      { icon: Gauge, text: "Все возможности администратора" },
+    ],
+    demo: { phone: "Rudakov", password: "—", note: "Вход по логину" },
     allowRegister: false,
   },
 };

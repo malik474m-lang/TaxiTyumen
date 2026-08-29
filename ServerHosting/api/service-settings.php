@@ -10,7 +10,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
 if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
     $claims = Guard::claims();
-    Guard::role($claims, 'admin');
+    // Бренд сервиса меняет только супер-администратор
+    Guard::superadmin($claims);
     $body = Response::requirePostJson();
     try {
         $updated = ServiceSettings::update($db, $body);

@@ -38,7 +38,6 @@
 | `GET/POST /api/notifications.php` | Bearer/admin | Лента/прочтение; admin: user/role/all, in-app/SMS |
 | `GET /api/geocoding.php` | все | Server-side DaData + Nominatim search и reverse geocode |
 | `GET /api/services.php` | admin | Диагностика MySQL, OSRM, sms.ru, Zvonok, DaData, storage, realtime |
-| `GET/PUT /api/service-settings.php` | все / admin | Единый бренд сервиса: название, город, центр карты, UTC, SMS-подпись |
 | `GET/PUT /api/branding.php` | app=… публично, список/PUT — admin | Серверный брендинг 3 приложений (`logoUrl` входит в DTO) |
 | `GET/POST /api/branding-logo.php` | GET публично, POST admin | Выдача/загрузка/удаление логотипа, PNG/JPEG/WebP ≤ 2 МБ |
 | `GET/POST /api/operators/shift.php` | operator | Смены + выработка |

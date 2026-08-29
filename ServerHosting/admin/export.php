@@ -2,7 +2,7 @@
 // Экспорт — порт TaxiAdmin/Export.razor: период + три набора данных.
 declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
-admin_require($db);
+admin_require($db, 'export');
 $from=preg_match('/^\d{4}-\d{2}-\d{2}$/',(string)($_GET['from']??''))?$_GET['from']:gmdate('Y-m-d',time()-30*86400);
 $to=preg_match('/^\d{4}-\d{2}-\d{2}$/',(string)($_GET['to']??''))?$_GET['to']:gmdate('Y-m-d');
 layout_header('Экспорт','export');

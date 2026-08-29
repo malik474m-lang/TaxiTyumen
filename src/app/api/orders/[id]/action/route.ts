@@ -14,7 +14,7 @@ import {
 import { eq, sql, and, isNotNull } from "drizzle-orm";
 import { serializeOrder } from "@/lib/serialize";
 import { publishEvent } from "@/lib/bus";
-import { readClaims, unauthorized, forbidden } from "@/lib/session";
+import { readClaims, unauthorized, forbidden, hasAdminRole } from "@/lib/session";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -78,12 +78,12 @@ export async function POST(req: Request, ctx: Ctx) {
         return forbidden("Этот заказ принадлежит другому водителю");
       }
     } else if (action === "assign") {
-      if (claims.role !== "operator" && claims.role !== "admin") {
+      if (claims.role !== "operator" && !hasAdminRole(claims.role)) {
         return forbidden("Назначать водителя может только диспетчерская");
       }
     } else if (action === "cancel") {
       const isOwner = order.clientId !== null && order.clientId === claims.uid;
-      if (!isOwner && claims.role !== "operator" && claims.role !== "admin") {
+      if (!isOwner && claims.role !== "operator" && !hasAdminRole(claims.role)) {
         return forbidden("Отменить заказ может клиент-владелец или диспетчерская");
       }
     } else if (action === "rate") {

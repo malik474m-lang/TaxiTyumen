@@ -4,8 +4,11 @@ import { users, drivers, tariffs } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { hashPassword } from "@/lib/auth";
 import { CITY } from "@/lib/taxi";
+import { ensureSuperadmin, ensureSectionsSeeded } from "@/lib/access";
 
 export async function ensureSeeded() {
+  await ensureSuperadmin();
+  await ensureSectionsSeeded();
   // Тарифы (тарифы для Тюмени из DataSeeder)
   const [{ count: tariffCount }] = await db
     .select({ count: sql<number>`count(*)::int` })

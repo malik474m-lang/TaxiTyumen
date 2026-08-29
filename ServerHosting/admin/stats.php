@@ -3,7 +3,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
 
-admin_require($db);
+admin_require($db, 'stats');
 
 $requestedPeriod = (int) ($_GET['days'] ?? 30);
 $period = in_array($requestedPeriod, [7, 30, 90, 365], true) ? $requestedPeriod : 30;

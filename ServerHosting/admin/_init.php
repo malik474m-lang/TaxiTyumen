@@ -56,17 +56,46 @@ function admin_current(\PDO $db): ?array
     if (time() - (int) $ts > 43200) {
         return null;
     }
-    $stmt = $db->prepare("SELECT * FROM users WHERE id = ? AND role = 'admin' AND is_blocked = 0 LIMIT 1");
+    $stmt = $db->prepare(
+        "SELECT * FROM users WHERE id = ? AND role IN ('admin','superadmin') AND is_blocked = 0 LIMIT 1"
+    );
     $stmt->execute([$uid]);
     $user = $stmt->fetch() ?: null;
     return $user;
 }
 
-function admin_require(\PDO $db): array
+function admin_require(\PDO $db, ?string $section = null): array
 {
+    // Целостность: без супер-администратора панель заблокирована
+    $integrity = Access::integrity($db);
+    if (!$integrity['ok']) {
+        http_response_code(503);
+        echo '<!DOCTYPE html><meta charset="utf-8"><title>Система заблокирована</title>'
+            . '<div style="font:15px/1.6 system-ui;background:#0a0a0c;color:#fca5a5;min-height:100vh;'
+            . 'display:flex;align-items:center;justify-content:center;padding:24px;text-align:center">'
+            . '<div><h1 style="font-size:22px">Система заблокирована</h1><p>'
+            . h((string) ($integrity['message'] ?? 'Нарушена целостность ролей'))
+            . '</p><p style="color:#71717a;font-size:13px">Восстановление: добавьте в config.local.php '
+            . '<code>define(\'SUPERADMIN_RECOVERY\', true);</code>, откройте панель и снова удалите строку.</p></div></div>';
+        exit;
+    }
+
     $admin = admin_current($db);
     if (!$admin) {
         header('Location: login.php');
+        exit;
+    }
+
+    // Раздел скрыт супер-админом или доступен только ему
+    if ($section !== null && !Access::canAccess($db, (string) $admin['role'], $section)) {
+        http_response_code(403);
+        layout_header('Нет доступа', 'index');
+        echo '<div class="card" style="margin-top:20px"><h1>Раздел недоступен</h1>'
+            . '<p class="mut" style="margin-top:8px">Доступ к разделу «'
+            . h(Access::SECTIONS[$section]['label'] ?? $section)
+            . '» ограничен супер-администратором.</p>'
+            . '<a class="btn ghost" style="margin-top:14px" href="index.php">← На дашборд</a></div>';
+        layout_footer();
         exit;
     }
     // Все изменения из server-rendered панели защищены CSRF-токеном
@@ -108,25 +137,18 @@ function fmt_date(?string $d): string
 
 function layout_header(string $title, string $active): void
 {
-    global $serviceSettings;
+    global $serviceSettings, $db;
     $service = $serviceSettings;
     $utcOffset = (int) ($service['utc_offset'] ?? 5);
-    // Структура исходной TaxiAdmin/NavMenu.razor + серверный брендинг
-    $nav = [
-        'index'     => ['index.php', 'Дашборд'],
-        'orders'    => ['orders.php', 'Заказы'],
-        'drivers'   => ['drivers.php', 'Водители'],
-        'clients'   => ['clients.php', 'Клиенты'],
-        'operators' => ['operators.php', 'Операторы'],
-        'balance'   => ['balance.php', 'Балансы'],
-        'tariffs'   => ['tariffs.php', 'Тарифы'],
-        'stats'     => ['stats.php', 'Статистика'],
-        'export'    => ['export.php', 'Экспорт CSV'],
-        'autocall'  => ['autocall.php', 'Автодозвон'],
-        'service'   => ['service.php', 'Бренд сервиса'],
-        'branding'  => ['branding.php', 'Приложения'],
-        'services'  => ['services.php', 'API и сервисы'],
-    ];
+    $currentUser = admin_current($db);
+    $role = (string) ($currentUser['role'] ?? 'admin');
+    $isSuper = $role === 'superadmin';
+    // Меню строится по роли: superadmin видит всё, admin — только разрешённое
+    $nav = [];
+    foreach (Access::visibleSections($db, $role) as $sectionKey) {
+        $meta = Access::SECTIONS[$sectionKey];
+        $nav[$sectionKey] = [$meta['file'], $meta['label']];
+    }
     ?>
 <!DOCTYPE html>
 <html lang="ru">
@@ -202,8 +224,8 @@ footer{margin-top:40px;font-size:11px;color:#52525b;text-align:center}
 <body>
 <header class="top">
   <div class="logo">
-    <div class="tile">🚕</div>
-    <div><?= h($service['service_name']) ?><small>панель администратора</small></div>
+    <div class="tile"><?= $isSuper ? '👑' : '🚕' ?></div>
+    <div><?= h($service['service_name']) ?><small><?= $isSuper ? 'супер-администратор' : 'панель администратора' ?></small></div>
   </div>
   <nav>
     <?php foreach ($nav as $key => [$href, $label]): ?>

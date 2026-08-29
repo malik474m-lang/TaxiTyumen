@@ -3,7 +3,17 @@
 declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
 
-$admin = admin_require($db);
+$admin = admin_require($db, 'service');
+// Дополнительная защита: бренд сервиса меняет только супер-администратор
+if (!Access::isSuperadmin($admin)) {
+    http_response_code(403);
+    layout_header('Нет доступа', 'index');
+    echo '<div class="card" style="margin-top:20px"><h1>Раздел супер-администратора</h1>'
+        . '<p class="mut" style="margin-top:8px">Бренд сервиса недоступен обычному администратору.</p>'
+        . '<a class="btn ghost" style="margin-top:14px" href="index.php">← На дашборд</a></div>';
+    layout_footer();
+    exit;
+}
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

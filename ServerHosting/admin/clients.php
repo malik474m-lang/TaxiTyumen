@@ -3,7 +3,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
 
-$admin = admin_require($db);
+$admin = admin_require($db, 'clients');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $id = (string) ($_POST['id'] ?? '');

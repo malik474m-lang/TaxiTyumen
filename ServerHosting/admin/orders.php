@@ -3,7 +3,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
 
-$admin = admin_require($db);
+$admin = admin_require($db, 'orders');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['cmd'] ?? '') === 'cancel') {
     $id = (string) ($_POST['id'] ?? '');

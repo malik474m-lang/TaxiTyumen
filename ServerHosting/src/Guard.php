@@ -17,8 +17,21 @@ final class Guard
 
     public static function role(array $claims, string ...$roles): void
     {
-        if (!in_array($claims['role'] ?? '', $roles, true)) {
+        $role = (string) ($claims['role'] ?? '');
+        // Супер-админ обладает всеми правами администратора
+        if ($role === 'superadmin' && in_array('admin', $roles, true)) {
+            return;
+        }
+        if (!in_array($role, $roles, true)) {
             Response::error('Недостаточно прав для этой роли', 403);
+        }
+    }
+
+    /** Действия, доступные только супер-администратору. */
+    public static function superadmin(array $claims): void
+    {
+        if (($claims['role'] ?? '') !== 'superadmin') {
+            Response::error('Действие доступно только супер-администратору', 403);
         }
     }
 }
