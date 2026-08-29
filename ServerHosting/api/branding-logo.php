@@ -40,6 +40,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         Response::json(['ok' => true, 'logoUrl' => null]);
     }
 
+    // multipart-тело обрезано лимитом post_max_size — PHP молча опустошил $_FILES
+    if (empty($_FILES) && empty($_POST) && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+        Response::error('Файл превышает лимит post_max_size на хостинге (загрузите до 2 МБ)', 413);
+    }
+
     try {
         BrandingLogo::store($db, $app, $_FILES['logo'] ?? []);
         Bus::publish('branding');

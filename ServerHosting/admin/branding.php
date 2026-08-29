@@ -8,6 +8,14 @@ $admin = admin_require($db, 'branding');
 $app = in_array($appParam = (string) ($_GET['app'] ?? 'client'), Branding::APPS, true) ? $appParam : 'client';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Защита от тихой потери формы: при превышении post_max_size хостинга PHP
+    // опустошает и $_POST, и $_FILES — без проверки UPDATE ниже стёр бы все поля бренда.
+    if (empty($_POST) && empty($_FILES)) {
+        header('Location: branding.php?app=' . urlencode($app) . '&error=' . urlencode(
+            'Форма не дошла до сервера целиком: файл превышает лимит post_max_size на хостинге. Выберите файл меньше 2 МБ.'
+        ));
+        exit;
+    }
     try {
         if (($_POST['cmd'] ?? '') === 'remove_logo') {
             BrandingLogo::remove($db, $app);
@@ -21,25 +29,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             BrandingLogo::store($db, $app, $_FILES['logo']);
         }
 
-        $features = array_values(array_filter(array_map('trim', explode("\n", (string) ($_POST['features'] ?? '')))));
-        $db->prepare(
-            'UPDATE branding_settings SET app_name=?, app_code=?, hero_title=?, hero_subtitle=?,
-             logo_icon=?, primary_color=?, primary_text_color=?, support_phone=?, features=?, updated_at=?
-             WHERE app = ?'
-        )->execute([
-            mb_substr((string) ($_POST['app_name'] ?? ''), 0, 60),
-            mb_substr((string) ($_POST['app_code'] ?? ''), 0, 60),
-            mb_substr((string) ($_POST['hero_title'] ?? ''), 0, 120),
-            mb_substr((string) ($_POST['hero_subtitle'] ?? ''), 0, 300),
-            mb_substr((string) ($_POST['logo_icon'] ?? 'taxi'), 0, 40),
-            mb_substr((string) ($_POST['primary_color'] ?? '#facc15'), 0, 9),
-            mb_substr((string) ($_POST['primary_text_color'] ?? '#0a0a0c'), 0, 9),
-            trim((string) ($_POST['support_phone'] ?? '')) !== '' ? mb_substr((string) $_POST['support_phone'], 0, 30) : null,
-            json_encode(array_slice($features, 0, 5), JSON_UNESCAPED_UNICODE),
-            Db::utcNow(),
-            $app,
-        ]);
-        Bus::publish('branding');
+        // Поля бренда обновляем только при полном наборе данных формы —
+        // частичный POST (обрыв/лимит) не должен затирать настройки пустотой.
+        if (isset($_POST['app_name'])) {
+            $features = array_values(array_filter(array_map('trim', explode("\n", (string) ($_POST['features'] ?? '')))));
+            $db->prepare(
+                'UPDATE branding_settings SET app_name=?, app_code=?, hero_title=?, hero_subtitle=?,
+                 logo_icon=?, primary_color=?, primary_text_color=?, support_phone=?, features=?, updated_at=?
+                 WHERE app = ?'
+            )->execute([
+                mb_substr((string) ($_POST['app_name'] ?? ''), 0, 60),
+                mb_substr((string) ($_POST['app_code'] ?? ''), 0, 60),
+                mb_substr((string) ($_POST['hero_title'] ?? ''), 0, 120),
+                mb_substr((string) ($_POST['hero_subtitle'] ?? ''), 0, 300),
+                mb_substr((string) ($_POST['logo_icon'] ?? 'taxi'), 0, 40),
+                mb_substr((string) ($_POST['primary_color'] ?? '#facc15'), 0, 9),
+                mb_substr((string) ($_POST['primary_text_color'] ?? '#0a0a0c'), 0, 9),
+                trim((string) ($_POST['support_phone'] ?? '')) !== '' ? mb_substr((string) $_POST['support_phone'], 0, 30) : null,
+                json_encode(array_slice($features, 0, 5), JSON_UNESCAPED_UNICODE),
+                Db::utcNow(),
+                $app,
+            ]);
+            Bus::publish('branding');
+        }
         header('Location: branding.php?app=' . urlencode($app) . '&ok=' . urlencode('Брендинг сохранён и применён'));
         exit;
     } catch (\Throwable $e) {
@@ -67,9 +79,10 @@ layout_header('Брендинг', 'branding');
 </nav>
 
 <?php if (!empty($_GET['ok'])): ?><div class="flash">✓ <?= h((string) $_GET['ok']) ?></div><?php endif; ?>
+<?php if (!empty($_GET['error'])): ?><div class="flash" style="border-color:rgba(239,68,68,.35);color:#fca5a5;background:rgba(239,68,68,.08)">✕ <?= h((string) $_GET['error']) ?></div><?php endif; ?>
 
 <div class="grid q2">
-  <form method="post" class="card">
+  <form method="post" enctype="multipart/form-data" class="card">
     <h3 style="font-weight:900;font-size:16px;margin-bottom:14px"><?= h($brand['appName']) ?> · внешний вид</h3>
 
     <label class="mut" style="display:block;font-size:12px;margin-bottom:12px">Название приложения
