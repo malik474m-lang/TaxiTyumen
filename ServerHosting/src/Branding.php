@@ -73,10 +73,15 @@ final class Branding
             'heroTitle' => $row['hero_title'],
             'heroSubtitle' => $row['hero_subtitle'],
             'logoIcon' => $row['logo_icon'],
+            'logoUrl' => !empty($row['logo_path'])
+                ? '/api/branding-logo.php?app=' . rawurlencode($row['app'])
+                    . '&v=' . rawurlencode((string) ($row['updated_at'] ?? '1'))
+                : null,
             'primaryColor' => $row['primary_color'],
             'primaryTextColor' => $row['primary_text_color'],
             'supportPhone' => $row['support_phone'],
             'features' => json_decode($row['features'] ?? '[]', true) ?: [],
+            'updatedAt' => $row['updated_at'] ?? null,
         ];
     }
 }

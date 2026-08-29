@@ -8,27 +8,44 @@ $admin = admin_require($db);
 $app = in_array($appParam = (string) ($_GET['app'] ?? 'client'), Branding::APPS, true) ? $appParam : 'client';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $features = array_values(array_filter(array_map('trim', explode("\n", (string) ($_POST['features'] ?? '')))));
-    $db->prepare(
-        'UPDATE branding_settings SET app_name=?, app_code=?, hero_title=?, hero_subtitle=?,
-         logo_icon=?, primary_color=?, primary_text_color=?, support_phone=?, features=?, updated_at=?
-         WHERE app = ?'
-    )->execute([
-        mb_substr((string) ($_POST['app_name'] ?? ''), 0, 60),
-        mb_substr((string) ($_POST['app_code'] ?? ''), 0, 60),
-        mb_substr((string) ($_POST['hero_title'] ?? ''), 0, 120),
-        mb_substr((string) ($_POST['hero_subtitle'] ?? ''), 0, 300),
-        mb_substr((string) ($_POST['logo_icon'] ?? 'taxi'), 0, 40),
-        mb_substr((string) ($_POST['primary_color'] ?? '#facc15'), 0, 9),
-        mb_substr((string) ($_POST['primary_text_color'] ?? '#0a0a0c'), 0, 9),
-        trim((string) ($_POST['support_phone'] ?? '')) !== '' ? mb_substr((string) $_POST['support_phone'], 0, 30) : null,
-        json_encode(array_slice($features, 0, 5), JSON_UNESCAPED_UNICODE),
-        Db::utcNow(),
-        $app,
-    ]);
-    Bus::publish('branding');
-    header('Location: branding.php?app=' . urlencode($app) . '&ok=' . urlencode('Брендинг сохранён и применён'));
-    exit;
+    try {
+        if (($_POST['cmd'] ?? '') === 'remove_logo') {
+            BrandingLogo::remove($db, $app);
+            Bus::publish('branding');
+            header('Location: branding.php?app=' . urlencode($app) . '&ok=' . urlencode('Логотип удалён, используется системная иконка'));
+            exit;
+        }
+
+        // Сначала сохраняем новый логотип (если выбран)
+        if (isset($_FILES['logo']) && ($_FILES['logo']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            BrandingLogo::store($db, $app, $_FILES['logo']);
+        }
+
+        $features = array_values(array_filter(array_map('trim', explode("\n", (string) ($_POST['features'] ?? '')))));
+        $db->prepare(
+            'UPDATE branding_settings SET app_name=?, app_code=?, hero_title=?, hero_subtitle=?,
+             logo_icon=?, primary_color=?, primary_text_color=?, support_phone=?, features=?, updated_at=?
+             WHERE app = ?'
+        )->execute([
+            mb_substr((string) ($_POST['app_name'] ?? ''), 0, 60),
+            mb_substr((string) ($_POST['app_code'] ?? ''), 0, 60),
+            mb_substr((string) ($_POST['hero_title'] ?? ''), 0, 120),
+            mb_substr((string) ($_POST['hero_subtitle'] ?? ''), 0, 300),
+            mb_substr((string) ($_POST['logo_icon'] ?? 'taxi'), 0, 40),
+            mb_substr((string) ($_POST['primary_color'] ?? '#facc15'), 0, 9),
+            mb_substr((string) ($_POST['primary_text_color'] ?? '#0a0a0c'), 0, 9),
+            trim((string) ($_POST['support_phone'] ?? '')) !== '' ? mb_substr((string) $_POST['support_phone'], 0, 30) : null,
+            json_encode(array_slice($features, 0, 5), JSON_UNESCAPED_UNICODE),
+            Db::utcNow(),
+            $app,
+        ]);
+        Bus::publish('branding');
+        header('Location: branding.php?app=' . urlencode($app) . '&ok=' . urlencode('Брендинг сохранён и применён'));
+        exit;
+    } catch (\Throwable $e) {
+        header('Location: branding.php?app=' . urlencode($app) . '&error=' . urlencode($e->getMessage()));
+        exit;
+    }
 }
 
 $stmt = $db->prepare('SELECT * FROM branding_settings WHERE app = ? LIMIT 1');
@@ -68,8 +85,25 @@ layout_header('Брендинг', 'branding');
       <textarea name="hero_subtitle" rows="3"><?= h($brand['heroSubtitle']) ?></textarea>
     </label>
 
+    <div style="padding:14px;border:1px solid rgba(255,255,255,.08);border-radius:14px;background:rgba(255,255,255,.02);margin-bottom:14px">
+      <div style="font-weight:800;margin-bottom:8px">Собственный логотип</div>
+      <div class="flex">
+        <?php if (!empty($brand['logoUrl'])): ?>
+          <img src="<?= h($brand['logoUrl']) ?>" alt="Логотип" style="width:58px;height:58px;object-fit:contain;border-radius:12px;background:#fff;padding:5px">
+        <?php endif; ?>
+        <label class="mut" style="font-size:12px;flex:1">
+          PNG, JPEG или WebP · максимум 2 МБ
+          <input type="file" name="logo" accept="image/png,image/jpeg,image/webp" style="margin-top:5px">
+        </label>
+        <?php if (!empty($brand['logoUrl'])): ?>
+          <button class="btn danger sm" type="submit" name="cmd" value="remove_logo" onclick="return confirm('Удалить собственный логотип?')">Удалить</button>
+        <?php endif; ?>
+      </div>
+      <div class="mut" style="font-size:11px;margin-top:6px">Если файл не загружен, используется выбранная системная иконка.</div>
+    </div>
+
     <div class="flex" style="gap:14px;flex-wrap:wrap">
-      <label class="mut" style="font-size:12px">Логотип<br>
+      <label class="mut" style="font-size:12px">Системная иконка<br>
         <select name="logo_icon" style="width:170px;margin-top:4px">
           <?php foreach ($ICONS as $k => $v): ?>
             <option value="<?= h($k) ?>" <?= $brand['logoIcon'] === $k ? 'selected' : '' ?>><?= h($v) ?></option>
@@ -104,8 +138,12 @@ layout_header('Брендинг', 'branding');
       <div class="flex">
         <div class="tile" style="width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:22px;
           background:<?= h($brand['primaryColor']) ?>;color:<?= h($brand['primaryTextColor']) ?>;
-          box-shadow:0 8px 26px <?= h($brand['primaryColor']) ?>55">
-          <?= h(mb_substr($brand['appName'], 0, 1)) ?>
+          box-shadow:0 8px 26px <?= h($brand['primaryColor']) ?>55;overflow:hidden">
+          <?php if (!empty($brand['logoUrl'])): ?>
+            <img src="<?= h($brand['logoUrl']) ?>" alt="" style="width:100%;height:100%;object-fit:contain;background:white;padding:3px">
+          <?php else: ?>
+            <?= h(mb_substr($brand['appName'], 0, 1)) ?>
+          <?php endif; ?>
         </div>
         <div>
           <div style="font-weight:900;font-size:16px"><?= h($brand['appName']) ?></div>

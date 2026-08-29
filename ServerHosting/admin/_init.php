@@ -67,7 +67,21 @@ function admin_require(\PDO $db): array
         header('Location: login.php');
         exit;
     }
+    // Все изменения из server-rendered панели защищены CSRF-токеном
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+        $expected = admin_csrf_token();
+        $provided = (string) ($_POST['_csrf'] ?? '');
+        if ($provided === '' || !hash_equals($expected, $provided)) {
+            http_response_code(403);
+            exit('Недействительный CSRF-токен. Обновите страницу и повторите действие.');
+        }
+    }
     return $admin;
+}
+
+function admin_csrf_token(): string
+{
+    return hash_hmac('sha256', 'admin-csrf|' . (string) ($_COOKIE[ADMIN_COOKIE] ?? ''), AUTH_SECRET);
 }
 
 function h(?string $s): string
@@ -92,13 +106,19 @@ function fmt_date(?string $d): string
 
 function layout_header(string $title, string $active): void
 {
+    // Структура исходной TaxiAdmin/NavMenu.razor + серверный брендинг
     $nav = [
-        'index'    => ['index.php', 'Обзор'],
-        'orders'   => ['orders.php', 'Заказы'],
-        'drivers'  => ['drivers.php', 'Водители'],
-        'tariffs'  => ['tariffs.php', 'Тарифы'],
-        'branding' => ['branding.php', 'Брендинг'],
-        'autocall' => ['autocall.php', 'Автодозвон'],
+        'index'     => ['index.php', 'Дашборд'],
+        'orders'    => ['orders.php', 'Заказы'],
+        'drivers'   => ['drivers.php', 'Водители'],
+        'clients'   => ['clients.php', 'Клиенты'],
+        'operators' => ['operators.php', 'Операторы'],
+        'balance'   => ['balance.php', 'Балансы'],
+        'tariffs'   => ['tariffs.php', 'Тарифы'],
+        'stats'     => ['stats.php', 'Статистика'],
+        'export'    => ['export.php', 'Экспорт CSV'],
+        'autocall'  => ['autocall.php', 'Автодозвон'],
+        'branding'  => ['branding.php', 'Брендинг'],
     ];
     ?>
 <!DOCTYPE html>
@@ -195,6 +215,18 @@ function layout_footer(): void
 <div class="checker"></div>
 <footer>TaxiTyumen ServerHosting · PHP + MySQL · Тюмень UTC+5</footer>
 </main>
+<script>
+// CSRF-токен добавляется ко всем POST-формам централизованно
+(function(){
+  var token=<?= json_encode(admin_csrf_token(), JSON_UNESCAPED_SLASHES) ?>;
+  document.querySelectorAll('form').forEach(function(form){
+    if((form.getAttribute('method')||'get').toLowerCase()!=='post') return;
+    if(form.querySelector('input[name="_csrf"]')) return;
+    var input=document.createElement('input');
+    input.type='hidden';input.name='_csrf';input.value=token;form.appendChild(input);
+  });
+})();
+</script>
 </body>
 </html>
 <?php

@@ -17,14 +17,23 @@ for d in api admin src sql; do
   echo "  $d ← ServerHosting/$d"
 done
 
-# Реальный config.php с секретами: копируем ТОЛЬКО если его нет (не затираем настройки)
-if [ ! -f "$ROOT/config.php" ]; then
-  cp "$ROOT/ServerHosting/config.php" "$ROOT/config.php"
-  echo "  config.php ← создан (настройте секреты БД)"
+# Постоянное хранилище логотипов (не удаляем при следующих деплоях)
+mkdir -p "$ROOT/uploads/branding"
+if [ -f "$ROOT/ServerHosting/uploads/branding/.htaccess" ]; then
+  cp "$ROOT/ServerHosting/uploads/branding/.htaccess" "$ROOT/uploads/branding/.htaccess"
 fi
 
-# Иначе: ServerHosting/config.php тоже должен содержать реальные данные БД —
-# deploy.sh копирует каталоги, но config.php никогда не трогает.
+# Базовый config.php можно обновлять из Git; реальные секреты — только config.local.php
+if [ ! -f "$ROOT/config.php" ]; then
+  cp "$ROOT/ServerHosting/config.php" "$ROOT/config.php"
+  echo "  config.php ← создан"
+fi
+if [ ! -f "$ROOT/config.local.php" ] && [ -f "$ROOT/ServerHosting/config.local.php" ]; then
+  cp "$ROOT/ServerHosting/config.local.php" "$ROOT/config.local.php"
+  echo "  config.local.php ← локальные секреты"
+fi
+
+# config.local.php никогда не удаляется и не отслеживается Git.
 
 # Корневой .htaccess если ещё не создан
 if [ ! -f "$ROOT/.htaccess" ]; then

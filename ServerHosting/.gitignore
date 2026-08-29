@@ -1,0 +1,6 @@
+# Загруженные пользователями логотипы не коммитим
+/uploads/branding/*
+!/uploads/branding/.htaccess
+
+# Локальные секреты хостинга
+/config.local.php

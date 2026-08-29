@@ -34,7 +34,8 @@
 | `GET /api/tariffs/` | все | Тарифы; `PUT` — редактирование (admin) |
 | `POST /api/pricing.php` | все | Оценка цены всех тарифов + геометрия маршрута |
 | `GET/POST /api/chat.php` | участники | Чат по заказу (пишется только от своего имени) |
-| `GET/PUT /api/branding.php` | app=… публично, список/PUT — admin | Серверный брендинг 3 приложений |
+| `GET/PUT /api/branding.php` | app=… публично, список/PUT — admin | Серверный брендинг 3 приложений (`logoUrl` входит в DTO) |
+| `GET/POST /api/branding-logo.php` | GET публично, POST admin | Выдача/загрузка/удаление логотипа, PNG/JPEG/WebP ≤ 2 МБ |
 | `GET/POST /api/operators/shift.php` | operator | Смены + выработка |
 | `GET/PUT /api/autocall.php` | operator/admin | Настройки автодозвона (эскалация + автоназначение) |
 | `GET /api/stats.php` | admin | Выручка, рейтинг направлений, графики по дням и часам |
@@ -68,7 +69,7 @@ bash ServerHosting/deploy/deploy.sh   # копирует api/admin/src/sql на 
 
 1. **Залейте** содержимое папки `ServerHosting/` в `public_html` (или подпапку `api-site/`) по FTP/SFTP
 2. **Создайте MySQL-базу** в панели хостинга, получите `db_name / user / password`
-3. **Отредактируйте `config.php`**: впишите реквизиты БД и **обязательно поменяйте `AUTH_SECRET`** (длинная случайная строка)
+3. **Создайте `config.local.php`**: `cp config.protected.php config.local.php`, впишите реквизиты БД и **обязательно поменяйте `AUTH_SECRET`**. Этот файл игнорируется Git и переживает `git pull/reset`.
 4. **Запустите установщик** один раз в браузере: `https://ваш-домен.ру/api/install.php` — он создаст таблицы из `schema.sql` и зашьёт демо-данные (тарифы Тюмени, админ, оператор, 5 водителей, демо-клиент, брендинг)
 5. **Удалите `api/install.php`** с хостинга и смените демо-пароли
 6. Готово — фронтенд веб-порта можно нацелить на этот бэкенд (совместимый формат токенов/ответов `Authorization: Bearer <hmac>`), либо собрать свой клиент поверх REST.
@@ -103,7 +104,7 @@ bash ServerHosting/deploy/deploy.sh   # копирует api/admin/src/sql на 
 ### Чеклист после установки
 
 1. Удалите `api/install.php` с хостинга
-2. Поменяйте `AUTH_SECRET` в `config.php` на длинную случайную строку
+2. Храните реквизиты и `AUTH_SECRET` в `config.local.php` (не в отслеживаемом `config.php`) и задайте длинную случайную строку
 3. Войдите админом (`/api/auth/login.php`) и смените пароль через `/api/auth/password.php`
 4. Те же действия — для оператора и демо-водителей/демо-клиента (или удалите их из `users`)
 5. Укажите конкретный домен в `CORS_ORIGIN` вместо `*`

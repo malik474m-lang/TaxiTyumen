@@ -1,0 +1,166 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { CarTaxiFront, ArrowUpRight } from "lucide-react";
+import { getSession } from "@/lib/client";
+import { ROLE_PATHS } from "@/components/LoginScreen";
+import { LOGO_ICONS } from "@/components/AppHeader";
+import type { BrandingData } from "@/lib/branding";
+
+const DEMO_PHONES: Record<string, string> = {
+  client: "+79221112233",
+  driver: "+79221000001",
+  operator: "+79001234568",
+};
+
+export default function PortalClient({ brandings }: { brandings: BrandingData[] }) {
+  const router = useRouter();
+  const [ready, setReady] = useState(false);
+
+  // Уже вошли — сразу в своё приложение
+  useEffect(() => {
+    const s = getSession();
+    if (s) {
+      router.replace(ROLE_PATHS[s.role]);
+    } else {
+      setReady(true);
+    }
+  }, [router]);
+
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <CarTaxiFront className="h-10 w-10 animate-pulse text-amber-400" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative min-h-screen overflow-hidden">
+      <div className="pointer-events-none absolute -right-24 top-1/2 hidden -translate-y-1/2 rotate-90 select-none text-[180px] font-black tracking-tighter text-white/[0.02] lg:block">
+        ТЮМЕНЬ
+      </div>
+
+      <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-10">
+        {/* Шапка */}
+        <div className="animate-rise flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-400 text-zinc-950 shadow-lg shadow-amber-400/30">
+            <CarTaxiFront className="h-7 w-7" strokeWidth={2.4} />
+          </div>
+          <div>
+            <div className="text-lg font-black tracking-tight">ТАКСИ ТЮМЕНЬ</div>
+            <div className="text-xs font-semibold uppercase tracking-[0.25em] text-amber-400/80">
+              портал системы · 72 регион
+            </div>
+          </div>
+        </div>
+
+        {/* Заголовок */}
+        <div className="mt-14 animate-rise" style={{ animationDelay: "0.05s" }}>
+          <h1 className="max-w-3xl text-4xl font-black leading-[1.02] tracking-tighter sm:text-6xl">
+            Один город.
+            <br />
+            Четыре <span className="text-amber-400">приложения.</span>
+          </h1>
+          <p className="mt-5 max-w-xl text-base leading-relaxed text-zinc-400">
+            Экосистема заказа такси: у каждой роли — своё приложение и свой вход.
+            Интерфейсы не пересекаются: чужой аккаунт система отклонит.
+          </p>
+        </div>
+
+        {/* Карточки приложений — из серверного брендинга */}
+        <div className="mt-12 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {brandings.map((b, i) => {
+            const Icon = LOGO_ICONS[b.logoIcon] ?? CarTaxiFront;
+            return (
+              <a
+                key={b.app}
+                href={ROLE_PATHS[b.app]}
+                className="group card animate-rise relative overflow-hidden p-6 transition-all hover:-translate-y-1 hover:border-white/20"
+                style={{ animationDelay: `${0.1 + i * 0.06}s` }}
+              >
+                <div
+                  className="pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100"
+                  style={{ background: `radial-gradient(400px 200px at 90% -20%, ${b.primaryColor}18, transparent 70%)` }}
+                />
+                <div className="relative flex items-start justify-between">
+                  <div
+                    className="flex h-13 w-13 shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-lg"
+                    style={{
+                      background: b.primaryColor,
+                      color: b.primaryTextColor,
+                      boxShadow: `0 10px 30px ${b.primaryColor}45`,
+                    }}
+                  >
+                    {b.logoUrl ? (
+                      <img src={b.logoUrl} alt={b.appName} className="h-full w-full bg-white object-contain p-1" />
+                    ) : (
+                      <Icon className="h-7 w-7" strokeWidth={2.2} />
+                    )}
+                  </div>
+                  <ArrowUpRight className="h-5 w-5 text-zinc-600 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5" style={{ color: undefined }} />
+                </div>
+
+                <div
+                  className="relative mt-5 text-[10px] font-black uppercase tracking-[0.3em]"
+                  style={{ color: b.primaryColor }}
+                >
+                  {b.appCode}
+                </div>
+                <h2 className="relative mt-1.5 text-2xl font-black tracking-tight">{b.appName}</h2>
+                <p className="relative mt-2 text-sm leading-relaxed text-zinc-400">{b.heroSubtitle}</p>
+
+                <div className="relative mt-5 flex items-center justify-between border-t border-white/8 pt-4">
+                  <span className="text-xs text-zinc-600">
+                    демо: <code className="text-zinc-400">{DEMO_PHONES[b.app] ?? "—"}</code>
+                  </span>
+                  <span className="text-xs font-bold" style={{ color: b.primaryColor }}>
+                    Открыть →
+                  </span>
+                </div>
+              </a>
+            );
+          })}
+
+          {/* Админка — без брендинга, служебная */}
+          <a
+            href="/admin"
+            className="group card animate-rise relative overflow-hidden p-6 transition-all hover:-translate-y-1 hover:border-white/20"
+            style={{ animationDelay: `${0.1 + brandings.length * 0.06}s` }}
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex shrink-0 items-center justify-center rounded-2xl bg-violet-400 p-3 text-violet-950 shadow-lg shadow-violet-400/25">
+                <CarTaxiFront className="h-7 w-7" strokeWidth={2.2} />
+              </div>
+              <ArrowUpRight className="h-5 w-5 text-zinc-600 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            </div>
+            <div className="mt-5 text-[10px] font-black uppercase tracking-[0.3em] text-violet-400">
+              TaxiAdmin · Web
+            </div>
+            <h2 className="mt-1.5 text-2xl font-black tracking-tight">Панель администратора</h2>
+            <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+              Выручка и аналитика сервиса, тарифы города, брендинг приложений, балансы водителей.
+            </p>
+            <div className="mt-5 flex items-center justify-between border-t border-white/8 pt-4">
+              <span className="text-xs text-zinc-600">
+                демо: <code className="text-zinc-400">+79001234567</code>
+              </span>
+              <span className="text-xs font-bold text-violet-400">Открыть →</span>
+            </div>
+          </a>
+        </div>
+
+        {/* Подвал */}
+        <div className="mt-auto animate-rise pt-14" style={{ animationDelay: "0.4s" }}>
+          <div className="checker h-2 w-40 rounded-full opacity-70" />
+          <p className="mt-4 text-xs leading-relaxed text-zinc-600">
+            TaxiTyumen — веб-порт полного цикла: клиент · водитель · диспетчерская · администрирование.
+            <br />
+            Названия, цвета и тексты приложений настраиваются сервером в админ-панели (вкладка «Брендинг»).
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}

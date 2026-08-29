@@ -1,140 +1,289 @@
 <?php
-// Водители: финансы, пополнение баланса, верификация
+// Водители — порт TaxiAdmin/Drivers.razor:
+// добавление, авто/ВУ, баланс, штраф, реквизиты оплаты, верификация, блокировка.
 declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
 
 $admin = admin_require($db);
+$error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $cmd = (string) ($_POST['cmd'] ?? '');
     $id = (string) ($_POST['id'] ?? '');
 
-    $d = $db->prepare('SELECT * FROM drivers WHERE id = ? LIMIT 1');
-    $d->execute([$id]);
-    $driver = $d->fetch();
+    try {
+        if ($cmd === 'add') {
+            $phone = Auth::normalizePhone((string) ($_POST['phone'] ?? ''));
+            $firstName = trim((string) ($_POST['first_name'] ?? ''));
+            $lastName = trim((string) ($_POST['last_name'] ?? ''));
+            $password = (string) ($_POST['password'] ?? '');
+            $brand = trim((string) ($_POST['car_brand'] ?? ''));
+            $model = trim((string) ($_POST['car_model'] ?? ''));
+            $plate = mb_strtoupper(trim((string) ($_POST['license_plate'] ?? '')));
 
-    if ($driver) {
+            if (strlen(preg_replace('/\D/', '', $phone)) < 11 || $firstName === '' || $brand === '' || $model === '' || $plate === '') {
+                throw new RuntimeException('Заполните телефон, имя, марку, модель и госномер');
+            }
+            if (strlen($password) < 6) {
+                throw new RuntimeException('Пароль — минимум 6 символов');
+            }
+            $exists = $db->prepare('SELECT id FROM users WHERE phone = ? LIMIT 1');
+            $exists->execute([$phone]);
+            if ($exists->fetch()) {
+                throw new RuntimeException('Пользователь с таким телефоном уже существует');
+            }
+
+            $uid = Db::uuid();
+            $driverId = Db::uuid();
+            $initialBalance = max(0, (float) ($_POST['balance'] ?? 0));
+
+            $db->beginTransaction();
+            $db->prepare(
+                "INSERT INTO users (id, phone, first_name, last_name, password_hash, role, is_phone_verified)
+                 VALUES (?,?,?,?,?,'driver',1)"
+            )->execute([$uid, $phone, $firstName, $lastName, Auth::hashPassword($password)]);
+
+            $db->prepare(
+                "INSERT INTO drivers
+                 (id, user_id, car_brand, car_model, car_color, license_plate, car_year,
+                  driver_license, is_verified, status, latitude, longitude, balance,
+                  min_balance_for_orders, rejection_penalty, payment_phone, payment_bank_name,
+                  payment_card_holder, accept_card_transfer, accept_sbp, last_location_update)
+                 VALUES (?,?,?,?,?,?,?,?,?,'offline',?,?,?,?,?,?,?,?,?,?,?)"
+            )->execute([
+                $driverId, $uid, $brand, $model,
+                trim((string) ($_POST['car_color'] ?? 'Белый')) ?: 'Белый',
+                $plate,
+                max(1980, min(2100, (int) ($_POST['car_year'] ?? date('Y')))),
+                trim((string) ($_POST['driver_license'] ?? '')),
+                !empty($_POST['is_verified']) ? 1 : 0,
+                Taxi::CITY_LAT, Taxi::CITY_LNG,
+                $initialBalance,
+                max(0, (float) ($_POST['min_balance_for_orders'] ?? 100)),
+                max(0, (float) ($_POST['rejection_penalty'] ?? 0)),
+                trim((string) ($_POST['payment_phone'] ?? '')) ?: null,
+                trim((string) ($_POST['payment_bank_name'] ?? '')) ?: null,
+                trim((string) ($_POST['payment_card_holder'] ?? '')) ?: null,
+                !empty($_POST['accept_card_transfer']) ? 1 : 0,
+                !empty($_POST['accept_sbp']) ? 1 : 0,
+                Db::utcNow(),
+            ]);
+
+            if ($initialBalance > 0) {
+                $db->prepare(
+                    "INSERT INTO balance_transactions
+                     (id, driver_id, type, amount, balance_after, description, created_by)
+                     VALUES (?,?,'topup',?,?,?,?)"
+                )->execute([
+                    Db::uuid(), $driverId, $initialBalance, $initialBalance,
+                    'Стартовый баланс', 'admin: ' . $admin['first_name'],
+                ]);
+            }
+            $db->commit();
+            Bus::publish('drivers');
+            header('Location: drivers.php?ok=' . urlencode('Водитель добавлен: ' . $firstName . ' ' . $lastName));
+            exit;
+        }
+
+        $d = $db->prepare(
+            'SELECT d.*, u.id AS uid, u.is_blocked FROM drivers d JOIN users u ON u.id=d.user_id WHERE d.id=? LIMIT 1'
+        );
+        $d->execute([$id]);
+        $driver = $d->fetch();
+        if (!$driver) {
+            throw new RuntimeException('Водитель не найден');
+        }
+
         if ($cmd === 'topup') {
             $amount = (float) ($_POST['amount'] ?? 0);
-            if ($amount > 0) {
-                $newBalance = $driver['balance'] + $amount;
-                $db->prepare('UPDATE drivers SET balance = ? WHERE id = ?')->execute([$newBalance, $id]);
-                $db->prepare(
-                    "INSERT INTO balance_transactions (id, driver_id, type, amount, balance_after, description, created_by)
-                     VALUES (?,?,?,?,?,?,?,?)"
-                )->execute([Db::uuid(), $id, 'topup', $amount, $newBalance, sprintf('Пополнение +%.0f руб.', $amount), 'admin: ' . $admin['first_name']]);
-                header('Location: drivers.php?ok=' . urlencode('Баланс пополнен: ' . round($newBalance) . ' ₽'));
-                exit;
+            if ($amount <= 0) {
+                throw new RuntimeException('Сумма пополнения должна быть больше нуля');
             }
+            $newBalance = (float) $driver['balance'] + $amount;
+            $db->prepare('UPDATE drivers SET balance=? WHERE id=?')->execute([$newBalance, $id]);
+            $db->prepare(
+                "INSERT INTO balance_transactions
+                 (id, driver_id, type, amount, balance_after, description, created_by)
+                 VALUES (?,?,'topup',?,?,?,?)"
+            )->execute([
+                Db::uuid(), $id, $amount, $newBalance,
+                sprintf('Пополнение +%.0f руб.', $amount), 'admin: ' . $admin['first_name'],
+            ]);
+            Bus::publish('drivers');
+            header('Location: drivers.php?ok=' . urlencode('Баланс пополнен: ' . round($newBalance) . ' ₽'));
+            exit;
         }
+
         if ($cmd === 'verify') {
-            $db->prepare('UPDATE drivers SET is_verified = ? WHERE id = ?')
+            $db->prepare('UPDATE drivers SET is_verified=? WHERE id=?')
                 ->execute([$driver['is_verified'] ? 0 : 1, $id]);
+            Bus::publish('drivers');
             header('Location: drivers.php?ok=' . urlencode('Верификация обновлена'));
             exit;
         }
+
+        if ($cmd === 'block') {
+            $blocked = $driver['is_blocked'] ? 0 : 1;
+            $db->prepare('UPDATE users SET is_blocked=?, block_reason=? WHERE id=?')
+                ->execute([$blocked, $blocked ? 'Заблокирован администратором' : null, $driver['uid']]);
+            if ($blocked) {
+                $db->prepare("UPDATE drivers SET status='offline', current_order_id=NULL WHERE id=?")
+                    ->execute([$id]);
+            }
+            Bus::publish('drivers');
+            header('Location: drivers.php?ok=' . urlencode($blocked ? 'Водитель заблокирован' : 'Водитель разблокирован'));
+            exit;
+        }
+
+        if ($cmd === 'update') {
+            $db->beginTransaction();
+            $db->prepare('UPDATE users SET first_name=?, last_name=? WHERE id=?')->execute([
+                trim((string) ($_POST['first_name'] ?? '')),
+                trim((string) ($_POST['last_name'] ?? '')),
+                $driver['uid'],
+            ]);
+            $db->prepare(
+                'UPDATE drivers SET car_brand=?, car_model=?, car_color=?, license_plate=?, car_year=?,
+                 driver_license=?, min_balance_for_orders=?, rejection_penalty=?, payment_phone=?,
+                 payment_bank_name=?, payment_card_holder=?, accept_card_transfer=?, accept_sbp=? WHERE id=?'
+            )->execute([
+                trim((string) ($_POST['car_brand'] ?? '')),
+                trim((string) ($_POST['car_model'] ?? '')),
+                trim((string) ($_POST['car_color'] ?? '')),
+                mb_strtoupper(trim((string) ($_POST['license_plate'] ?? ''))),
+                (int) ($_POST['car_year'] ?? date('Y')),
+                trim((string) ($_POST['driver_license'] ?? '')),
+                max(0, (float) ($_POST['min_balance_for_orders'] ?? 100)),
+                max(0, (float) ($_POST['rejection_penalty'] ?? 0)),
+                trim((string) ($_POST['payment_phone'] ?? '')) ?: null,
+                trim((string) ($_POST['payment_bank_name'] ?? '')) ?: null,
+                trim((string) ($_POST['payment_card_holder'] ?? '')) ?: null,
+                !empty($_POST['accept_card_transfer']) ? 1 : 0,
+                !empty($_POST['accept_sbp']) ? 1 : 0,
+                $id,
+            ]);
+            $db->commit();
+            Bus::publish('drivers');
+            header('Location: drivers.php?ok=' . urlencode('Данные водителя сохранены'));
+            exit;
+        }
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        $error = $e->getMessage();
     }
 }
 
 $rows = $db->query(
-    'SELECT d.*, u.first_name, u.last_name, u.phone, u.rating
-     FROM drivers d JOIN users u ON u.id = d.user_id ORDER BY d.status'
+    'SELECT d.*, u.first_name, u.last_name, u.phone, u.rating, u.is_blocked
+     FROM drivers d JOIN users u ON u.id=d.user_id ORDER BY u.last_name, u.first_name'
 )->fetchAll();
 
 $statusChip = function (string $s): string {
-    $cls = $s === 'offline' ? 'mut' : ($s === 'available' ? 'ok' : 'info');
-    $style = $s === 'offline' ? 'background:rgba(255,255,255,.07);color:#a1a1aa' : '';
-    return '<span class="chip ' . $cls . '"' . ($style ? ' style="' . $style . '"' : '') . '>'
-        . h(Taxi::DRIVER_STATUS_TEXT[$s] ?? $s) . '</span>';
+    $cls = $s === 'offline' ? '' : ($s === 'available' ? 'ok' : 'info');
+    $style = $s === 'offline' ? ' style="background:rgba(255,255,255,.07);color:#a1a1aa"' : '';
+    return '<span class="chip ' . $cls . '"' . $style . '>' . h(Taxi::DRIVER_STATUS_TEXT[$s] ?? $s) . '</span>';
 };
 
 layout_header('Водители', 'drivers');
 ?>
-<h1>Водители</h1>
-<p class="mut"><?= count($rows) ?> автомобилей в системе</p>
+<div class="flex between">
+  <div><h1>Водители</h1><p class="mut"><?= count($rows) ?> профилей в системе</p></div>
+  <span class="chip info">На линии: <?= count(array_filter($rows, fn($d) => $d['status'] !== 'offline')) ?></span>
+</div>
 
-<?php if (!empty($_GET['ok'])): ?>
-<div class="flash" style="margin-top:14px">✓ <?= h((string) $_GET['ok']) ?></div>
-<?php endif; ?>
+<?php if (!empty($_GET['ok'])): ?><div class="flash" style="margin-top:14px">✓ <?= h((string) $_GET['ok']) ?></div><?php endif; ?>
+<?php if ($error): ?><div class="flash" style="margin-top:14px;border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);color:#fca5a5">Ошибка: <?= h($error) ?></div><?php endif; ?>
 
-<div class="grid q2" style="margin-top:18px">
-<?php foreach ($rows as $d):
-    $low = $d['balance'] < $d['min_balance_for_orders'];
-?>
-  <div class="card">
+<details class="card" style="margin-top:18px" <?= $error ? 'open' : '' ?>>
+  <summary style="cursor:pointer;font-weight:900;font-size:16px;color:#7dd3fc">＋ Добавить водителя</summary>
+  <form method="post" style="margin-top:16px">
+    <input type="hidden" name="cmd" value="add">
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+      <label class="mut">Телефон<input name="phone" placeholder="+79991112233" required></label>
+      <label class="mut">Имя<input name="first_name" required></label>
+      <label class="mut">Фамилия<input name="last_name"></label>
+      <label class="mut">Пароль<input name="password" value="Driver123!" required></label>
+      <label class="mut">Марка<input name="car_brand" placeholder="Kia" required></label>
+      <label class="mut">Модель<input name="car_model" placeholder="Rio" required></label>
+      <label class="mut">Цвет<input name="car_color" value="Белый"></label>
+      <label class="mut">Госномер<input name="license_plate" placeholder="А123ВС72" required></label>
+      <label class="mut">Год<input type="number" name="car_year" value="<?= date('Y') ?>"></label>
+      <label class="mut">Водительское удостоверение<input name="driver_license"></label>
+      <label class="mut">Стартовый баланс, ₽<input type="number" name="balance" value="500"></label>
+      <label class="mut">Минимум для заказов, ₽<input type="number" name="min_balance_for_orders" value="100"></label>
+      <label class="mut">Штраф за отказ, ₽<input type="number" name="rejection_penalty" value="50"></label>
+      <label class="mut">Телефон выплат<input name="payment_phone"></label>
+      <label class="mut">Банк<input name="payment_bank_name"></label>
+      <label class="mut">Получатель<input name="payment_card_holder"></label>
+    </div>
+    <div class="flex" style="margin-top:14px">
+      <label><input type="checkbox" name="is_verified" value="1" style="width:auto"> Сразу верифицировать</label>
+      <label><input type="checkbox" name="accept_card_transfer" value="1" checked style="width:auto"> Перевод на карту</label>
+      <label><input type="checkbox" name="accept_sbp" value="1" checked style="width:auto"> СБП</label>
+      <button class="btn" type="submit" style="margin-left:auto">Добавить водителя</button>
+    </div>
+  </form>
+</details>
+
+<div class="grid q2" style="margin-top:14px">
+<?php foreach ($rows as $d): $low = $d['balance'] < $d['min_balance_for_orders']; ?>
+  <div class="card" style="<?= $d['is_blocked'] ? 'border-color:rgba(248,113,113,.35)' : '' ?>">
     <div class="flex between">
       <div>
         <div style="font-weight:900;font-size:16px">
           <?= h($d['first_name'] . ' ' . $d['last_name']) ?>
-          <?php if ($d['is_verified']): ?><span title="Верифицирован" style="color:#7dd3fc">✓</span><?php endif; ?>
+          <?= $d['is_verified'] ? '<span title="Верифицирован" style="color:#7dd3fc">✓</span>' : '' ?>
         </div>
-        <div class="mut" style="font-size:12px">
-          <?= h($d['car_color'] . ' ' . $d['car_brand'] . ' ' . $d['car_model']) ?> ·
-          <span class="plate"><?= h($d['license_plate']) ?></span>
-        </div>
+        <div class="mut"><?= h($d['phone']) ?> · <?= h($d['car_color'] . ' ' . $d['car_brand'] . ' ' . $d['car_model']) ?></div>
+        <span class="plate"><?= h($d['license_plate']) ?></span>
       </div>
-      <?= $statusChip($d['status']) ?>
+      <div style="text-align:right"><?= $statusChip($d['status']) ?><?= $d['is_blocked'] ? '<br><span class="chip bad" style="margin-top:5px">Заблокирован</span>' : '' ?></div>
     </div>
 
-    <div class="flex" style="margin-top:14px;gap:14px">
-      <div>
-        <div class="mut" style="font-size:11px">Баланс</div>
-        <div style="font-weight:900;font-size:18px;color:<?= $low ? '#fca5a5' : '#fde047' ?>"><?= h(money((float) $d['balance'])) ?></div>
-      </div>
-      <div>
-        <div class="mut" style="font-size:11px">Поездок</div>
-        <div style="font-weight:900;font-size:18px"><?= (int) $d['completed_trips'] ?></div>
-      </div>
-      <div>
-        <div class="mut" style="font-size:11px">Заработано</div>
-        <div style="font-weight:900;font-size:18px;color:#6ee7b7"><?= h(money((float) $d['total_earnings'])) ?></div>
-      </div>
-      <div>
-        <div class="mut" style="font-size:11px">Рейтинг</div>
-        <div style="font-weight:900;font-size:18px">★ <?= h(number_format((float) $d['rating'], 1)) ?></div>
-      </div>
+    <div class="flex" style="margin-top:14px;gap:18px">
+      <div><div class="mut">Баланс</div><b style="font-size:18px;color:<?= $low ? '#fca5a5' : '#fde047' ?>"><?= h(money((float) $d['balance'])) ?></b></div>
+      <div><div class="mut">Поездок</div><b style="font-size:18px"><?= (int) $d['completed_trips'] ?></b></div>
+      <div><div class="mut">Заработано</div><b style="font-size:18px;color:#6ee7b7"><?= h(money((float) $d['total_earnings'])) ?></b></div>
+      <div><div class="mut">Рейтинг</div><b style="font-size:18px">★ <?= number_format((float) $d['rating'], 1) ?></b></div>
     </div>
-    <?php if ($low): ?>
-      <div class="mut" style="font-size:12px;color:#fca5a5;margin-top:8px">
-        ⚠ Ниже минимума <?= h(money((float) $d['min_balance_for_orders'])) ?> — не может принимать заказы
-      </div>
-    <?php endif; ?>
 
     <div class="flex" style="margin-top:14px">
       <form method="post" class="inline">
-        <input type="hidden" name="cmd" value="topup">
-        <input type="hidden" name="id" value="<?= h($d['id']) ?>">
-        <select name="amount" style="width:110px">
-          <option value="300">+300 ₽</option>
-          <option value="500" selected>+500 ₽</option>
-          <option value="1000">+1000 ₽</option>
-          <option value="2000">+2000 ₽</option>
-        </select>
-        <button class="btn sm" type="submit">Пополнить</button>
+        <input type="hidden" name="cmd" value="topup"><input type="hidden" name="id" value="<?= h($d['id']) ?>">
+        <input type="number" name="amount" value="500" min="1" style="width:90px"><button class="btn sm">Пополнить</button>
       </form>
-      <form method="post">
-        <input type="hidden" name="cmd" value="verify">
-        <input type="hidden" name="id" value="<?= h($d['id']) ?>">
-        <button class="btn ghost sm" type="submit"><?= $d['is_verified'] ? 'Снять верификацию' : 'Верифицировать' ?></button>
-      </form>
+      <form method="post"><input type="hidden" name="cmd" value="verify"><input type="hidden" name="id" value="<?= h($d['id']) ?>"><button class="btn ghost sm"><?= $d['is_verified'] ? 'Снять верификацию' : 'Верифицировать' ?></button></form>
+      <form method="post"><input type="hidden" name="cmd" value="block"><input type="hidden" name="id" value="<?= h($d['id']) ?>"><button class="btn <?= $d['is_blocked'] ? 'ghost' : 'danger' ?> sm"><?= $d['is_blocked'] ? 'Разблокировать' : 'Заблокировать' ?></button></form>
     </div>
 
-    <?php
-      $tx = $db->prepare('SELECT * FROM balance_transactions WHERE driver_id = ? ORDER BY created_at DESC LIMIT 3');
-      $tx->execute([$d['id']]);
-      $txRows = $tx->fetchAll();
-      if ($txRows):
-    ?>
-    <div style="margin-top:12px;border-top:1px solid rgba(255,255,255,.07);padding-top:10px">
-      <div class="mut" style="font-size:11px;margin-bottom:6px">Последние транзакции:</div>
-      <?php foreach ($txRows as $t): ?>
-      <div class="flex between" style="font-size:12px;padding:3px 0">
-        <span class="mut"><?= h((string) $t['description']) ?> · <?= h(fmt_date($t['created_at'])) ?></span>
-        <b style="color:<?= $t['amount'] >= 0 ? '#6ee7b7' : '#fca5a5' ?>"><?= ($t['amount'] >= 0 ? '+' : '') . round((float) $t['amount']) ?> ₽</b>
-      </div>
-      <?php endforeach; ?>
-    </div>
-    <?php endif; ?>
+    <details style="margin-top:14px;border-top:1px solid rgba(255,255,255,.07);padding-top:10px">
+      <summary class="mut" style="cursor:pointer;font-weight:700">Редактировать профиль, авто и реквизиты</summary>
+      <form method="post" style="margin-top:12px">
+        <input type="hidden" name="cmd" value="update"><input type="hidden" name="id" value="<?= h($d['id']) ?>">
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+          <label class="mut">Имя<input name="first_name" value="<?= h($d['first_name']) ?>"></label>
+          <label class="mut">Фамилия<input name="last_name" value="<?= h($d['last_name']) ?>"></label>
+          <label class="mut">Марка<input name="car_brand" value="<?= h($d['car_brand']) ?>"></label>
+          <label class="mut">Модель<input name="car_model" value="<?= h($d['car_model']) ?>"></label>
+          <label class="mut">Цвет<input name="car_color" value="<?= h($d['car_color']) ?>"></label>
+          <label class="mut">Госномер<input name="license_plate" value="<?= h($d['license_plate']) ?>"></label>
+          <label class="mut">Год<input type="number" name="car_year" value="<?= (int) $d['car_year'] ?>"></label>
+          <label class="mut">ВУ<input name="driver_license" value="<?= h($d['driver_license']) ?>"></label>
+          <label class="mut">Минимум баланса<input type="number" name="min_balance_for_orders" value="<?= h((string) $d['min_balance_for_orders']) ?>"></label>
+          <label class="mut">Штраф за отказ<input type="number" name="rejection_penalty" value="<?= h((string) $d['rejection_penalty']) ?>"></label>
+          <label class="mut">Телефон выплат<input name="payment_phone" value="<?= h((string) $d['payment_phone']) ?>"></label>
+          <label class="mut">Банк<input name="payment_bank_name" value="<?= h((string) $d['payment_bank_name']) ?>"></label>
+          <label class="mut" style="grid-column:1/-1">Получатель<input name="payment_card_holder" value="<?= h((string) $d['payment_card_holder']) ?>"></label>
+        </div>
+        <div class="flex" style="margin-top:10px">
+          <label><input type="checkbox" name="accept_card_transfer" value="1" <?= $d['accept_card_transfer'] ? 'checked' : '' ?> style="width:auto"> Карта</label>
+          <label><input type="checkbox" name="accept_sbp" value="1" <?= $d['accept_sbp'] ? 'checked' : '' ?> style="width:auto"> СБП</label>
+          <button class="btn sm" style="margin-left:auto">Сохранить</button>
+        </div>
+      </form>
+    </details>
   </div>
 <?php endforeach; ?>
 </div>

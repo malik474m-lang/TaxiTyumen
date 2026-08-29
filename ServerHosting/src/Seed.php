@@ -10,6 +10,9 @@ final class Seed
 {
     public static function ensure(\PDO $db): void
     {
+        // Runtime-миграции для уже установленной базы — повторный install.php не нужен
+        self::migrateExistingDatabase($db);
+
         // Тарифы
         $count = (int) $db->query('SELECT COUNT(*) FROM tariffs')->fetchColumn();
         if ($count === 0) {
@@ -99,5 +102,60 @@ final class Seed
 
         // Брендинг
         Branding::ensureSeeded($db);
+
+        // Профили оплаты для всех операторов
+        $operators = $db->query("SELECT id FROM users WHERE role = 'operator'")->fetchAll();
+        $profileStmt = $db->prepare(
+            'INSERT IGNORE INTO operator_profiles (id, user_id) VALUES (?, ?)'
+        );
+        foreach ($operators as $operator) {
+            $profileStmt->execute([Db::uuid(), $operator['id']]);
+        }
+    }
+
+    private static function hasColumn(\PDO $db, string $table, string $column): bool
+    {
+        $stmt = $db->prepare(
+            'SELECT COUNT(*) FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?'
+        );
+        $stmt->execute([$table, $column]);
+        return (int) $stmt->fetchColumn() > 0;
+    }
+
+    private static function addColumn(\PDO $db, string $table, string $column, string $definition): void
+    {
+        if (!self::hasColumn($db, $table, $column)) {
+            // table/column/definition задаются только константами ниже, не пользовательским вводом
+            $db->exec("ALTER TABLE `$table` ADD COLUMN `$column` $definition");
+        }
+    }
+
+    private static function migrateExistingDatabase(\PDO $db): void
+    {
+        // Новые поля профиля водителя из исходной Driver.cs
+        self::addColumn($db, 'drivers', 'payment_phone', "VARCHAR(20) NULL AFTER rejection_penalty");
+        self::addColumn($db, 'drivers', 'payment_bank_name', "VARCHAR(80) NULL AFTER payment_phone");
+        self::addColumn($db, 'drivers', 'payment_card_holder', "VARCHAR(120) NULL AFTER payment_bank_name");
+        self::addColumn($db, 'drivers', 'accept_card_transfer', "TINYINT(1) NOT NULL DEFAULT 1 AFTER payment_card_holder");
+        self::addColumn($db, 'drivers', 'accept_sbp', "TINYINT(1) NOT NULL DEFAULT 1 AFTER accept_card_transfer");
+
+        // Загружаемый логотип для серверного брендинга
+        self::addColumn($db, 'branding_settings', 'logo_path', "VARCHAR(255) NULL AFTER logo_icon");
+
+        // Схемы оплаты операторов из исходного OperatorProfile
+        $db->exec(
+            "CREATE TABLE IF NOT EXISTS operator_profiles (
+                id CHAR(36) PRIMARY KEY,
+                user_id CHAR(36) NOT NULL UNIQUE,
+                scheme ENUM('per_order','per_hour','per_day','fixed_monthly') NOT NULL DEFAULT 'per_order',
+                rate_per_order DOUBLE NOT NULL DEFAULT 30,
+                rate_per_hour DOUBLE NOT NULL DEFAULT 150,
+                rate_per_day DOUBLE NOT NULL DEFAULT 1500,
+                fixed_monthly DOUBLE NOT NULL DEFAULT 30000,
+                updated_at DATETIME NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
     }
 }

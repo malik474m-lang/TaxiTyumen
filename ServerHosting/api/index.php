@@ -25,6 +25,7 @@ Response::json([
         'GET/POST /api/chat.php',
         'GET  /api/places.php',
         'GET  /api/branding.php?app= · PUT (admin)',
+        'GET/POST /api/branding-logo.php?app= (логотип бренда)',
         'GET/POST /api/operators/shift.php (operator)',
         'GET/PUT /api/autocall.php (staff)',
         'GET  /api/stats.php (admin)',

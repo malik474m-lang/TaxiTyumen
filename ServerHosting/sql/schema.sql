@@ -162,6 +162,18 @@ CREATE TABLE IF NOT EXISTS operator_shifts (
   INDEX (operator_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS operator_profiles (
+  id             CHAR(36) PRIMARY KEY,
+  user_id        CHAR(36) NOT NULL UNIQUE,
+  scheme         ENUM('per_order','per_hour','per_day','fixed_monthly') NOT NULL DEFAULT 'per_order',
+  rate_per_order DOUBLE NOT NULL DEFAULT 30,
+  rate_per_hour  DOUBLE NOT NULL DEFAULT 150,
+  rate_per_day   DOUBLE NOT NULL DEFAULT 1500,
+  fixed_monthly  DOUBLE NOT NULL DEFAULT 30000,
+  updated_at     DATETIME NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS auto_call_settings (
   id                      CHAR(36) PRIMARY KEY,
   enabled                 TINYINT(1) NOT NULL DEFAULT 1,
@@ -179,6 +191,7 @@ CREATE TABLE IF NOT EXISTS branding_settings (
   hero_title         VARCHAR(120) NOT NULL DEFAULT '',
   hero_subtitle      VARCHAR(300) NOT NULL DEFAULT '',
   logo_icon          VARCHAR(40) NOT NULL DEFAULT 'taxi',
+  logo_path          VARCHAR(255) NULL,
   primary_color      VARCHAR(9) NOT NULL DEFAULT '#facc15',
   primary_text_color VARCHAR(9) NOT NULL DEFAULT '#0a0a0c',
   support_phone      VARCHAR(30) NULL,
