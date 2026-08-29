@@ -21,9 +21,11 @@ import {
   FileDown,
   Settings2,
   PhoneCall,
+  Palette,
 } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import MiniBars from "@/components/MiniBars";
+import BrandingEditor from "@/components/BrandingEditor";
 import {
   api,
   getSession,
@@ -65,6 +67,7 @@ const TABS = [
   { key: "orders", label: "Заказы", icon: ListOrdered },
   { key: "drivers", label: "Водители", icon: CarFront },
   { key: "tariffs", label: "Тарифы", icon: CirclePercent },
+  { key: "branding", label: "Брендинг", icon: Palette },
   { key: "settings", label: "Настройки", icon: Settings2 },
 ] as const;
 
@@ -486,6 +489,9 @@ export default function AdminPage() {
             ))}
           </div>
         )}
+
+        {/* ── БРЕНДИНГ ──────────────────────────────────────────────── */}
+        {tab === "branding" && <BrandingEditor />}
 
         {/* ── НАСТРОЙКИ ─────────────────────────────────────────────── */}
         {tab === "settings" && autocall && (

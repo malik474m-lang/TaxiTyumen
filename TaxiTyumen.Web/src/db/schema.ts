@@ -217,6 +217,23 @@ export const operatorShifts = pgTable("operator_shifts", {
   endedAt: timestamp("ended_at", { withTimezone: true }),
 });
 
+// ── Branding settings (серверный брендинг приложений) ───────────────────────
+
+export const brandingSettings = pgTable("branding_settings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  app: text("app").notNull().unique(), // client | driver | operator
+  appName: text("app_name").notNull(),
+  appCode: text("app_code").notNull(),
+  heroTitle: text("hero_title").notNull().default(""),
+  heroSubtitle: text("hero_subtitle").notNull().default(""),
+  logoIcon: text("logo_icon").notNull().default("taxi"),
+  primaryColor: text("primary_color").notNull().default("#facc15"),
+  primaryTextColor: text("primary_text_color").notNull().default("#0a0a0c"),
+  supportPhone: text("support_phone"),
+  features: text("features").notNull().default("[]"), // JSON string[]
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+});
+
 // ── AutoCall settings (AutoCallSettings.cs) ──────────────────────────────────
 
 export const autoCallSettings = pgTable("auto_call_settings", {

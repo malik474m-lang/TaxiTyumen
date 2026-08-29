@@ -23,6 +23,8 @@ import {
   ListOrdered,
 } from "lucide-react";
 import { api, getSession, setSession, type SessionUser } from "@/lib/client";
+import type { BrandingData } from "@/lib/branding";
+import { LOGO_ICONS } from "@/components/AppHeader";
 
 export const ROLE_PATHS: Record<SessionUser["role"], string> = {
   client: "/client",
@@ -112,12 +114,35 @@ export const ROLE_THEMES: Record<SessionUser["role"], RoleTheme> = {
 export default function LoginScreen({
   role,
   onAuthed,
+  branding,
 }: {
   role: SessionUser["role"];
   onAuthed: (user: SessionUser) => void;
+  branding?: BrandingData | null;
 }) {
-  const theme = ROLE_THEMES[role];
-  const Icon = theme.icon;
+  const staticTheme = ROLE_THEMES[role];
+  // Серверный брендинг переопределяет статичную тему приложения
+  const brandColor = branding?.primaryColor;
+  const brandInk = branding?.primaryTextColor ?? "#0a0a0c";
+  const appName = branding?.appName ?? staticTheme.appName;
+  const appCode = branding?.appCode ?? staticTheme.appCode;
+  const heroTitle = branding?.heroTitle || appName;
+  const heroSubtitle = branding?.heroSubtitle || staticTheme.description;
+  const FeatureIcons = [Timer, MapPinned, MessageSquare];
+  const features = branding?.features?.length
+    ? branding.features.map((text, i) => ({
+        icon: FeatureIcons[i % FeatureIcons.length],
+        text,
+      }))
+    : staticTheme.features;
+  const Icon = LOGO_ICONS[branding?.logoIcon ?? ""] ?? staticTheme.icon;
+  const theme = {
+    ...staticTheme,
+    appName,
+    appCode,
+    description: heroSubtitle,
+    features,
+  };
 
   const [view, setView] = useState<"checking" | "conflict" | "login" | "register">("checking");
   const [existing, setExisting] = useState<SessionUser | null>(null);
@@ -252,7 +277,23 @@ export default function LoginScreen({
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
+    <div
+      className="relative min-h-screen overflow-hidden"
+      style={
+        brandColor
+          ? ({ "--brand": brandColor, "--brand-ink": brandInk } as React.CSSProperties)
+          : undefined
+      }
+    >
+      {/* Брендовое свечение */}
+      {brandColor && (
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background: `radial-gradient(900px 500px at 85% -10%, ${brandColor}14, transparent 60%)`,
+          }}
+        />
+      )}
       <div className="pointer-events-none absolute -left-24 top-1/2 hidden -translate-y-1/2 -rotate-90 select-none text-[160px] font-black tracking-tighter text-white/[0.02] lg:block">
         {theme.appCode.split(" ")[0].toUpperCase()}
       </div>
@@ -265,19 +306,32 @@ export default function LoginScreen({
             Портал TaxiTyumen
           </a>
 
-          <div className={`flex h-14 w-14 items-center justify-center rounded-2xl shadow-lg ${theme.tileClass}`}>
+          <div
+            className={`flex h-14 w-14 items-center justify-center rounded-2xl shadow-lg ${brandColor ? "" : theme.tileClass}`}
+            style={
+              brandColor
+                ? { background: brandColor, color: brandInk, boxShadow: `0 10px 30px ${brandColor}55` }
+                : undefined
+            }
+          >
             <Icon className="h-8 w-8" strokeWidth={2.2} />
           </div>
-          <div className={`mt-5 text-xs font-black uppercase tracking-[0.3em] ${theme.accentText}`}>
+          <div
+            className={`mt-5 text-xs font-black uppercase tracking-[0.3em] ${brandColor ? "" : theme.accentText}`}
+            style={brandColor ? { color: brandColor } : undefined}
+          >
             {theme.appCode}
           </div>
-          <h1 className="mt-2 text-4xl font-black tracking-tighter sm:text-5xl">{theme.appName}</h1>
+          <h1 className="mt-2 text-4xl font-black tracking-tighter sm:text-5xl">{heroTitle}</h1>
           <p className="mt-4 max-w-md text-sm leading-relaxed text-zinc-400">{theme.description}</p>
 
           <div className="mt-8 max-w-sm space-y-2.5">
             {theme.features.map((f) => (
               <div key={f.text} className="flex items-center gap-3 rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3">
-                <f.icon className={`h-4 w-4 shrink-0 ${theme.accentText}`} />
+                <f.icon
+                  className={`h-4 w-4 shrink-0 ${brandColor ? "" : theme.accentText}`}
+                  style={brandColor ? { color: brandColor } : undefined}
+                />
                 <span className="text-sm font-semibold text-zinc-300">{f.text}</span>
               </div>
             ))}

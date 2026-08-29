@@ -22,26 +22,45 @@ body {
     #0a0a0c;
 }
 
+:root {
+  --brand: #facc15;
+  --brand-ink: #0a0a0c;
+}
+
 ::selection {
-  background: #facc15;
-  color: #0a0a0c;
+  background: var(--brand);
+  color: var(--brand-ink);
 }
 
 /* Тонкие скроллбары */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(250, 204, 21, 0.35) transparent;
+  scrollbar-color: color-mix(in srgb, var(--brand) 35%, transparent) transparent;
 }
 *::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgba(250, 204, 21, 0.35);
+  background: color-mix(in srgb, var(--brand) 35%, transparent);
   border-radius: 999px;
 }
 *::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* Утилиты брендового акцента (цвет подхватывается из серверного брендинга) */
+.text-brand {
+  color: var(--brand) !important;
+}
+.bg-brand {
+  background-color: var(--brand) !important;
+}
+.bg-brand-soft {
+  background-color: color-mix(in srgb, var(--brand) 12%, transparent) !important;
+}
+.border-brand {
+  border-color: color-mix(in srgb, var(--brand) 55%, transparent) !important;
 }
 
 /* Пульс маркера поиска */
@@ -89,7 +108,7 @@ body {
 
 /* Шашки такси для разделителей */
 .checker {
-  background-image: repeating-conic-gradient(#facc15 0% 25%, transparent 0% 50%);
+  background-image: repeating-conic-gradient(var(--brand, #facc15) 0% 25%, transparent 0% 50%);
   background-size: 14px 14px;
 }
 
@@ -128,20 +147,20 @@ select.input-dark option {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: #facc15;
-  color: #0a0a0c;
+  background: var(--brand, #facc15);
+  color: var(--brand-ink, #0a0a0c);
   font-weight: 800;
   border-radius: 14px;
   padding: 13px 22px;
   font-size: 14px;
   letter-spacing: 0.01em;
-  transition: transform 0.15s, background 0.2s, box-shadow 0.2s;
-  box-shadow: 0 4px 24px rgba(250, 204, 21, 0.22);
+  transition: transform 0.15s, filter 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 24px color-mix(in srgb, var(--brand, #facc15) 25%, transparent);
   cursor: pointer;
   border: none;
 }
 .btn-taxi:hover {
-  background: #fde047;
+  filter: brightness(1.12);
   transform: translateY(-1px);
 }
 .btn-taxi:active {
