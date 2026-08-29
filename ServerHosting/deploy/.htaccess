@@ -1,0 +1,19 @@
+# Корневой .htaccess для корня домена (~/domains/taxi.event72.ru/.htaccess)
+# Проксирует /api/* и /admin/* в ServerHosting/ без симлинков.
+Options -Indexes
+AddDefaultCharset utf-8
+
+RewriteEngine On
+
+# Уже существующие реальные файлы отдаём как есть
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Точное вхождение без слеша
+RewriteRule ^api/?$ ServerHosting/api/index.php [L,QSA]
+RewriteRule ^admin/?$ ServerHosting/admin/index.php [L,QSA]
+
+# Явные пути
+RewriteRule ^api/(.*)$ ServerHosting/api/$1 [L,QSA]
+RewriteRule ^admin/(.*)$ ServerHosting/admin/$1 [L,QSA]
