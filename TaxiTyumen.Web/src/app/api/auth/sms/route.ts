@@ -9,12 +9,14 @@ import { eq } from "drizzle-orm";
 import { normalizePhone, hashPassword } from "@/lib/auth";
 import { serializeUser } from "@/lib/serialize";
 import { ensureSeeded } from "@/lib/seed";
+import { getServiceBrand } from "@/lib/branding";
 import { signToken } from "@/lib/session";
 import { randomBytes } from "node:crypto";
 
 export async function POST(req: Request) {
   try {
     await ensureSeeded();
+    const service = await getServiceBrand();
     const body = await req.json();
     const action = String(body.action ?? "");
     const phone = normalizePhone(String(body.phone ?? ""));
@@ -57,7 +59,7 @@ export async function POST(req: Request) {
         try {
           const url = `https://sms.ru/sms/send?api_id=${encodeURIComponent(smsApiId)}&to=${encodeURIComponent(
             phone
-          )}&msg=${encodeURIComponent(`${code} — ваш код Такси Тюмень`)}&json=1`;
+          )}&msg=${encodeURIComponent(`${code} — ваш код ${service.smsSenderName}`)}&json=1`;
           const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
           sent = res.ok;
         } catch {

@@ -6,7 +6,7 @@ import { CarTaxiFront, ArrowUpRight } from "lucide-react";
 import { getSession } from "@/lib/client";
 import { ROLE_PATHS } from "@/components/LoginScreen";
 import { LOGO_ICONS } from "@/components/AppHeader";
-import type { BrandingData } from "@/lib/branding";
+import type { BrandingData, ServiceBrandData } from "@/lib/branding";
 
 const DEMO_PHONES: Record<string, string> = {
   client: "+79221112233",
@@ -14,7 +14,13 @@ const DEMO_PHONES: Record<string, string> = {
   operator: "+79001234568",
 };
 
-export default function PortalClient({ brandings }: { brandings: BrandingData[] }) {
+export default function PortalClient({
+  brandings,
+  service,
+}: {
+  brandings: BrandingData[];
+  service: ServiceBrandData;
+}) {
   const router = useRouter();
   const [ready, setReady] = useState(false);
 
@@ -39,7 +45,7 @@ export default function PortalClient({ brandings }: { brandings: BrandingData[] 
   return (
     <div className="relative min-h-screen overflow-hidden">
       <div className="pointer-events-none absolute -right-24 top-1/2 hidden -translate-y-1/2 rotate-90 select-none text-[180px] font-black tracking-tighter text-white/[0.02] lg:block">
-        ТЮМЕНЬ
+        {service.city.toUpperCase()}
       </div>
 
       <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-10">
@@ -49,9 +55,10 @@ export default function PortalClient({ brandings }: { brandings: BrandingData[] 
             <CarTaxiFront className="h-7 w-7" strokeWidth={2.4} />
           </div>
           <div>
-            <div className="text-lg font-black tracking-tight">ТАКСИ ТЮМЕНЬ</div>
+            <div className="text-lg font-black tracking-tight">{service.serviceName}</div>
             <div className="text-xs font-semibold uppercase tracking-[0.25em] text-amber-400/80">
-              портал системы · 72 регион
+              портал системы
+              {service.regionCode ? ` · ${service.regionCode} регион` : ` · ${service.city}`}
             </div>
           </div>
         </div>
@@ -86,14 +93,18 @@ export default function PortalClient({ brandings }: { brandings: BrandingData[] 
                 />
                 <div className="relative flex items-start justify-between">
                   <div
-                    className="flex shrink-0 items-center justify-center rounded-2xl p-3 shadow-lg"
+                    className="flex h-13 w-13 shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-lg"
                     style={{
                       background: b.primaryColor,
                       color: b.primaryTextColor,
                       boxShadow: `0 10px 30px ${b.primaryColor}45`,
                     }}
                   >
-                    <Icon className="h-7 w-7" strokeWidth={2.2} />
+                    {b.logoUrl ? (
+                      <img src={b.logoUrl} alt={b.appName} className="h-full w-full bg-white object-contain p-1" />
+                    ) : (
+                      <Icon className="h-7 w-7" strokeWidth={2.2} />
+                    )}
                   </div>
                   <ArrowUpRight className="h-5 w-5 text-zinc-600 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5" style={{ color: undefined }} />
                 </div>
@@ -136,7 +147,7 @@ export default function PortalClient({ brandings }: { brandings: BrandingData[] 
             </div>
             <h2 className="mt-1.5 text-2xl font-black tracking-tight">Панель администратора</h2>
             <p className="mt-2 text-sm leading-relaxed text-zinc-400">
-              Выручка и аналитика сервиса, тарифы города, брендинг приложений, балансы водителей.
+              Выручка и аналитика, тарифы, бренд сервиса и приложений, балансы водителей.
             </p>
             <div className="mt-5 flex items-center justify-between border-t border-white/8 pt-4">
               <span className="text-xs text-zinc-600">
@@ -151,9 +162,10 @@ export default function PortalClient({ brandings }: { brandings: BrandingData[] 
         <div className="mt-auto animate-rise pt-14" style={{ animationDelay: "0.4s" }}>
           <div className="checker h-2 w-40 rounded-full opacity-70" />
           <p className="mt-4 text-xs leading-relaxed text-zinc-600">
-            TaxiTyumen — веб-порт полного цикла: клиент · водитель · диспетчерская · администрирование.
+            {service.serviceName} — веб-порт полного цикла: клиент · водитель · диспетчерская · администрирование.
+            {service.supportPhone ? ` · Поддержка: ${service.supportPhone}` : ""}
             <br />
-            Названия, цвета и тексты приложений настраиваются сервером в админ-панели (вкладка «Брендинг»).
+            Название сервиса, город и внешний вид приложений настраиваются сервером в админ-панели.
           </p>
         </div>
       </div>

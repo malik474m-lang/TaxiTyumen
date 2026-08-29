@@ -10,5 +10,8 @@ define('TAXI_DB_PASS', 'мой_пароль');
 define('AUTH_SECRET', 'придумайте-длинную-случайную-строку-минимум-32-символа');
 define('SMS_API_ID', '');
 define('DADATA_API_KEY', '');
+// Публичный JS API-ключ Яндекс Карт; ограничьте доменом taxi.event72.ru в кабинете
+// https://developer.tech.yandex.ru/services/
+define('YANDEX_MAPS_API_KEY', '');
 define('CORS_ORIGIN', 'https://ваш-домен.ру');
 define('CITY_UTC_OFFSET', 5);

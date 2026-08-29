@@ -26,6 +26,12 @@ if (!defined('SMS_API_ID')) define('SMS_API_ID', getenv('SMS_API_ID') ?: '');
 // (опционально) DaData Suggestions API — ключ хранится только на сервере
 if (!defined('DADATA_API_KEY')) define('DADATA_API_KEY', getenv('DADATA_API_KEY') ?: '');
 
+// Яндекс Карты JavaScript API 2.1 — публичный ключ с ограничением по домену
+// Получить: https://developer.tech.yandex.ru/services/
+if (!defined('YANDEX_MAPS_API_KEY')) {
+    define('YANDEX_MAPS_API_KEY', getenv('YANDEX_MAPS_API_KEY') ?: '');
+}
+
 // Тюмень UTC+5 — сдвиг для ценообразования/статистики
 if (!defined('CITY_UTC_OFFSET')) define('CITY_UTC_OFFSET', 5);
 

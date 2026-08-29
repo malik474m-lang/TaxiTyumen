@@ -25,7 +25,14 @@ $lastEvent=(int)$db->query('SELECT COALESCE(MAX(id),0) FROM events')->fetchColum
 $checks['realtime']=['ok'=>true,'detail'=>'MySQL polling · последнее событие #'.$lastEvent,'ms'=>null];
 $settings=AutoCall::getSettings($db);
 $checks['sms']=['ok'=>SMS_API_ID!==''?null:false,'detail'=>SMS_API_ID!==''?'Ключ настроен, нажмите «Проверить всё»':'SMS_API_ID не настроен','ms'=>null];
-$checks['geocoding']=['ok'=>null,'detail'=>DADATA_API_KEY!==''?'DaData настроена + Nominatim fallback':'Nominatim fallback (DaData-ключ не настроен)','ms'=>null];
+$checks['geocoding']=['ok'=>null,'detail'=>DADATA_API_KEY!==''?'DaData настроена + Яндекс fallback':(YANDEX_MAPS_API_KEY!==''?'Яндекс Геокодер':'ключи геокодинга не настроены'),'ms'=>null];
+$checks['yandex_maps']=[
+    'ok'=>YANDEX_MAPS_API_KEY!=='' ? true : false,
+    'detail'=>YANDEX_MAPS_API_KEY!==''
+        ? 'JS API 2.1 настроен · ключ должен быть ограничен доменом'
+        : 'Добавьте YANDEX_MAPS_API_KEY в config.local.php',
+    'ms'=>null,
+];
 $zConfigured=!empty($settings['zvonok_api_key'])&&!empty($settings['zvonok_campaign_id']);
 $checks['zvonok']=['ok'=>$zConfigured?null:false,'detail'=>$zConfigured?'Ключ и кампания настроены':'Ключ или campaign_id не настроены','ms'=>null];
 $checks['osrm']=['ok'=>null,'detail'=>ini_get('allow_url_fopen')?'Исходящие HTTP разрешены':'allow_url_fopen выключен','ms'=>null];
@@ -54,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 $logs=$db->query('SELECT * FROM service_call_logs ORDER BY created_at DESC LIMIT 100')->fetchAll();
 $endpoints=[
 ['POST','/api/auth/login.php','Авторизация и HMAC-токен'],['POST','/api/auth/register.php','Регистрация клиента/водителя'],['POST','/api/auth/sms.php','SMS-код send/verify'],
-['GET/POST','/api/notifications.php','Уведомления, прочтение, admin-send'],['GET/POST','/api/chat.php','Чат заказа + read'],['GET','/api/geocoding.php','DaData/Nominatim search + reverse'],
+['GET/POST','/api/notifications.php','Уведомления, прочтение, admin-send'],['GET/POST','/api/chat.php','Чат заказа + read'],['GET','/api/geocoding.php','DaData/Яндекс search + reverse'],
 ['GET/POST','/api/orders/','Списки и создание заказа'],['POST','/api/orders/action.php','Жизненный цикл заказа'],['GET/POST','/api/drivers/','Водители и координаты'],
 ['GET/PUT','/api/tariffs/','Тарифы'],['POST','/api/pricing.php','OSRM-расчёт цены'],['GET/PUT','/api/branding.php','Серверный брендинг'],
 ['GET/POST','/api/branding-logo.php','Логотип бренда'],['GET/POST','/api/operators/shift.php','Смены операторов'],['GET/PUT','/api/autocall.php','Эскалация и Zvonok'],
@@ -69,7 +76,7 @@ layout_header('API и сервисы','services');
 
 <div class="grid q4" style="margin-top:18px">
 <?php foreach([
-'mysql'=>['MySQL','База, пользователи, заказы'],'osrm'=>['OSRM','Маршруты и расстояния'],'geocoding'=>['DaData / OSM','Поиск и reverse geocode'],'sms'=>['sms.ru','SMS-коды и рассылки'],
+'mysql'=>['MySQL','База, пользователи, заказы'],'yandex_maps'=>['Яндекс Карты','Карты РФ и редактор зон'],'osrm'=>['OSRM','Маршруты и расстояния'],'geocoding'=>['DaData / Яндекс','Поиск и reverse geocode'],'sms'=>['sms.ru','SMS-коды и рассылки'],
 'zvonok'=>['Zvonok','Автодозвон клиенту'],'storage'=>['Хранилище','Логотипы брендов'],'realtime'=>['Realtime','События приложений']
 ] as $key=>[$name,$desc]):$c=$checks[$key];?>
 <div class="card"><div class="flex between"><b style="font-size:16px"><?=h($name)?></b><?=service_badge($c['ok'])?></div><div class="mut" style="margin-top:8px"><?=h($desc)?></div><div style="margin-top:8px;font-size:12px"><?=h($c['detail'])?></div><?php if($c['ms']!==null):?><div class="mut" style="margin-top:5px"><?=$c['ms']?> мс</div><?php endif;?></div>

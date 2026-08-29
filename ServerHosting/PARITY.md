@@ -60,7 +60,7 @@ API Controllers/Hubs/Background Services, TaxiAdmin, TaxiClient, TaxiDriver, Tax
 - Router адаптирует PascalCase JSON, C# enum-строки, статусы и старый AuthResponse.
 - TaxiClient/TaxiDriver SignalRService заменён polling уведомлений PHP с теми же событиями.
 - TaxiOperator получает обновления заказов и сообщения через polling.
-- DaData/Nominatim перенесены на сервер (`geocoding.php`), ключ удалён из приложений.
+- DaData и HTTP Геокодер Яндекс Карт перенесены на сервер (`geocoding.php`), ключи удалены из приложений.
 
 ## Осознанные инфраструктурные адаптации
 

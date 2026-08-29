@@ -16,6 +16,7 @@ export const userRoleEnum = pgEnum("user_role", [
   "driver",
   "operator",
   "admin",
+  "superadmin",
 ]);
 
 export const driverStatusEnum = pgEnum("driver_status", [
@@ -67,6 +68,7 @@ export const transactionTypeEnum = pgEnum("transaction_type", [
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   phone: text("phone").notNull().unique(),
+  username: text("username").unique(),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   email: text("email"),
@@ -78,6 +80,10 @@ export const users = pgTable("users", {
   rating: doublePrecision("rating").notNull().default(5),
   totalTrips: integer("total_trips").notNull().default(0),
   isPhoneVerified: boolean("is_phone_verified").notNull().default(false),
+  isArchived: boolean("is_archived").notNull().default(false),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  archivedBy: uuid("archived_by"),
+  archiveReason: text("archive_reason"),
   smsCode: text("sms_code"),
   smsCodeExpiry: timestamp("sms_code_expiry", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
@@ -116,6 +122,9 @@ export const drivers = pgTable("drivers", {
     .notNull()
     .default(100),
   rejectionPenalty: doublePrecision("rejection_penalty").notNull().default(0),
+  photoDriver: text("photo_driver"),
+  photoLicense: text("photo_license"),
+  photoCar: text("photo_car"),
   currentOrderId: uuid("current_order_id"),
 });
 
@@ -169,6 +178,9 @@ export const orders = pgTable("orders", {
   estimatedDistance: doublePrecision("estimated_distance"),
   estimatedDuration: integer("estimated_duration"),
   routeGeometry: text("route_geometry"),
+  pricingMode: text("pricing_mode").notNull().default("tariff"),
+  fromZoneId: uuid("from_zone_id"),
+  toZoneId: uuid("to_zone_id"),
   paymentMethod: paymentMethodEnum("payment_method")
     .notNull()
     .default("cash"),
@@ -215,6 +227,68 @@ export const operatorShifts = pgTable("operator_shifts", {
     .notNull()
     .defaultNow(),
   endedAt: timestamp("ended_at", { withTimezone: true }),
+});
+
+// ── Зональная тарификация: полигоны зон и фиксированные цены ────────────────
+
+export const zones = pgTable("zones", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  color: text("color").notNull().default("#38bdf8"),
+  polygon: text("polygon").notNull(),
+  priority: integer("priority").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+});
+
+export const zonePrices = pgTable("zone_prices", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  fromZoneId: uuid("from_zone_id").notNull(),
+  toZoneId: uuid("to_zone_id").notNull(),
+  tariff: tariffTypeEnum("tariff").notNull().default("economy"),
+  price: doublePrecision("price").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+});
+
+export const zoneSettings = pgTable("zone_settings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  enabled: boolean("enabled").notNull().default(false),
+  applyMultipliers: boolean("apply_multipliers").notNull().default(false),
+  addOptions: boolean("add_options").notNull().default(true),
+  fallbackToTariff: boolean("fallback_to_tariff").notNull().default(true),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+});
+
+// ── Admin sections visibility (управление доступом супер-админом) ───────────
+
+export const adminSections = pgTable("admin_sections", {
+  sectionKey: text("section_key").primaryKey(),
+  visibleForAdmin: boolean("visible_for_admin").notNull().default(true),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+});
+
+export const systemState = pgTable("system_state", {
+  stateKey: text("state_key").primaryKey(),
+  stateValue: text("state_value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ── Service brand (единый бренд сервиса: название, город, центр, TZ) ────────
+
+export const serviceBrand = pgTable("service_brand", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  serviceName: text("service_name").notNull(),
+  city: text("city").notNull(),
+  region: text("region").notNull(),
+  regionCode: text("region_code").notNull().default(""),
+  supportPhone: text("support_phone"),
+  centerLat: doublePrecision("center_lat").notNull().default(57.1522),
+  centerLng: doublePrecision("center_lng").notNull().default(65.5272),
+  utcOffset: integer("utc_offset").notNull().default(5),
+  smsSenderName: text("sms_sender_name").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
 });
 
 // ── Branding settings (серверный брендинг приложений) ───────────────────────
@@ -298,6 +372,7 @@ export const chatMessages = pgTable("chat_messages", {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+export type ServiceBrand = typeof serviceBrand.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Driver = typeof drivers.$inferSelect;
 export type Order = typeof orders.$inferSelect;

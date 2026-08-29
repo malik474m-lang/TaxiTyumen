@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { hashPassword, normalizePhone } from "@/lib/auth";
 import { serializeUser } from "@/lib/serialize";
 import { ensureSeeded } from "@/lib/seed";
-import { CITY } from "@/lib/taxi";
+import { getServiceBrand } from "@/lib/branding";
 import { signToken } from "@/lib/session";
 
 export async function POST(req: Request) {
@@ -48,6 +48,7 @@ export async function POST(req: Request) {
 
     let driverId: string | null = null;
     if (role === "driver") {
+      const service = await getServiceBrand();
       const jitter = () => (Math.random() - 0.5) * 0.05;
       const [dp] = await db
         .insert(drivers)
@@ -58,8 +59,8 @@ export async function POST(req: Request) {
           carColor: String(body.carColor ?? "Белый"),
           licensePlate: String(body.licensePlate ?? "—"),
           carYear: Number(body.carYear ?? 2020) || 2020,
-          latitude: CITY.centerLat + jitter(),
-          longitude: CITY.centerLng + jitter(),
+          latitude: service.centerLat + jitter(),
+          longitude: service.centerLng + jitter(),
           balance: 500, // стартовый баланс для приёма заказов
           rejectionPenalty: 50,
         })

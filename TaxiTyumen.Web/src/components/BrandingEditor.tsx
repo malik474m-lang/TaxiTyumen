@@ -247,14 +247,18 @@ export default function BrandingEditor() {
         >
           <div className="flex items-center gap-3">
             <div
-              className="flex h-12 w-12 items-center justify-center rounded-2xl shadow-lg"
+              className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl shadow-lg"
               style={{
                 background: brand.primaryColor,
                 color: brand.primaryTextColor,
                 boxShadow: `0 10px 30px ${brand.primaryColor}50`,
               }}
             >
-              <LogoIcon className="h-6 w-6" strokeWidth={2.3} />
+              {brand.logoUrl ? (
+                <img src={brand.logoUrl} alt={brand.appName} className="h-full w-full bg-white object-contain p-1" />
+              ) : (
+                <LogoIcon className="h-6 w-6" strokeWidth={2.3} />
+              )}
             </div>
             <div>
               <div className="text-base font-black tracking-tight">{brand.appName}</div>

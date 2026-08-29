@@ -37,10 +37,18 @@ export default function AppHeader({
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
           <div
-            className="flex h-10 w-10 items-center justify-center rounded-xl shadow-lg"
+            className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl shadow-lg"
             style={{ background: brandColor, color: brandInk, boxShadow: `0 8px 24px ${brandColor}40` }}
           >
-            <LogoIcon className="h-6 w-6" strokeWidth={2.4} />
+            {branding?.logoUrl ? (
+              <img
+                src={branding.logoUrl}
+                alt={appName}
+                className="h-full w-full bg-white object-contain p-1"
+              />
+            ) : (
+              <LogoIcon className="h-6 w-6" strokeWidth={2.4} />
+            )}
           </div>
           <div>
             <div className="text-sm font-black tracking-tight">{appName}</div>

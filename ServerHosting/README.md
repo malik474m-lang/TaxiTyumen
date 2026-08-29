@@ -16,6 +16,32 @@
 | `api/` | REST-эндпоинты (mysql/REST) |
 | `src/` | Ядро: PDO, HMAC-токены, ценообразование, сериализация, GPS-симуляция, автодозвон |
 
+## Карты для РФ — Яндекс Карты
+
+Прежний зарубежный картографический стек полностью удалён. Во всех интерфейсах:
+
+- клиент: маршрут, водитель, подача и назначение — **Яндекс Карты JS API 2.1**;
+- водитель: доступные заказы и текущий маршрут — Яндекс Карты;
+- оператор: карта автопарка — Яндекс Карты;
+- админка «Зоны и цены»: рисование полигонов и перетаскивание вершин — Яндекс Карты;
+- поиск и reverse geocode: DaData (если настроен) + **HTTP Геокодер Яндекс Карт**.
+
+Получите ключ сервиса «JavaScript API и HTTP Геокодер»:
+https://developer.tech.yandex.ru/services/
+
+В `ServerHosting/config.local.php`:
+
+```php
+define('YANDEX_MAPS_API_KEY', 'ваш-ключ');
+```
+
+В кабинете Яндекса ограничьте ключ доменом `taxi.event72.ru`. JS API-ключ
+передаётся браузеру по архитектуре Яндекса — это не серверный секрет.
+Проверка: `/api/map-config.php` и Админка → «API и сервисы».
+
+Для Next.js задайте серверную переменную `YANDEX_MAPS_API_KEY` (либо
+`NEXT_PUBLIC_YANDEX_MAPS_API_KEY`), конфигурация отдаётся через `/api/map-config`.
+
 ## API-эндпоинты
 
 | Метод/URL | Роль | Описание |
@@ -36,7 +62,7 @@
 | `POST /api/pricing.php` | все | Оценка цены всех тарифов + геометрия маршрута |
 | `GET/POST /api/chat.php` | участники | Чат по заказу + `action=read`, уведомление второго участника |
 | `GET/POST /api/notifications.php` | Bearer/admin | Лента/прочтение; admin: user/role/all, in-app/SMS |
-| `GET /api/geocoding.php` | все | Server-side DaData + Nominatim search и reverse geocode |
+| `GET /api/geocoding.php` | все | Server-side DaData + Яндекс Геокодер: search и reverse geocode |
 | `GET /api/services.php` | admin | Диагностика MySQL, OSRM, sms.ru, Zvonok, DaData, storage, realtime |
 | `GET/PUT /api/branding.php` | app=… публично, список/PUT — admin | Серверный брендинг 3 приложений (`logoUrl` входит в DTO) |
 | `GET/POST /api/branding-logo.php` | GET публично, POST admin | Выдача/загрузка/удаление логотипа, PNG/JPEG/WebP ≤ 2 МБ |
@@ -45,7 +71,7 @@
 | `GET /api/stats.php` | admin | Выручка, рейтинг направлений, графики по дням и часам |
 | `GET /api/export/orders.php` | admin | CSV-выгрузка (UTF-8 BOM + `;`) |
 | `GET /api/events.php?since=` | все | Лёгкий realtime-поллинг (вместо SSE) |
-| `GET /api/places.php` | все | Подсказки адресов Тюмени |
+| `GET /api/places.php` | все | Встроенные подсказки (для других городов — геокодер Яндекса) |
 | `GET /api/install.php` | — | Одноразовый установщик (удалить после!) |
 
 ## Деплой на хостинг через `git pull origin main` (три варианта)
@@ -129,7 +155,7 @@ Router адаптирует:
 - старый формат AuthResponse (`token` на верхнем уровне);
 - query-string `driverId` в action-запросах.
 
-DaData/Nominatim весь выполнен сервером: мобильные приложения используют
+DaData/Яндекс Геокодер выполнены сервером: мобильные приложения используют
 `/api/geocoding.php`, жёсткого ключа в исходниках больше нет.
 
 ## Отличия от веб-версии (Next.js)

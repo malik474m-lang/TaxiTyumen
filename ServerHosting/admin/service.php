@@ -75,10 +75,10 @@ layout_header('Бренд сервиса', 'service');
     <div style="margin-top:14px;padding:12px;background:#0f0f13;border-radius:12px">
       <div class="mut" style="font-size:11px;margin-bottom:6px">Центр используется для:</div>
       <ul style="margin-left:16px;font-size:12px;color:#a1a1aa;line-height:1.7">
-        <li>подбора адреса, когда DaData/Nominatim недоступны</li>
+        <li>подбора адреса, когда DaData/Яндекс Геокодер недоступны</li>
         <li>стартовых координат новых водителей</li>
         <li>поиска ближайших водителей при новом заказе</li>
-        <li>границ поиска Nominatim (±0.9° широты)</li>
+        <li>центра поиска Яндекс Геокодера</li>
       </ul>
     </div>
     <div class="mut" style="margin-top:12px;font-size:12px">

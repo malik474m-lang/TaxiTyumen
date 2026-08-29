@@ -84,8 +84,9 @@ foreach ($zones as $z) { if ($z['id'] === $editId) { $editZone = $z; break; } }
 
 layout_header('Зоны и цены', 'zones');
 ?>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<?php if (YANDEX_MAPS_API_KEY !== ''): ?>
+<script src="https://api-maps.yandex.ru/2.1/?apikey=<?= rawurlencode(YANDEX_MAPS_API_KEY) ?>&lang=ru_RU&coordorder=latlong"></script>
+<?php endif; ?>
 
 <div class="flex between">
   <div><h1>Зоны и фиксированные цены</h1><p class="mut">Фиксированная стоимость поездки между зонами вместо расчёта по километрам</p></div>
@@ -122,7 +123,14 @@ layout_header('Зоны и цены', 'zones');
   <div class="card">
     <h3 style="margin-bottom:10px"><?= $editZone ? 'Редактирование зоны' : 'Новая зона' ?></h3>
     <p class="mut" style="margin-bottom:10px">Кликайте по карте, чтобы поставить точки границы. Минимум 3 точки.</p>
-    <div id="map" style="height:340px;border-radius:12px;overflow:hidden;background:#0f0f13"></div>
+    <div id="map" style="height:340px;border-radius:12px;overflow:hidden;background:#0f0f13">
+      <?php if (YANDEX_MAPS_API_KEY === ''): ?>
+      <div style="height:100%;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">
+        <div><div style="font-size:32px">🗺️</div><b>API-ключ Яндекс Карт не настроен</b>
+        <div class="mut" style="margin-top:7px;max-width:360px">Добавьте <code>YANDEX_MAPS_API_KEY</code> в <code>config.local.php</code> и ограничьте ключ доменом <?= h($_SERVER['HTTP_HOST'] ?? '') ?>.</div></div>
+      </div>
+      <?php endif; ?>
+    </div>
     <form method="post" style="margin-top:12px">
       <input type="hidden" name="cmd" value="save_zone">
       <input type="hidden" name="id" value="<?= h($editZone['id'] ?? '') ?>">
@@ -196,41 +204,98 @@ layout_header('Зоны и цены', 'zones');
 </form>
 <?php endif; ?>
 
+<?php if (YANDEX_MAPS_API_KEY !== ''): ?>
 <script>
 var center = [<?= (float) $service['center_latitude'] ?>, <?= (float) $service['center_longitude'] ?>];
 var existing = <?= json_encode(array_map(fn($z) => ['name'=>$z['name'],'color'=>$z['color'],'points'=>$z['points'],'id'=>$z['id']], $zones), JSON_UNESCAPED_UNICODE) ?>;
 var editId = <?= json_encode($editZone['id'] ?? null) ?>;
 var points = <?= json_encode($editZone['points'] ?? [], JSON_UNESCAPED_SLASHES) ?>;
+var map, draft;
+var pointMarks = [];
 
-var map = L.map('map').setView(center, 11);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {maxZoom: 19, subdomains: 'abcd'}).addTo(map);
-
-existing.forEach(function (z) {
-  if (z.id === editId || !z.points.length) return;
-  L.polygon(z.points, {color: z.color, weight: 1, fillOpacity: 0.12}).addTo(map).bindTooltip(z.name);
-});
-
-var draft = L.polygon(points, {color: '#facc15', weight: 2, fillOpacity: 0.22}).addTo(map);
-var markers = [];
-
-function redraw() {
-  draft.setLatLngs(points);
-  markers.forEach(function (m) { map.removeLayer(m); });
-  markers = points.map(function (p, i) {
-    return L.circleMarker(p, {radius: 5, color: '#facc15', fillOpacity: 1}).addTo(map).bindTooltip('Точка ' + (i + 1));
+ymaps.ready(function () {
+  map = new ymaps.Map('map', {
+    center: center,
+    zoom: 11,
+    type: 'yandex#map',
+    controls: ['zoomControl', 'typeSelector', 'searchControl', 'geolocationControl']
+  }, {
+    suppressMapOpenBlock: true,
+    yandexMapDisablePoiInteractivity: true
   });
-  document.getElementById('pointsField').value = JSON.stringify(points);
-  document.getElementById('pointCount').textContent = 'Точек: ' + points.length;
-  if (points.length) map.fitBounds(draft.getBounds().pad(0.25));
-}
 
-map.on('click', function (e) {
-  points.push([+e.latlng.lat.toFixed(6), +e.latlng.lng.toFixed(6)]);
+  existing.forEach(function (z) {
+    if (z.id === editId || !z.points.length) return;
+    var polygon = new ymaps.Polygon([z.points], {
+      hintContent: z.name,
+      balloonContent: '<strong>' + escapeHtml(z.name) + '</strong>'
+    }, {
+      strokeColor: z.color,
+      fillColor: z.color + '33',
+      strokeWidth: 2,
+      fillOpacity: 0.22
+    });
+    map.geoObjects.add(polygon);
+  });
+
+  draft = new ymaps.Polygon([points], {
+    hintContent: 'Редактируемая зона'
+  }, {
+    strokeColor: '#facc15',
+    fillColor: '#facc1544',
+    strokeWidth: 3,
+    fillOpacity: 0.28
+  });
+  map.geoObjects.add(draft);
+
+  map.events.add('click', function (event) {
+    var coords = event.get('coords');
+    points.push([+coords[0].toFixed(6), +coords[1].toFixed(6)]);
+    redraw();
+  });
+
   redraw();
 });
 
-function clearPoints() { points = []; redraw(); }
-redraw();
+function redraw() {
+  if (!map || !draft) return;
+  draft.geometry.setCoordinates([points]);
+  pointMarks.forEach(function (mark) { map.geoObjects.remove(mark); });
+  pointMarks = points.map(function (point, index) {
+    var mark = new ymaps.Placemark(point, {
+      iconContent: String(index + 1),
+      hintContent: 'Точка ' + (index + 1)
+    }, {
+      preset: 'islands#yellowStretchyIcon',
+      draggable: true
+    });
+    mark.events.add('dragend', function () {
+      var coords = mark.geometry.getCoordinates();
+      points[index] = [+coords[0].toFixed(6), +coords[1].toFixed(6)];
+      document.getElementById('pointsField').value = JSON.stringify(points);
+    });
+    map.geoObjects.add(mark);
+    return mark;
+  });
+  document.getElementById('pointsField').value = JSON.stringify(points);
+  document.getElementById('pointCount').textContent = 'Точек: ' + points.length;
+  var bounds = draft.geometry.getBounds();
+  if (bounds && points.length >= 2) {
+    map.setBounds(bounds, {checkZoomRange: true, zoomMargin: 40});
+  }
+}
+
+function clearPoints() {
+  points = [];
+  redraw();
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, function (char) {
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char];
+  });
+}
 </script>
+<?php endif; ?>
 
 <?php layout_footer();

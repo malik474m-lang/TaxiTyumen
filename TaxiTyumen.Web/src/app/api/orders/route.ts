@@ -12,6 +12,8 @@ import {
 } from "@/lib/taxi";
 import { serializeOrder } from "@/lib/serialize";
 import { ensureSeeded } from "@/lib/seed";
+import { getServiceBrand } from "@/lib/branding";
+import { fixedZonePrice } from "@/lib/zones";
 import { advanceDriversGps } from "@/lib/simulate";
 import { runAutoCallTick } from "@/lib/autocall";
 import { publishEvent } from "@/lib/bus";
@@ -23,6 +25,7 @@ import { resolveOptions, optionsTotal } from "@/lib/options";
 export async function POST(req: Request) {
   try {
     await ensureSeeded();
+    const service = await getServiceBrand();
     const body = await req.json();
     const clientId = String(body.clientId ?? "");
     if (!clientId)
@@ -40,7 +43,7 @@ export async function POST(req: Request) {
     if (!pickupAddress)
       return NextResponse.json({ error: "Укажите адрес подачи" }, { status: 400 });
     if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) {
-      const g = geocodeAddress(pickupAddress);
+      const g = geocodeAddress(pickupAddress, service.centerLat, service.centerLng);
       pickupLat = g.lat;
       pickupLng = g.lng;
     }
@@ -51,7 +54,7 @@ export async function POST(req: Request) {
     let destLat = Number(body.destinationLatitude);
     let destLng = Number(body.destinationLongitude);
     if (destinationAddress && (!Number.isFinite(destLat) || !Number.isFinite(destLng))) {
-      const g = geocodeAddress(destinationAddress);
+      const g = geocodeAddress(destinationAddress, service.centerLat, service.centerLng);
       destLat = g.lat;
       destLng = g.lng;
     }
@@ -63,9 +66,22 @@ export async function POST(req: Request) {
     let estimatedDistance: number | null = null;
     let estimatedDuration: number | null = null;
     let routeGeometry: string | null = null;
+    let pricingMode = "tariff";
+    let fromZoneId: string | null = null;
+    let toZoneId: string | null = null;
     if (destinationAddress && Number.isFinite(destLat)) {
-      const est = await calculatePriceEstimate(pickupLat, pickupLng, destLat, destLng, tariff);
+      const est = await calculatePriceEstimate(pickupLat, pickupLng, destLat, destLng, tariff, service.utcOffset);
       estimatedPrice = est.price;
+      // Фиксированная зональная цена имеет приоритет над расчётом по км
+      const zonePrice = await fixedZonePrice(pickupLat, pickupLng, destLat, destLng, tariff);
+      if (zonePrice) {
+        estimatedPrice = zonePrice.applyMultipliers
+          ? Math.round(zonePrice.price * est.multiplier)
+          : zonePrice.price;
+        pricingMode = "zone";
+        fromZoneId = zonePrice.fromZone.id;
+        toZoneId = zonePrice.toZone.id;
+      }
       estimatedDistance = est.distanceKm;
       estimatedDuration = est.durationMinutes;
       // Геометрия по дорогам для карты
@@ -101,6 +117,9 @@ export async function POST(req: Request) {
         estimatedDistance,
         estimatedDuration,
         routeGeometry,
+        pricingMode,
+        fromZoneId,
+        toZoneId,
         comment: body.comment ?? null,
         passengerCount: Number(body.passengerCount ?? 1) || 1,
         paymentMethod: (body.paymentMethod as never) ?? "cash",

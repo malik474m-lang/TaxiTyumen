@@ -84,6 +84,8 @@ export default function AdminPage() {
   const [topupAmount, setTopupAmount] = useState(500);
   const [editTariff, setEditTariff] = useState<TariffDto | null>(null);
   const [autocall, setAutocall] = useState<AutoCallCfg | null>(null);
+  const [allowedSections, setAllowedSections] = useState<string[] | null>(null);
+  const [lockMessage, setLockMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -113,6 +115,12 @@ export default function AdminPage() {
     if (!user) return;
     refresh();
     api<AutoCallCfg>("/api/autocall").then(setAutocall).catch(() => {});
+    api<{ visibleForMe: string[]; integrity: { ok: boolean; message?: string } }>("/api/access")
+      .then((a) => {
+        setAllowedSections(a.visibleForMe);
+        setLockMessage(a.integrity?.ok === false ? (a.integrity.message ?? "Нарушена целостность ролей") : null);
+      })
+      .catch(() => setAllowedSections(null));
     const t = setInterval(refresh, 6000);
     return () => clearInterval(t);
   }, [user, refresh]);
@@ -199,18 +207,33 @@ export default function AdminPage() {
   }
 
   if (!loaded) return null;
-  if (!user || user.role !== "admin" || !user.token) {
-    return <LoginScreen role="admin" onAuthed={setUser} />;
+  if (!user || (user.role !== "admin" && user.role !== "superadmin") || !user.token) {
+    return <LoginScreen role={user?.role === "superadmin" ? "superadmin" : "admin"} onAuthed={setUser} />;
+  }
+
+  if (lockMessage) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6 text-center">
+        <div className="card max-w-lg p-8">
+          <h1 className="text-2xl font-black text-red-300">Система заблокирована</h1>
+          <p className="mt-3 text-sm text-zinc-400">{lockMessage}</p>
+          <p className="mt-4 text-xs text-zinc-600">
+            Восстановление: задайте <code>SUPERADMIN_RECOVERY=true</code> в окружении сервера
+            и перезагрузите страницу.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="min-h-screen">
-      <AppHeader user={user} subtitle="Администрирование" />
+      <AppHeader user={user} subtitle={user.role === "superadmin" ? "Супер-администратор" : "Администрирование"} />
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         {/* Табы */}
         <div className="mb-6 flex flex-wrap gap-2">
-          {TABS.map((t) => (
+          {TABS.filter((t) => !allowedSections || allowedSections.includes(t.key)).map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}

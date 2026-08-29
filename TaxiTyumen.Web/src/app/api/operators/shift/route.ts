@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { operatorShifts, orders } from "@/db/schema";
 import { eq, and, isNull, gte, sql, desc } from "drizzle-orm";
-import { readClaims, forbidden, unauthorized } from "@/lib/session";
+import { readClaims, forbidden, unauthorized, hasAdminRole } from "@/lib/session";
 
 async function shiftStats(operatorId: string, since: Date) {
   const [created] = await db
@@ -27,7 +27,7 @@ async function shiftStats(operatorId: string, since: Date) {
 export async function GET(req: Request) {
   const claims = readClaims(req);
   if (!claims) return unauthorized();
-  if (claims.role !== "operator" && claims.role !== "admin") {
+  if (claims.role !== "operator" && !hasAdminRole(claims.role)) {
     return forbidden("Смены доступны только оператору");
   }
 
@@ -46,7 +46,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const claims = readClaims(req);
   if (!claims) return unauthorized();
-  if (claims.role !== "operator" && claims.role !== "admin") {
+  if (claims.role !== "operator" && !hasAdminRole(claims.role)) {
     return forbidden("Управлять сменой может только оператор");
   }
 

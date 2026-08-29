@@ -10,7 +10,7 @@ import {
   BRAND_APPS,
   type BrandApp,
 } from "@/lib/branding";
-import { readClaims, forbidden } from "@/lib/session";
+import { readClaims, forbidden, hasAdminRole } from "@/lib/session";
 import { publishEvent } from "@/lib/bus";
 
 export async function GET(req: Request) {
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
   }
 
   const claims = readClaims(req);
-  if (!claims || claims.role !== "admin") {
+  if (!claims || !hasAdminRole(claims.role)) {
     return forbidden("Список брендов доступен только администратору");
   }
   return NextResponse.json(await getAllBranding());
@@ -31,7 +31,7 @@ export async function GET(req: Request) {
 
 export async function PUT(req: Request) {
   const claims = readClaims(req);
-  if (!claims || claims.role !== "admin") {
+  if (!claims || !hasAdminRole(claims.role)) {
     return forbidden("Брендинг меняет только администратор");
   }
 

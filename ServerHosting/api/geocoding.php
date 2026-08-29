@@ -1,5 +1,5 @@
 <?php
-// GET /api/geocoding.php?q=... | ?lat=&lng= — серверный DaData+Nominatim
+// GET /api/geocoding.php?q=... | ?lat=&lng= — серверный DaData + Яндекс Геокодер
 declare(strict_types=1);
 require_once __DIR__ . '/_bootstrap.php';
 

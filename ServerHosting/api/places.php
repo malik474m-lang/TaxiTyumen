@@ -6,7 +6,7 @@ require_once __DIR__ . '/_bootstrap.php';
 $service = ServiceSettings::get($db);
 
 // Встроенный справочник содержит только тюменские адреса: для другого города
-// список пуст — подсказки берутся из DaData/Nominatim через geocoding.php
+// список пуст — подсказки берутся из DaData/Яндекс Геокодер через geocoding.php
 if (mb_strtolower((string) $service['city_name']) !== 'тюмень') {
     Response::json([]);
 }

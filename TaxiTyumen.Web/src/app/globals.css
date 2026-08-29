@@ -222,41 +222,15 @@ select.input-dark option {
   letter-spacing: 0.02em;
 }
 
-/* ── Leaflet (тёмная тема) ────────────────────────────────────────── */
-.leaflet-container {
-  background: #0a0a0c;
-  font-family: inherit;
+/* ── Яндекс Карты ─────────────────────────────────────────────────── */
+.ymaps-2-1-79-map,
+.ymaps-2-1-79-inner-panes {
+  font-family: var(--font-sans) !important;
 }
-.taxi-div-icon {
-  background: transparent;
-  border: none;
-}
-.taxi-tooltip {
-  background: #101014 !important;
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
-  color: #fafafa !important;
-  border-radius: 8px !important;
-  font-weight: 700;
-  font-size: 11px;
-  padding: 2px 8px !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
-}
-.taxi-tooltip::before {
-  display: none !important;
-}
-.leaflet-bar a {
-  background: #121216 !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
-  color: #fafafa !important;
-}
-.leaflet-bar a:hover {
-  background: #1c1c22 !important;
-}
-.leaflet-control-attribution {
-  background: rgba(10, 10, 12, 0.7) !important;
-  color: #52525b !important;
-  font-size: 9px !important;
-}
-.leaflet-control-attribution a {
-  color: #71717a !important;
+
+/* Скругление элементов управления внутри контейнера карты */
+.ymaps-2-1-79-controls__control,
+.ymaps-2-1-79-controls__toolbar_left,
+.ymaps-2-1-79-controls__toolbar_right {
+  filter: saturate(0.9);
 }

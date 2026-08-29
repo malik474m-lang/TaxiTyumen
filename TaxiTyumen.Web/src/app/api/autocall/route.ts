@@ -4,12 +4,12 @@ import { db } from "@/db";
 import { autoCallSettings } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getAutoCallSettings } from "@/lib/autocall";
-import { readClaims, forbidden } from "@/lib/session";
+import { readClaims, forbidden, hasAdminRole } from "@/lib/session";
 import { publishEvent } from "@/lib/bus";
 
 export async function GET(req: Request) {
   const claims = readClaims(req);
-  if (!claims || (claims.role !== "operator" && claims.role !== "admin")) {
+  if (!claims || (claims.role !== "operator" && !hasAdminRole(claims.role))) {
     return forbidden("Настройки автодозвона доступны персоналу");
   }
   return NextResponse.json(await getAutoCallSettings());
@@ -17,7 +17,7 @@ export async function GET(req: Request) {
 
 export async function PUT(req: Request) {
   const claims = readClaims(req);
-  if (!claims || claims.role !== "admin") {
+  if (!claims || !hasAdminRole(claims.role)) {
     return forbidden("Настройки автодозвона меняет только администратор");
   }
 

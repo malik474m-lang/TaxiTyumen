@@ -12,10 +12,18 @@ export async function POST(req: Request) {
   try {
     await ensureSeeded();
     const body = await req.json();
-    const phone = normalizePhone(String(body.phone ?? ""));
+    const raw = String(body.phone ?? body.login ?? body.username ?? "").trim();
     const password = String(body.password ?? "");
 
-    const [user] = await db.select().from(users).where(eq(users.phone, phone));
+    // Персонал может входить по логину (супер-админ), клиенты — по телефону
+    let user: typeof users.$inferSelect | undefined;
+    if (raw && !/^[\d+()\-\s]+$/.test(raw)) {
+      [user] = await db.select().from(users).where(eq(users.username, raw));
+    }
+    if (!user) {
+      const phone = normalizePhone(raw);
+      [user] = await db.select().from(users).where(eq(users.phone, phone));
+    }
     if (!user) {
       return NextResponse.json({ error: "Пользователь не найден" }, { status: 404 });
     }
@@ -25,6 +33,12 @@ export async function POST(req: Request) {
     if (user.isBlocked) {
       return NextResponse.json(
         { error: `Аккаунт заблокирован: ${user.blockReason ?? ""}` },
+        { status: 403 }
+      );
+    }
+    if (user.isArchived) {
+      return NextResponse.json(
+        { error: "Аккаунт перенесён в архив. Обратитесь к администратору." },
         { status: 403 }
       );
     }

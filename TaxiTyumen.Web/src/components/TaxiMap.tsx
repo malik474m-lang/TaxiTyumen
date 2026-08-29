@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import type { Map as LeafletMap, LayerGroup } from "leaflet";
-import "leaflet/dist/leaflet.css";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { MapPinned, KeyRound, Loader2 } from "lucide-react";
 import { CITY } from "@/lib/city";
 
 export interface MapMarker {
@@ -13,24 +12,80 @@ export interface MapMarker {
   label?: string;
 }
 
-const ICON_HTML: Record<MapMarker["kind"], string> = {
-  driver: `<div style="width:32px;height:32px;border-radius:12px;background:#facc15;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 4px rgba(250,204,21,.25),0 4px 14px rgba(0,0,0,.55);">
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0a0a0c" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M4 16.5 5.2 11a2 2 0 0 1 2-1.5h9.6a2 2 0 0 1 2 1.5L20 16.5"/><rect x="3" y="16" width="18" height="4" rx="1.4"/>
-      <circle cx="7.5" cy="20" r=".6" fill="#0a0a0c"/><circle cx="16.5" cy="20" r=".6" fill="#0a0a0c"/>
-    </svg></div>`,
-  pickup: `<div style="width:18px;height:18px;border-radius:50%;background:#10b981;border:3px solid #06281c;box-shadow:0 0 0 3px rgba(16,185,129,.3),0 2px 8px rgba(0,0,0,.5);"></div>`,
-  dest: `<div style="width:17px;height:17px;background:#facc15;border:3px solid #453a05;box-shadow:0 0 0 3px rgba(250,204,21,.3),0 2px 8px rgba(0,0,0,.5);transform:rotate(45deg);border-radius:4px;"></div>`,
-};
+interface MapConfig {
+  provider: "yandex";
+  apiKey: string;
+  configured: boolean;
+  lang: string;
+  center: [number, number];
+  city: string;
+}
 
-const ICON_SIZE: Record<MapMarker["kind"], [number, number]> = {
-  driver: [32, 32],
-  pickup: [18, 18],
-  dest: [17, 17],
+interface YMapCollection {
+  add(object: unknown): YMapCollection;
+  removeAll(): void;
+  getBounds(): number[][] | null;
+}
+
+interface YMapInstance {
+  geoObjects: YMapCollection;
+  setCenter(center: [number, number], zoom?: number, options?: object): void;
+  setBounds(bounds: number[][], options?: object): void;
+  destroy(): void;
+  container: { fitToViewport(): void };
+}
+
+interface YMapsNamespace {
+  ready(callback: () => void): void;
+  Map: new (
+    container: HTMLElement,
+    state: { center: [number, number]; zoom: number; controls?: string[]; type?: string },
+    options?: object
+  ) => YMapInstance;
+  Placemark: new (geometry: [number, number], properties?: object, options?: object) => unknown;
+  Polyline: new (geometry: [number, number][], properties?: object, options?: object) => unknown;
+}
+
+declare global {
+  interface Window {
+    ymaps?: YMapsNamespace;
+    __taxiYandexMapsPromise?: Promise<YMapsNamespace>;
+    __taxiYandexMapsKey?: string;
+  }
+}
+
+function loadYandexMaps(apiKey: string, lang: string): Promise<YMapsNamespace> {
+  if (window.ymaps) {
+    return new Promise((resolve) => window.ymaps!.ready(() => resolve(window.ymaps!)));
+  }
+  if (window.__taxiYandexMapsPromise) return window.__taxiYandexMapsPromise;
+
+  window.__taxiYandexMapsKey = apiKey;
+  window.__taxiYandexMapsPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = `https://api-maps.yandex.ru/2.1/?apikey=${encodeURIComponent(apiKey)}&lang=${encodeURIComponent(lang)}&coordorder=latlong`;
+    script.async = true;
+    script.onload = () => {
+      if (!window.ymaps) {
+        reject(new Error("Яндекс Карты не инициализировались"));
+        return;
+      }
+      window.ymaps.ready(() => resolve(window.ymaps!));
+    };
+    script.onerror = () => reject(new Error("Не удалось загрузить Яндекс Карты"));
+    document.head.appendChild(script);
+  });
+  return window.__taxiYandexMapsPromise;
+}
+
+const PRESET: Record<MapMarker["kind"], string> = {
+  driver: "islands#yellowAutoIcon",
+  pickup: "islands#greenCircleDotIcon",
+  dest: "islands#redIcon",
 };
 
 export default function TaxiMap({
-  center = [CITY.centerLat, CITY.centerLng],
+  center,
   zoom = 12,
   markers = [],
   polyline = null,
@@ -45,98 +100,172 @@ export default function TaxiMap({
   followBounds?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<LeafletMap | null>(null);
-  const layerRef = useRef<LayerGroup | null>(null);
-  const readyRef = useRef(false);
+  const mapRef = useRef<YMapInstance | null>(null);
+  const ymapsRef = useRef<YMapsNamespace | null>(null);
+  const [config, setConfig] = useState<MapConfig | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  // Инициализация карты один раз
+  const mapCenter = center ?? config?.center ?? [CITY.centerLat, CITY.centerLng];
+  const markersKey = useMemo(
+    () => JSON.stringify(markers.map((m) => [m.id, m.lat, m.lng, m.kind, m.label])),
+    [markers]
+  );
+  const lineKey = useMemo(() => JSON.stringify(polyline), [polyline]);
+
+  // Конфигурация приходит с сервера: ключ не хардкодится в приложении.
   useEffect(() => {
-    let disposed = false;
-    (async () => {
-      const L = await import("leaflet");
-      if (disposed || !containerRef.current || mapRef.current) return;
-      const map = L.map(containerRef.current, {
-        zoomControl: false,
-        attributionControl: false,
-      }).setView(center, zoom);
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-        maxZoom: 19,
-        subdomains: "abcd",
-      }).addTo(map);
-      L.control.zoom({ position: "bottomright" }).addTo(map);
-      L.control
-        .attribution({ position: "bottomleft", prefix: false })
-        .addAttribution("© OpenStreetMap · © CARTO")
-        .addTo(map);
-      layerRef.current = L.layerGroup().addTo(map);
-      mapRef.current = map;
-      readyRef.current = true;
-      // Тайлы подгружаются асинхронно — пересчёт размера
-      setTimeout(() => map.invalidateSize(), 250);
-    })();
+    let cancelled = false;
+    fetch("/api/map-config")
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Конфигурация карт недоступна");
+        return (await res.json()) as MapConfig;
+      })
+      .then((value) => {
+        if (!cancelled) setConfig(value);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Ошибка конфигурации карт");
+          setLoading(false);
+        }
+      });
     return () => {
-      disposed = true;
-      mapRef.current?.remove();
-      mapRef.current = null;
-      readyRef.current = false;
+      cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const markersKey = JSON.stringify(markers.map((m) => [m.id, m.lat, m.lng, m.kind, m.label]));
-  const polylineKey = JSON.stringify(polyline);
-
-  // Обновление маркеров и линии
+  // Загрузка Яндекс JS API и создание карты.
   useEffect(() => {
-    (async () => {
-      const L = await import("leaflet");
-      const group = layerRef.current;
-      const map = mapRef.current;
-      if (!group || !map) return;
-      group.clearLayers();
+    if (!config || !containerRef.current) return;
+    if (!config.configured || !config.apiKey) {
+      setError("API-ключ Яндекс Карт не настроен");
+      setLoading(false);
+      return;
+    }
 
-      for (const m of markers) {
-        const icon = L.divIcon({
-          html: ICON_HTML[m.kind],
-          className: "taxi-div-icon",
-          iconSize: ICON_SIZE[m.kind],
-          iconAnchor: [ICON_SIZE[m.kind][0] / 2, ICON_SIZE[m.kind][1] / 2],
-        });
-        const marker = L.marker([m.lat, m.lng], { icon }).addTo(group);
-        if (m.label) {
-          marker.bindTooltip(m.label, {
-            permanent: true,
-            direction: "bottom",
-            offset: [0, 12],
-            className: "taxi-tooltip",
-          });
+    let cancelled = false;
+    loadYandexMaps(config.apiKey, config.lang)
+      .then((ymaps) => {
+        if (cancelled || !containerRef.current) return;
+        ymapsRef.current = ymaps;
+        if (!mapRef.current) {
+          mapRef.current = new ymaps.Map(
+            containerRef.current,
+            {
+              center: mapCenter as [number, number],
+              zoom,
+              type: "yandex#map",
+              controls: ["zoomControl", "geolocationControl", "typeSelector"],
+            },
+            {
+              suppressMapOpenBlock: true,
+              yandexMapDisablePoiInteractivity: true,
+            }
+          );
+          setTimeout(() => mapRef.current?.container.fitToViewport(), 200);
         }
-      }
-
-      if (polyline && polyline.length > 1) {
-        L.polyline(polyline, {
-          color: "#facc15",
-          weight: 4,
-          opacity: 0.85,
-          dashArray: "2 10",
-          lineCap: "round",
-        }).addTo(group);
-      }
-
-      if (followBounds) {
-        const pts: [number, number][] = [
-          ...markers.map((m) => [m.lat, m.lng] as [number, number]),
-          ...(polyline ?? []),
-        ];
-        if (pts.length > 1) {
-          map.fitBounds(L.latLngBounds(pts).pad(0.3), { animate: true, duration: 0.5 });
-        } else if (pts.length === 1) {
-          map.setView(pts[0], 14, { animate: true });
+        setError("");
+        setLoading(false);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Яндекс Карты недоступны");
+          setLoading(false);
         }
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markersKey, polylineKey, followBounds]);
+      });
 
-  return <div ref={containerRef} className={className} style={{ background: "#0a0a0c" }} />;
+    return () => {
+      cancelled = true;
+    };
+  }, [config, mapCenter, zoom]);
+
+  // Маркеры и линия обновляются без пересоздания карты.
+  useEffect(() => {
+    const map = mapRef.current;
+    const ymaps = ymapsRef.current;
+    if (!map || !ymaps) return;
+
+    map.geoObjects.removeAll();
+
+    for (const marker of markers) {
+      const label = marker.label ?? (marker.kind === "driver" ? "Водитель" : marker.kind === "pickup" ? "Подача" : "Финиш");
+      const placemark = new ymaps.Placemark(
+        [marker.lat, marker.lng],
+        {
+          hintContent: label,
+          balloonContent: `<strong>${label.replace(/[<>&"']/g, "")}</strong>`,
+          iconCaption: marker.kind === "driver" ? marker.label : undefined,
+        },
+        {
+          preset: PRESET[marker.kind],
+          hideIconOnBalloonOpen: false,
+        }
+      );
+      map.geoObjects.add(placemark);
+    }
+
+    if (polyline && polyline.length > 1) {
+      map.geoObjects.add(
+        new ymaps.Polyline(
+          polyline,
+          { hintContent: "Маршрут" },
+          {
+            strokeColor: "#facc15",
+            strokeWidth: 5,
+            strokeOpacity: 0.9,
+          }
+        )
+      );
+    }
+
+    if (followBounds) {
+      const bounds = map.geoObjects.getBounds();
+      if (bounds) {
+        map.setBounds(bounds, { checkZoomRange: true, zoomMargin: 42 });
+      } else {
+        map.setCenter(mapCenter as [number, number], zoom, { duration: 250 });
+      }
+    }
+  }, [markersKey, lineKey, followBounds, mapCenter, zoom, markers, polyline]);
+
+  useEffect(() => {
+    return () => {
+      mapRef.current?.destroy();
+      mapRef.current = null;
+      ymapsRef.current = null;
+    };
+  }, []);
+
+  if (error) {
+    return (
+      <div className={`${className} flex items-center justify-center bg-[#111116] p-6 text-center`}>
+        <div>
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-red-400/10 text-red-300">
+            <KeyRound className="h-5 w-5" />
+          </div>
+          <div className="mt-3 text-sm font-bold text-zinc-300">{error}</div>
+          <div className="mt-1 max-w-xs text-xs leading-relaxed text-zinc-500">
+            Добавьте <code>YANDEX_MAPS_API_KEY</code> на сервере и ограничьте ключ доменом.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${className} relative overflow-hidden bg-[#111116]`}>
+      <div ref={containerRef} className="h-full w-full" />
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-[#111116]">
+          <div className="text-center text-zinc-500">
+            <Loader2 className="mx-auto h-6 w-6 animate-spin text-amber-400" />
+            <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold">
+              <MapPinned className="h-3.5 w-3.5" /> Яндекс Карты
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
