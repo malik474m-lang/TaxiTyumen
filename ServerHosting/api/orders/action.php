@@ -49,8 +49,13 @@ if (in_array($action, $driverActions, true)) {
         Guard::role($claims, 'operator', 'admin');
     }
 } elseif ($action === 'rate') {
-    if ($order['client_id'] !== ($claims['uid'] ?? '')) {
-        Response::error('Оценить поездку может только клиент заказа', 403);
+    $isClientRating = !array_key_exists('isClient', $body) || (bool) $body['isClient'];
+    $isClientOwner = $order['client_id'] !== null && $order['client_id'] === ($claims['uid'] ?? '');
+    $isAssignedDriver = ($claims['role'] ?? '') === 'driver'
+        && $order['driver_id'] !== null
+        && $order['driver_id'] === ($claims['driverId'] ?? '');
+    if (($isClientRating && !$isClientOwner) || (!$isClientRating && !$isAssignedDriver)) {
+        Response::error('Оценить поездку может только её участник', 403);
     }
 }
 
@@ -90,6 +95,9 @@ switch ($action) {
             ->execute([$driverId, Db::utcNow(), $id]);
         $db->prepare("UPDATE drivers SET status = 'on_route', current_order_id = ? WHERE id = ?")
             ->execute([$id, $driverId]);
+        $fresh = $load();
+        NotificationService::notifyClientOrderAccepted($db, $fresh);
+        NotificationService::notifyOperatorsOrderUpdate($db, $fresh);
         $result();
     }
 
@@ -155,8 +163,22 @@ switch ($action) {
 
     case 'complete': {
         $finalPrice = (float) ($body['finalPrice'] ?? $order['estimated_price']) ?: (float) $order['estimated_price'];
-        $db->prepare("UPDATE orders SET status = 'completed', completed_at = ?, final_price = ? WHERE id = ?")
-            ->execute([Db::utcNow(), $finalPrice, $id]);
+        // Фактическое расстояние по сохранённому GPS-треку
+        $trackStmt = $db->prepare('SELECT latitude,longitude FROM driver_location_history WHERE order_id=? ORDER BY timestamp');
+        $trackStmt->execute([$id]);
+        $track = $trackStmt->fetchAll();
+        $actualDistance = 0.0;
+        for ($i = 1; $i < count($track); $i++) {
+            $actualDistance += Taxi::getDistanceKm(
+                (float) $track[$i - 1]['latitude'], (float) $track[$i - 1]['longitude'],
+                (float) $track[$i]['latitude'], (float) $track[$i]['longitude']
+            );
+        }
+        $actualDistance = $actualDistance > 0 ? round($actualDistance, 2) : null;
+        $db->prepare("UPDATE orders SET status='completed',completed_at=?,final_price=?,actual_distance=? WHERE id=?")
+            ->execute([Db::utcNow(), $finalPrice, $actualDistance, $id]);
+        $db->prepare("UPDATE transactions SET amount=?,status='completed',completed_at=? WHERE order_id=?")
+            ->execute([$finalPrice, Db::utcNow(), $id]);
 
         if (!empty($order['driver_id'])) {
             $db->prepare(
@@ -176,16 +198,31 @@ switch ($action) {
                 sprintf('Комиссия %s (%.0f руб.)', rtrim(rtrim(number_format($percent, 1, '.', ''), '0'), '.') . '%', $finalPrice)
             );
         }
+        if (!empty($order['client_id'])) {
+            $db->prepare('UPDATE users SET total_trips=total_trips+1 WHERE id=?')->execute([$order['client_id']]);
+        }
+        if (!empty($order['operator_id'])) {
+            $db->prepare('UPDATE operator_profiles SET total_orders_accepted=total_orders_accepted+1 WHERE user_id=?')
+                ->execute([$order['operator_id']]);
+        }
+        $fresh = $load();
+        NotificationService::notifyClientTripCompleted($db, $fresh);
+        NotificationService::notifyOperatorsOrderUpdate($db, $fresh);
         $result();
     }
 
     case 'cancel': {
-        $db->prepare("UPDATE orders SET status = 'cancelled', cancelled_at = ?, cancellation_reason = ? WHERE id = ?")
-            ->execute([Db::utcNow(), $body['reason'] ?? null, $id]);
+        $db->prepare("UPDATE orders SET status='cancelled',cancelled_at=?,cancellation_reason=?,cancelled_by_user_id=? WHERE id=?")
+            ->execute([Db::utcNow(), $body['reason'] ?? null, $claims['uid'], $id]);
+        $db->prepare("UPDATE transactions SET status='refunded',completed_at=? WHERE order_id=?")
+            ->execute([Db::utcNow(), $id]);
         if (!empty($order['driver_id'])) {
             $db->prepare("UPDATE drivers SET status = 'available', current_order_id = NULL WHERE id = ?")
                 ->execute([$order['driver_id']]);
         }
+        $fresh = $load();
+        NotificationService::notifyClientOrderCancelled($db, $fresh, $body['reason'] ?? null);
+        NotificationService::notifyOperatorsOrderUpdate($db, $fresh);
         $result();
     }
 
@@ -216,22 +253,34 @@ switch ($action) {
 
     case 'rate': {
         $rating = max(1, min(5, (int) ($body['rating'] ?? 5)));
-        $db->prepare('UPDATE orders SET client_rating = ? WHERE id = ?')->execute([$rating, $id]);
-
-        // Пересчёт рейтинга водителя по всем оценённым поездкам
-        if (!empty($order['driver_id'])) {
-            $avg = $db->prepare(
-                'SELECT AVG(client_rating) FROM orders WHERE driver_id = ? AND client_rating IS NOT NULL'
-            );
-            $avg->execute([$order['driver_id']]);
-            $value = $avg->fetchColumn();
-            if ($value !== null && $value !== false) {
-                $d = $db->prepare('SELECT user_id FROM drivers WHERE id = ?');
+        $review = trim((string) ($body['review'] ?? '')) ?: null;
+        $isClientRating = !array_key_exists('isClient', $body) || (bool) $body['isClient'];
+        if ($isClientRating) {
+            $db->prepare('UPDATE orders SET client_rating=?,client_review=? WHERE id=?')
+                ->execute([$rating, $review, $id]);
+            // Клиент оценивает водителя
+            if (!empty($order['driver_id'])) {
+                $avg = $db->prepare('SELECT AVG(client_rating) FROM orders WHERE driver_id=? AND client_rating IS NOT NULL');
+                $avg->execute([$order['driver_id']]);
+                $value = $avg->fetchColumn();
+                $db->prepare('UPDATE drivers SET rating=? WHERE id=?')
+                    ->execute([round((float) ($value ?: 5), 1), $order['driver_id']]);
+                $d = $db->prepare('SELECT user_id FROM drivers WHERE id=?');
                 $d->execute([$order['driver_id']]);
                 if ($uid = $d->fetchColumn()) {
-                    $db->prepare('UPDATE users SET rating = ? WHERE id = ?')
-                        ->execute([round((float) $value, 1), $uid]);
+                    $db->prepare('UPDATE users SET rating=? WHERE id=?')
+                        ->execute([round((float) ($value ?: 5), 1), $uid]);
                 }
+            }
+        } else {
+            // Водитель оценивает клиента
+            $db->prepare('UPDATE orders SET driver_rating=?,driver_review=? WHERE id=?')
+                ->execute([$rating, $review, $id]);
+            if (!empty($order['client_id'])) {
+                $avg = $db->prepare('SELECT AVG(driver_rating) FROM orders WHERE client_id=? AND driver_rating IS NOT NULL');
+                $avg->execute([$order['client_id']]);
+                $db->prepare('UPDATE users SET rating=? WHERE id=?')
+                    ->execute([round((float) ($avg->fetchColumn() ?: 5), 1), $order['client_id']]);
             }
         }
         $result();

@@ -97,6 +97,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $db->prepare('INSERT INTO order_options (id, order_id, code, name, price) VALUES (?,?,?,?,?)')
             ->execute([Db::uuid(), $orderId, $opt['code'], $opt['name'], $opt['price']]);
     }
+    foreach ((array) ($body['intermediatePoints'] ?? []) as $index => $point) {
+        if (!is_array($point) || empty($point['address'])) continue;
+        $g = (!empty($point['latitude']) && !empty($point['longitude']))
+            ? ['lat'=>(float)$point['latitude'],'lng'=>(float)$point['longitude']]
+            : Taxi::geocodeAddress((string)$point['address']);
+        $db->prepare('INSERT INTO route_points(id,order_id,address,latitude,longitude,sort_order) VALUES (?,?,?,?,?,?)')
+            ->execute([Db::uuid(),$orderId,mb_substr((string)$point['address'],0,500),$g['lat'],$g['lng'],(int)$index]);
+    }
+    $paymentMethod = Taxi::normalizePayment($body['paymentMethod'] ?? 'cash');
+    $db->prepare(
+        "INSERT INTO transactions(id,order_id,amount,method,status) VALUES (?,?,?,?, 'pending')"
+    )->execute([Db::uuid(),$orderId,$estimatedPrice,$paymentMethod]);
 
     $stmt = $db->prepare('SELECT * FROM orders WHERE id = ?');
     $stmt->execute([$orderId]);

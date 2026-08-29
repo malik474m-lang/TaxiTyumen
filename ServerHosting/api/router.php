@@ -12,6 +12,15 @@ if (str_starts_with($routeLower, 'drivers')) $GLOBALS['driver_compat_response'] 
 $raw = file_get_contents('php://input') ?: '';
 $decoded = json_decode($raw, true);
 $body = is_array($decoded) ? $decoded : (!empty($_POST) ? $_POST : []);
+// System.Text.Json из C# отправляет PascalCase; PHP/web — camelCase.
+// Приводим первую букву ключей к camelCase, сохраняя уже правильные ключи.
+if (is_array($body)) {
+    $normalized = [];
+    foreach ($body as $key => $value) {
+        $normalized[is_string($key) ? lcfirst($key) : $key] = $value;
+    }
+    $body = $normalized;
+}
 
 $dispatch = function (string $file, array $override = [], array $query = []) use ($body): never {
     Response::setBodyOverride(array_merge($body, $override));
@@ -48,7 +57,13 @@ if ($routeLower === 'drivers/online') $dispatch($api . '/drivers/index.php', [],
 if (preg_match('#^drivers/([0-9a-f-]+)/(location|status)$#i', $route, $m)) {
     $payload=['id'=>$m[1],'action'=>strtolower($m[2])];
     if (strtolower($m[2])==='location') {
-        $payload += ['latitude'=>$body['latitude']??$body['Latitude']??0,'longitude'=>$body['longitude']??$body['Longitude']??0];
+        $payload += [
+            'latitude'=>$body['latitude']??$body['Latitude']??0,
+            'longitude'=>$body['longitude']??$body['Longitude']??0,
+            'speed'=>$body['speed']??$body['Speed']??null,
+            'bearing'=>$body['bearing']??$body['Bearing']??null,
+            'orderId'=>$body['orderId']??$body['OrderId']??null,
+        ];
     } else {
         $status=$decoded;
         if(is_array($decoded))$status=$body['status']??$body['Status']??'offline';
@@ -124,6 +139,8 @@ if (preg_match('#^orders/([0-9a-f-]+)/(accept|reject|complete|force-assign|cance
         'driverId'=>$body['driverId']??$body['DriverId']??$_GET['driverId']??null,
         'reason'=>$body['reason']??$body['Reason']??(is_string($decoded)?$decoded:null),
         'rating'=>$body['rating']??$body['Rating']??null,
+        'review'=>$body['review']??$body['Review']??null,
+        'isClient'=>$body['isClient']??$body['IsClient']??true,
     ]);
 }
 if (preg_match('#^orders/([0-9a-f-]+)$#i',$route,$m) && $method==='GET') $dispatch($api.'/orders/item.php',[],['id'=>$m[1]]);

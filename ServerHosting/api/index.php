@@ -24,6 +24,7 @@ Response::json([
         'POST /api/pricing.php',
         'GET/POST /api/chat.php (чат + mark read)',
         'GET/POST /api/notifications.php (in-app/SMS уведомления)',
+        'GET  /api/geocoding.php?q= или ?lat=&lng= (DaData/Nominatim)',
         'GET  /api/services.php (admin diagnostics)',
         'GET  /api/places.php',
         'GET  /api/branding.php?app= · PUT (admin)',

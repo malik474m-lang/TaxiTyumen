@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS drivers (
   latitude              DOUBLE   NOT NULL DEFAULT 57.1522,
   longitude             DOUBLE   NOT NULL DEFAULT 65.5272,
   last_location_update  DATETIME NULL,
+  rating                DOUBLE   NOT NULL DEFAULT 5,
   completed_trips       INT      NOT NULL DEFAULT 0,
   cancelled_trips       INT      NOT NULL DEFAULT 0,
   total_earnings        DOUBLE   NOT NULL DEFAULT 0,
@@ -88,17 +89,21 @@ CREATE TABLE IF NOT EXISTS orders (
   final_price          DOUBLE NULL,
   estimated_distance   DOUBLE NULL,
   estimated_duration   INT NULL,
+  actual_distance      DOUBLE NULL,
   route_geometry       MEDIUMTEXT NULL,
   payment_method       ENUM('cash','card','bonus') NOT NULL DEFAULT 'cash',
   status               ENUM('created','searching','driver_assigned','driver_en_route',
                             'driver_arrived','in_progress','completed','cancelled',
                             'no_driver_found') NOT NULL DEFAULT 'searching',
   escalated_at         DATETIME NULL,
-  comment              VARCHAR(500) NULL,
-  cancellation_reason  VARCHAR(255) NULL,
+  comment              VARCHAR(1000) NULL,
+  cancellation_reason  VARCHAR(500) NULL,
+  cancelled_by_user_id CHAR(36) NULL,
   passenger_count      INT NOT NULL DEFAULT 1,
   client_rating        INT NULL,
   driver_rating        INT NULL,
+  client_review        VARCHAR(2000) NULL,
+  driver_review        VARCHAR(2000) NULL,
   created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   accepted_at          DATETIME NULL,
   driver_arrived_at    DATETIME NULL,
@@ -106,6 +111,44 @@ CREATE TABLE IF NOT EXISTS orders (
   completed_at         DATETIME NULL,
   cancelled_at         DATETIME NULL,
   INDEX (status), INDEX (client_id), INDEX (driver_id), INDEX (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS route_points (
+  id         CHAR(36) PRIMARY KEY,
+  order_id   CHAR(36) NOT NULL,
+  address    VARCHAR(500) NOT NULL,
+  latitude   DOUBLE NOT NULL,
+  longitude  DOUBLE NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+  INDEX (order_id, sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS driver_location_history (
+  id         CHAR(36) PRIMARY KEY,
+  driver_id  CHAR(36) NOT NULL,
+  order_id   CHAR(36) NULL,
+  latitude   DOUBLE NOT NULL,
+  longitude  DOUBLE NOT NULL,
+  speed      DOUBLE NULL,
+  bearing    DOUBLE NULL,
+  timestamp  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (driver_id) REFERENCES drivers(id) ON DELETE CASCADE,
+  INDEX (driver_id, timestamp), INDEX (order_id), INDEX (timestamp)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS transactions (
+  id                      CHAR(36) PRIMARY KEY,
+  order_id                CHAR(36) NOT NULL UNIQUE,
+  amount                  DOUBLE NOT NULL,
+  method                  ENUM('cash','card','bonus') NOT NULL,
+  status                  ENUM('pending','completed','failed','refunded') NOT NULL DEFAULT 'pending',
+  external_transaction_id VARCHAR(200) NULL,
+  failure_reason          VARCHAR(500) NULL,
+  created_at              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completed_at            DATETIME NULL,
+  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+  INDEX (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS order_options (
@@ -132,7 +175,7 @@ CREATE TABLE IF NOT EXISTS balance_transactions (
   id            CHAR(36) PRIMARY KEY,
   driver_id     CHAR(36) NOT NULL,
   order_id      CHAR(36) NULL,
-  type          ENUM('topup','commission','penalty') NOT NULL,
+  type          ENUM('topup','commission','penalty','refund','bonus') NOT NULL,
   amount        DOUBLE NOT NULL,
   balance_after DOUBLE NOT NULL,
   description   VARCHAR(200) NOT NULL DEFAULT '',
@@ -208,6 +251,7 @@ CREATE TABLE IF NOT EXISTS auto_call_settings (
   balance_checked_at      DATETIME NULL,
   free_waiting_minutes    INT NOT NULL DEFAULT 5,
   message_template        VARCHAR(1000) NOT NULL DEFAULT 'Ваше такси прибыло! {CarColor} {CarBrand} {CarModel}, номер {LicensePlate}. Бесплатное ожидание: {FreeWaitingMinutes} минут.',
+  updated_at              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   last_tick_at            DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

@@ -1,6 +1,10 @@
 # REST compatibility: ASP.NET-подобные /api/Orders/... маршруты
 RewriteEngine On
 
+# /api/orders совпадает с физическим каталогом: направляем в router ДО проверки -d,
+# иначе mod_dir сделает redirect и POST может потерять JSON-тело
+RewriteRule ^orders$ router.php?route=orders [QSA,L,NC]
+
 # Существующие PHP-файлы и каталоги — без изменений
 RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d

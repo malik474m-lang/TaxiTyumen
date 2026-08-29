@@ -29,7 +29,7 @@ final class Serialize
                     'carColor' => $d['car_color'],
                     'licensePlate' => $d['license_plate'],
                     'carDisplay' => $d['car_color'] . ' ' . $d['car_brand'] . ' ' . $d['car_model'],
-                    'rating' => (float) $d['user_rating'],
+                    'rating' => (float) ($d['rating'] ?? $d['user_rating']),
                     'latitude' => (float) $d['latitude'],
                     'longitude' => (float) $d['longitude'],
                     'balance' => (float) $d['balance'],
@@ -63,6 +63,15 @@ final class Serialize
                 $routePoints = $decoded;
             }
         }
+        $rpStmt = $db->prepare('SELECT id,address,latitude,longitude,sort_order FROM route_points WHERE order_id=? ORDER BY sort_order');
+        $rpStmt->execute([$o['id']]);
+        $intermediatePoints = array_map(fn(array $p) => [
+            'id'=>$p['id'],'address'=>$p['address'],'latitude'=>(float)$p['latitude'],
+            'longitude'=>(float)$p['longitude'],'sortOrder'=>(int)$p['sort_order'],
+        ], $rpStmt->fetchAll());
+        $txStmt = $db->prepare('SELECT * FROM transactions WHERE order_id=? LIMIT 1');
+        $txStmt->execute([$o['id']]);
+        $transaction = $txStmt->fetch();
 
         $statusMap = [
             'created'=>'Created','searching'=>'Searching','driver_assigned'=>'DriverAssigned',
@@ -109,7 +118,9 @@ final class Serialize
             'finalPrice' => $o['final_price'] !== null ? (float) $o['final_price'] : null,
             'estimatedDistance' => $o['estimated_distance'] !== null ? (float) $o['estimated_distance'] : null,
             'estimatedDuration' => $o['estimated_duration'] !== null ? (int) $o['estimated_duration'] : null,
+            'actualDistance' => isset($o['actual_distance']) && $o['actual_distance'] !== null ? (float) $o['actual_distance'] : null,
             'routePoints' => $routePoints,
+            'intermediatePoints' => $intermediatePoints,
             'paymentMethod' => $paymentValue,
             'paymentMethodName' => Taxi::PAYMENT_NAMES[$o['payment_method']] ?? $o['payment_method'],
             'payment' => $paymentInfo,
@@ -117,6 +128,17 @@ final class Serialize
             'cancellationReason' => $o['cancellation_reason'],
             'passengerCount' => (int) $o['passenger_count'],
             'clientRating' => $o['client_rating'] !== null ? (int) $o['client_rating'] : null,
+            'driverRating' => $o['driver_rating'] !== null ? (int) $o['driver_rating'] : null,
+            'clientReview' => $o['client_review'] ?? null,
+            'driverReview' => $o['driver_review'] ?? null,
+            'cancelledByUserId' => $o['cancelled_by_user_id'] ?? null,
+            'transaction' => $transaction ? [
+                'id'=>$transaction['id'],'amount'=>(float)$transaction['amount'],
+                'method'=>$transaction['method'],'status'=>$transaction['status'],
+                'externalTransactionId'=>$transaction['external_transaction_id'],
+                'failureReason'=>$transaction['failure_reason'],
+                'createdAt'=>$transaction['created_at'],'completedAt'=>$transaction['completed_at'],
+            ] : null,
             'escalatedAt' => $o['escalated_at'],
             'createdAt' => $o['created_at'],
             'acceptedAt' => $o['accepted_at'],
@@ -171,7 +193,7 @@ final class Serialize
             'name' => $d['first_name'] . ' ' . $d['last_name'],
             'fullName' => $d['first_name'] . ' ' . $d['last_name'],
             'phone' => $d['user_phone'] ?? $d['phone'] ?? null,
-            'rating' => (float) ($d['user_rating'] ?? $d['rating'] ?? 5),
+            'rating' => (float) ($d['rating'] ?? $d['user_rating'] ?? 5),
             'carBrand' => $d['car_brand'],
             'carModel' => $d['car_model'],
             'carColor' => $d['car_color'],
@@ -183,6 +205,10 @@ final class Serialize
             'isVerified' => (bool) $d['is_verified'],
             'latitude' => (float) $d['latitude'],
             'longitude' => (float) $d['longitude'],
+            'speed' => isset($d['speed']) ? (float) $d['speed'] : null,
+            'bearing' => isset($d['bearing']) ? (float) $d['bearing'] : null,
+            'licenseExpiry' => $d['license_expiry'] ?? null,
+            'verifiedAt' => $d['verified_at'] ?? null,
             'balance' => (float) $d['balance'],
             'minBalanceForOrders' => (float) $d['min_balance_for_orders'],
             'rejectionPenalty' => (float) $d['rejection_penalty'],

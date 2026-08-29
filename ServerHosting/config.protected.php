@@ -9,5 +9,6 @@ define('TAXI_DB_USER', 'мой_пользователь');
 define('TAXI_DB_PASS', 'мой_пароль');
 define('AUTH_SECRET', 'придумайте-длинную-случайную-строку-минимум-32-символа');
 define('SMS_API_ID', '');
+define('DADATA_API_KEY', '');
 define('CORS_ORIGIN', 'https://ваш-домен.ру');
 define('CITY_UTC_OFFSET', 5);

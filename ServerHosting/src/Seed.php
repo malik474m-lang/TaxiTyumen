@@ -133,7 +133,27 @@ final class Seed
 
     private static function migrateExistingDatabase(\PDO $db): void
     {
+        // Базовая таблица должна существовать до addColumn (обновление со старых релизов)
+        $db->exec(
+            "CREATE TABLE IF NOT EXISTS operator_profiles (
+                id CHAR(36) PRIMARY KEY,
+                user_id CHAR(36) NOT NULL UNIQUE,
+                scheme ENUM('per_order','per_hour','per_day','fixed_monthly') NOT NULL DEFAULT 'per_order',
+                rate_per_order DOUBLE NOT NULL DEFAULT 30,
+                rate_per_hour DOUBLE NOT NULL DEFAULT 150,
+                rate_per_day DOUBLE NOT NULL DEFAULT 1500,
+                fixed_monthly DOUBLE NOT NULL DEFAULT 30000,
+                updated_at DATETIME NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+
         // Новые поля профиля водителя из исходной Driver.cs
+        self::addColumn($db, 'drivers', 'license_expiry', "DATETIME NULL AFTER driver_license");
+        self::addColumn($db, 'drivers', 'verified_at', "DATETIME NULL AFTER is_verified");
+        self::addColumn($db, 'drivers', 'speed', "DOUBLE NULL AFTER longitude");
+        self::addColumn($db, 'drivers', 'bearing', "DOUBLE NULL AFTER speed");
+        self::addColumn($db, 'drivers', 'rating', "DOUBLE NOT NULL DEFAULT 5 AFTER last_location_update");
         self::addColumn($db, 'drivers', 'payment_phone', "VARCHAR(20) NULL AFTER rejection_penalty");
         self::addColumn($db, 'drivers', 'payment_bank_name', "VARCHAR(80) NULL AFTER payment_phone");
         self::addColumn($db, 'drivers', 'payment_card_holder', "VARCHAR(120) NULL AFTER payment_bank_name");
@@ -142,6 +162,33 @@ final class Seed
 
         // Загружаемый логотип для серверного брендинга
         self::addColumn($db, 'branding_settings', 'logo_path', "VARCHAR(255) NULL AFTER logo_icon");
+
+        // Дополнительные поля заказа из исходного Order.cs
+        self::addColumn($db, 'orders', 'actual_distance', "DOUBLE NULL AFTER estimated_duration");
+        self::addColumn($db, 'orders', 'cancelled_by_user_id', "CHAR(36) NULL AFTER cancellation_reason");
+        self::addColumn($db, 'orders', 'client_review', "VARCHAR(2000) NULL AFTER driver_rating");
+        self::addColumn($db, 'orders', 'driver_review', "VARCHAR(2000) NULL AFTER client_review");
+
+        // Поля смен и накопительной статистики операторов
+        self::addColumn($db, 'operator_shifts', 'profile_id', "CHAR(36) NULL AFTER operator_id");
+        self::addColumn($db, 'operator_shifts', 'hours_worked', "DOUBLE NOT NULL DEFAULT 0 AFTER ended_at");
+        self::addColumn($db, 'operator_shifts', 'orders_accepted', "INT NOT NULL DEFAULT 0 AFTER hours_worked");
+        self::addColumn($db, 'operator_shifts', 'earned', "DOUBLE NOT NULL DEFAULT 0 AFTER orders_accepted");
+        self::addColumn($db, 'operator_profiles', 'total_orders_accepted', "INT NOT NULL DEFAULT 0 AFTER fixed_monthly");
+        self::addColumn($db, 'operator_profiles', 'total_earnings', "DOUBLE NOT NULL DEFAULT 0 AFTER total_orders_accepted");
+        self::addColumn($db, 'operator_profiles', 'created_at', "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER total_earnings");
+        self::addColumn($db, 'auto_call_settings', 'updated_at', "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER message_template");
+
+        // Полные типы BalanceTransaction (ALTER только один раз, не на каждом API-запросе)
+        $enumStmt = $db->prepare(
+            "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='balance_transactions' AND COLUMN_NAME='type'"
+        );
+        $enumStmt->execute();
+        $columnType = (string) ($enumStmt->fetchColumn() ?: '');
+        if (!str_contains($columnType, "'refund'") || !str_contains($columnType, "'bonus'")) {
+            $db->exec("ALTER TABLE balance_transactions MODIFY type ENUM('topup','commission','penalty','refund','bonus') NOT NULL");
+        }
 
         // Прочтение сообщений из исходного ChatMessage.IsRead
         self::addColumn($db, 'chat_messages', 'is_read', "TINYINT(1) NOT NULL DEFAULT 0 AFTER text");
@@ -168,6 +215,53 @@ final class Seed
                 fixed_monthly DOUBLE NOT NULL DEFAULT 30000,
                 updated_at DATETIME NULL,
                 FOREIGN KEY (user_id) REFERENCES users(id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+
+        // GPS-история водителей (DriverLocationHistory.cs)
+        $db->exec(
+            "CREATE TABLE IF NOT EXISTS driver_location_history (
+                id CHAR(36) PRIMARY KEY,
+                driver_id CHAR(36) NOT NULL,
+                order_id CHAR(36) NULL,
+                latitude DOUBLE NOT NULL,
+                longitude DOUBLE NOT NULL,
+                speed DOUBLE NULL,
+                bearing DOUBLE NULL,
+                timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (driver_id) REFERENCES drivers(id) ON DELETE CASCADE,
+                INDEX driver_time_idx (driver_id,timestamp), INDEX order_idx (order_id), INDEX time_idx (timestamp)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+
+        // Промежуточные точки маршрута (RoutePoint.cs)
+        $db->exec(
+            "CREATE TABLE IF NOT EXISTS route_points (
+                id CHAR(36) PRIMARY KEY,
+                order_id CHAR(36) NOT NULL,
+                address VARCHAR(500) NOT NULL,
+                latitude DOUBLE NOT NULL,
+                longitude DOUBLE NOT NULL,
+                sort_order INT NOT NULL DEFAULT 0,
+                FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+                INDEX order_sort_idx (order_id,sort_order)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+
+        // Платёжная транзакция заказа (Transaction.cs)
+        $db->exec(
+            "CREATE TABLE IF NOT EXISTS transactions (
+                id CHAR(36) PRIMARY KEY,
+                order_id CHAR(36) NOT NULL UNIQUE,
+                amount DOUBLE NOT NULL,
+                method ENUM('cash','card','bonus') NOT NULL,
+                status ENUM('pending','completed','failed','refunded') NOT NULL DEFAULT 'pending',
+                external_transaction_id VARCHAR(200) NULL,
+                failure_reason VARCHAR(500) NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                completed_at DATETIME NULL,
+                FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+                INDEX status_idx (status)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
         );
 

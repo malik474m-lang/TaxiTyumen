@@ -28,6 +28,11 @@ $where = $statusFilter !== '' ? 'WHERE status = ?' : '';
 $stmt = $db->prepare("SELECT * FROM orders $where ORDER BY created_at DESC LIMIT 200");
 $stmt->execute($statusFilter !== '' ? [$statusFilter] : []);
 $rows = $stmt->fetchAll();
+$assignDrivers = $db->query(
+    "SELECT d.id,d.status,d.license_plate,u.first_name,u.last_name FROM drivers d
+     JOIN users u ON u.id=d.user_id WHERE d.is_verified=1 AND u.is_active=1 AND u.is_blocked=0
+     ORDER BY FIELD(d.status,'available','on_route','in_trip','busy','offline'),u.last_name"
+)->fetchAll();
 
 $statusChip = function (string $s): string {
     $cls = match ($s) {
@@ -59,6 +64,8 @@ layout_header('Заказы', 'orders');
   <a class="btn ghost" href="export.php">⬇ Экспорт CSV</a>
 </div>
 
+<?php if(!empty($_GET['ok'])):?><div class="flash" style="margin-top:14px">✓ <?=h((string)$_GET['ok'])?></div><?php endif;?>
+<?php if(!empty($_GET['error'])):?><div class="flash" style="margin-top:14px;border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);color:#fca5a5">Ошибка: <?=h((string)$_GET['error'])?></div><?php endif;?>
 <div class="card" style="margin-top:18px;overflow-x:auto">
 <table>
   <thead><tr>
@@ -98,6 +105,11 @@ layout_header('Заказы', 'orders');
       </td>
       <td>
         <?php if (!in_array($o['status'], ['completed', 'cancelled'], true)): ?>
+        <form method="post" class="inline" style="margin-bottom:5px">
+          <input type="hidden" name="cmd" value="assign"><input type="hidden" name="id" value="<?=h($o['id'])?>">
+          <select name="driver_id" required style="width:170px"><option value="">Назначить...</option><?php foreach($assignDrivers as $ad):?><option value="<?=h($ad['id'])?>" <?=$o['driver_id']===$ad['id']?'selected':''?>><?=h($ad['first_name'].' '.$ad['last_name'].' · '.$ad['license_plate'].' · '.(Taxi::DRIVER_STATUS_TEXT[$ad['status']]??$ad['status']))?></option><?php endforeach;?></select>
+          <button class="btn sm">Назначить</button>
+        </form>
         <form method="post" class="inline" onsubmit="return confirm('Отменить заказ?')">
           <input type="hidden" name="cmd" value="cancel">
           <input type="hidden" name="id" value="<?= h($o['id']) ?>">

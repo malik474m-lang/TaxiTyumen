@@ -3,10 +3,31 @@
 declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
 
-admin_require($db);
+$admin = admin_require($db);
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $driverId = (string) ($_POST['driver_id'] ?? '');
+    $txType = (string) ($_POST['type'] ?? 'bonus');
+    $amount = max(0, (float) ($_POST['amount'] ?? 0));
+    if (in_array($txType, ['topup','refund','bonus'], true) && $amount > 0) {
+        $stmt=$db->prepare('SELECT balance FROM drivers WHERE id=? LIMIT 1');$stmt->execute([$driverId]);
+        $balance=$stmt->fetchColumn();
+        if($balance!==false){
+            $new=(float)$balance+$amount;
+            $db->beginTransaction();
+            $db->prepare('UPDATE drivers SET balance=? WHERE id=?')->execute([$new,$driverId]);
+            $names=['topup'=>'Пополнение','refund'=>'Возврат','bonus'=>'Бонус'];
+            $db->prepare('INSERT INTO balance_transactions(id,driver_id,type,amount,balance_after,description,created_by) VALUES (?,?,?,?,?,?,?)')
+                ->execute([Db::uuid(),$driverId,$txType,$amount,$new,trim((string)($_POST['description']??''))?:$names[$txType],'admin: '.$admin['first_name']]);
+            $db->commit();
+            Bus::publish('drivers');
+            header('Location: balance.php?ok='.urlencode('Операция проведена, баланс '.round($new).' ₽'));exit;
+        }
+    }
+}
 
 $type = (string) ($_GET['type'] ?? '');
-$where = in_array($type, ['topup', 'commission', 'penalty'], true) ? 'WHERE bt.type=?' : '';
+$where = in_array($type, ['topup', 'commission', 'penalty', 'refund', 'bonus'], true) ? 'WHERE bt.type=?' : '';
 $stmt = $db->prepare(
     "SELECT bt.*, u.first_name, u.last_name, d.license_plate
      FROM balance_transactions bt
@@ -39,8 +60,13 @@ $drivers = $db->query(
 
 layout_header('Балансы', 'balance');
 ?>
-<h1>Балансы и транзакции</h1>
-<p class="mut">Единый финансовый журнал водителей</p>
+<div class="flex between"><div><h1>Балансы и транзакции</h1><p class="mut">Единый финансовый журнал водителей</p></div>
+<form method="post" class="inline">
+<select name="driver_id" required><option value="">Водитель</option><?php foreach($drivers as $d):?><option value="<?=h($d['id'])?>"><?=h($d['first_name'].' '.$d['last_name'].' · '.$d['license_plate'])?></option><?php endforeach;?></select>
+<select name="type"><option value="topup">Пополнение</option><option value="refund">Возврат</option><option value="bonus">Бонус</option></select>
+<input type="number" name="amount" min="1" value="300" style="width:90px"><input name="description" placeholder="Описание" style="width:150px"><button class="btn">Провести</button>
+</form></div>
+<?php if(!empty($_GET['ok'])):?><div class="flash" style="margin-top:14px">✓ <?=h((string)$_GET['ok'])?></div><?php endif;?>
 
 <div class="grid q4" style="margin-top:18px">
   <div class="card"><div class="mut">Средства на балансах</div><div class="stat-big" style="color:#fde047"><?= money((float) $summary['total_balance']) ?></div></div>

@@ -46,17 +46,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $db->prepare(
                 "INSERT INTO drivers
                  (id, user_id, car_brand, car_model, car_color, license_plate, car_year,
-                  driver_license, is_verified, status, latitude, longitude, balance,
-                  min_balance_for_orders, rejection_penalty, payment_phone, payment_bank_name,
-                  payment_card_holder, accept_card_transfer, accept_sbp, last_location_update)
-                 VALUES (?,?,?,?,?,?,?,?,?,'offline',?,?,?,?,?,?,?,?,?,?,?)"
+                   driver_license, license_expiry, is_verified, verified_at, status, latitude, longitude, balance,
+                   min_balance_for_orders, rejection_penalty, payment_phone, payment_bank_name,
+                   payment_card_holder, accept_card_transfer, accept_sbp, last_location_update)
+                  VALUES (?,?,?,?,?,?,?,?,?,?,?,'offline',?,?,?,?,?,?,?,?,?,?,?)"
             )->execute([
                 $driverId, $uid, $brand, $model,
                 trim((string) ($_POST['car_color'] ?? 'Белый')) ?: 'Белый',
                 $plate,
                 max(1980, min(2100, (int) ($_POST['car_year'] ?? date('Y')))),
                 trim((string) ($_POST['driver_license'] ?? '')),
+                !empty($_POST['license_expiry'])
+                    ? $_POST['license_expiry'] . ' 23:59:59'
+                    : gmdate('Y-m-d H:i:s', time() + 5 * 365 * 86400),
                 !empty($_POST['is_verified']) ? 1 : 0,
+                !empty($_POST['is_verified']) ? Db::utcNow() : null,
                 Taxi::CITY_LAT, Taxi::CITY_LNG,
                 $initialBalance,
                 max(0, (float) ($_POST['min_balance_for_orders'] ?? 100)),
@@ -115,8 +119,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($cmd === 'verify') {
-            $db->prepare('UPDATE drivers SET is_verified=? WHERE id=?')
-                ->execute([$driver['is_verified'] ? 0 : 1, $id]);
+            $verified = $driver['is_verified'] ? 0 : 1;
+            $db->prepare('UPDATE drivers SET is_verified=?,verified_at=? WHERE id=?')
+                ->execute([$verified, $verified ? Db::utcNow() : null, $id]);
             Bus::publish('drivers');
             header('Location: drivers.php?ok=' . urlencode('Верификация обновлена'));
             exit;
@@ -135,6 +140,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
+        if ($cmd === 'delete') {
+            if (!empty($driver['current_order_id'])) {
+                throw new RuntimeException('Нельзя удалить водителя с активным заказом');
+            }
+            $db->beginTransaction();
+            $db->prepare('UPDATE orders SET driver_id=NULL WHERE driver_id=?')->execute([$id]);
+            $db->prepare('DELETE FROM order_rejections WHERE driver_id=?')->execute([$id]);
+            $db->prepare('DELETE FROM balance_transactions WHERE driver_id=?')->execute([$id]);
+            $db->prepare('DELETE FROM driver_location_history WHERE driver_id=?')->execute([$id]);
+            $db->prepare('DELETE FROM notifications WHERE recipient_id=?')->execute([$driver['uid']]);
+            $db->prepare('DELETE FROM drivers WHERE id=?')->execute([$id]);
+            $db->prepare('DELETE FROM users WHERE id=?')->execute([$driver['uid']]);
+            $db->commit();
+            Bus::publish('drivers');
+            header('Location: drivers.php?ok=' . urlencode('Водитель удалён'));exit;
+        }
+
         if ($cmd === 'update') {
             $db->beginTransaction();
             $db->prepare('UPDATE users SET first_name=?, last_name=? WHERE id=?')->execute([
@@ -144,7 +166,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
             $db->prepare(
                 'UPDATE drivers SET car_brand=?, car_model=?, car_color=?, license_plate=?, car_year=?,
-                 driver_license=?, min_balance_for_orders=?, rejection_penalty=?, payment_phone=?,
+                 driver_license=?, license_expiry=?, min_balance_for_orders=?, rejection_penalty=?, payment_phone=?,
                  payment_bank_name=?, payment_card_holder=?, accept_card_transfer=?, accept_sbp=? WHERE id=?'
             )->execute([
                 trim((string) ($_POST['car_brand'] ?? '')),
@@ -153,6 +175,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mb_strtoupper(trim((string) ($_POST['license_plate'] ?? ''))),
                 (int) ($_POST['car_year'] ?? date('Y')),
                 trim((string) ($_POST['driver_license'] ?? '')),
+                !empty($_POST['license_expiry']) ? $_POST['license_expiry'] . ' 23:59:59' : null,
                 max(0, (float) ($_POST['min_balance_for_orders'] ?? 100)),
                 max(0, (float) ($_POST['rejection_penalty'] ?? 0)),
                 trim((string) ($_POST['payment_phone'] ?? '')) ?: null,
@@ -211,6 +234,7 @@ layout_header('Водители', 'drivers');
       <label class="mut">Госномер<input name="license_plate" placeholder="А123ВС72" required></label>
       <label class="mut">Год<input type="number" name="car_year" value="<?= date('Y') ?>"></label>
       <label class="mut">Водительское удостоверение<input name="driver_license"></label>
+      <label class="mut">ВУ действует до<input type="date" name="license_expiry" value="<?= gmdate('Y-m-d', time()+5*365*86400) ?>"></label>
       <label class="mut">Стартовый баланс, ₽<input type="number" name="balance" value="500"></label>
       <label class="mut">Минимум для заказов, ₽<input type="number" name="min_balance_for_orders" value="100"></label>
       <label class="mut">Штраф за отказ, ₽<input type="number" name="rejection_penalty" value="50"></label>
@@ -251,6 +275,7 @@ layout_header('Водители', 'drivers');
 
     <div class="flex" style="margin-top:14px">
       <a class="btn ghost sm" href="messages.php?recipient=<?= h($d['user_id']) ?>">Написать</a>
+      <a class="btn ghost sm" href="driver-track.php?id=<?=h($d['id'])?>">GPS-трек</a>
       <form method="post" class="inline">
         <input type="hidden" name="cmd" value="topup"><input type="hidden" name="id" value="<?= h($d['id']) ?>">
         <input type="number" name="amount" value="500" min="1" style="width:90px"><button class="btn sm">Пополнить</button>
@@ -272,6 +297,7 @@ layout_header('Водители', 'drivers');
           <label class="mut">Госномер<input name="license_plate" value="<?= h($d['license_plate']) ?>"></label>
           <label class="mut">Год<input type="number" name="car_year" value="<?= (int) $d['car_year'] ?>"></label>
           <label class="mut">ВУ<input name="driver_license" value="<?= h($d['driver_license']) ?>"></label>
+          <label class="mut">ВУ действует до<input type="date" name="license_expiry" value="<?= h($d['license_expiry'] ? substr($d['license_expiry'],0,10) : '') ?>"></label>
           <label class="mut">Минимум баланса<input type="number" name="min_balance_for_orders" value="<?= h((string) $d['min_balance_for_orders']) ?>"></label>
           <label class="mut">Штраф за отказ<input type="number" name="rejection_penalty" value="<?= h((string) $d['rejection_penalty']) ?>"></label>
           <label class="mut">Телефон выплат<input name="payment_phone" value="<?= h((string) $d['payment_phone']) ?>"></label>

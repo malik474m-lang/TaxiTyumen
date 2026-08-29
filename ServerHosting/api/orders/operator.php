@@ -89,6 +89,16 @@ foreach (Options::resolve($optionCodes) as $opt) {
     $db->prepare('INSERT INTO order_options (id, order_id, code, name, price) VALUES (?,?,?,?,?)')
         ->execute([Db::uuid(), $orderId, $opt['code'], $opt['name'], $opt['price']]);
 }
+foreach ((array) ($body['intermediatePoints'] ?? []) as $index => $point) {
+    if (!is_array($point) || empty($point['address'])) continue;
+    $g = (!empty($point['latitude']) && !empty($point['longitude']))
+        ? ['lat'=>(float)$point['latitude'],'lng'=>(float)$point['longitude']]
+        : Taxi::geocodeAddress((string)$point['address']);
+    $db->prepare('INSERT INTO route_points(id,order_id,address,latitude,longitude,sort_order) VALUES (?,?,?,?,?,?)')
+        ->execute([Db::uuid(),$orderId,mb_substr((string)$point['address'],0,500),$g['lat'],$g['lng'],(int)$index]);
+}
+$db->prepare("INSERT INTO transactions(id,order_id,amount,method,status) VALUES (?,?,?,'cash','pending')")
+    ->execute([Db::uuid(),$orderId,$estimatedPrice]);
 
 $stmt = $db->prepare('SELECT * FROM orders WHERE id = ?');
 $stmt->execute([$orderId]);

@@ -95,8 +95,19 @@ switch ($action) {
         if ($lat == 0.0 || $lng == 0.0) {
             Response::error('Некорректные координаты');
         }
-        $db->prepare('UPDATE drivers SET latitude = ?, longitude = ?, last_location_update = ? WHERE id = ?')
-            ->execute([$lat, $lng, Db::utcNow(), $id]);
+        $speed = isset($body['speed']) ? (float) $body['speed'] : null;
+        $bearing = isset($body['bearing']) ? (float) $body['bearing'] : null;
+        $orderId = trim((string) ($body['orderId'] ?? '')) ?: null;
+        $now = Db::utcNow();
+        $db->beginTransaction();
+        $db->prepare('UPDATE drivers SET latitude=?,longitude=?,speed=?,bearing=?,last_location_update=? WHERE id=?')
+            ->execute([$lat, $lng, $speed, $bearing, $now, $id]);
+        $db->prepare(
+            'INSERT INTO driver_location_history
+             (id,driver_id,order_id,latitude,longitude,speed,bearing,timestamp)
+             VALUES (?,?,?,?,?,?,?,?)'
+        )->execute([Db::uuid(), $id, $orderId, $lat, $lng, $speed, $bearing, $now]);
+        $db->commit();
         Bus::publish('drivers');
         Response::json(['ok' => true]);
     }

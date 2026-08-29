@@ -23,6 +23,9 @@ if (!defined('AUTH_SECRET')) define('AUTH_SECRET', getenv('AUTH_SECRET') ?: 'cha
 // (опционально) ключ sms.ru для реальной отправки SMS
 if (!defined('SMS_API_ID')) define('SMS_API_ID', getenv('SMS_API_ID') ?: '');
 
+// (опционально) DaData Suggestions API — ключ хранится только на сервере
+if (!defined('DADATA_API_KEY')) define('DADATA_API_KEY', getenv('DADATA_API_KEY') ?: '');
+
 // Тюмень UTC+5 — сдвиг для ценообразования/статистики
 if (!defined('CITY_UTC_OFFSET')) define('CITY_UTC_OFFSET', 5);
 

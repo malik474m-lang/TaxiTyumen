@@ -241,6 +241,7 @@ layout_header('Операторы', 'operators');
       <form method="post"><input type="hidden" name="cmd" value="block"><input type="hidden" name="id" value="<?= h($op['id']) ?>"><button class="btn <?= $op['is_blocked'] ? 'ghost' : 'danger' ?> sm"><?= $op['is_blocked'] ? 'Разблокировать' : 'Заблокировать' ?></button></form>
       <form method="post"><input type="hidden" name="cmd" value="active"><input type="hidden" name="id" value="<?= h($op['id']) ?>"><button class="btn ghost sm"><?= $op['is_active'] ? 'Деактивировать' : 'Активировать' ?></button></form>
       <form method="post" class="inline"><input type="hidden" name="cmd" value="password"><input type="hidden" name="id" value="<?= h($op['id']) ?>"><input name="new_password" placeholder="Новый пароль" minlength="6" required style="width:150px"><button class="btn ghost sm">Сменить пароль</button></form>
+      <form method="post" onsubmit="return confirm('Удалить оператора и историю его смен?')"><input type="hidden" name="cmd" value="delete"><input type="hidden" name="id" value="<?=h($op['id'])?>"><button class="btn danger sm">Удалить</button></form>
     </div>
   </div>
 <?php endforeach; ?>

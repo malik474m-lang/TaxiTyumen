@@ -21,6 +21,7 @@ $result = [
     'storage' => ['ok' => false],
     'realtime' => ['ok' => false],
     'sms' => ['configured' => SMS_API_ID !== '', 'ok' => null],
+    'geocoding' => ['configured' => DADATA_API_KEY !== '', 'ok' => null],
     'zvonok' => ['configured' => false, 'ok' => null],
     'osrm' => ['configured' => true, 'ok' => null],
 ];
@@ -76,6 +77,9 @@ if ($check === 'all' || $check === 'osrm') {
 }
 if (($check === 'all' || $check === 'sms') && SMS_API_ID !== '') {
     $result['sms'] = SmsService::check($db);
+}
+if ($check === 'all' || $check === 'geocoding') {
+    $result['geocoding'] = GeocodingService::check($db);
 }
 if (($check === 'all' || $check === 'zvonok') && $result['zvonok']['configured']) {
     $result['zvonok'] = array_merge($result['zvonok'], ZvonokService::checkBalance($db));

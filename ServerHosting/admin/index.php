@@ -50,6 +50,11 @@ $topRoutes = $db->query(
     "SELECT destination_address AS dest, COUNT(*) AS cnt FROM orders
      WHERE destination_address IS NOT NULL GROUP BY destination_address ORDER BY cnt DESC LIMIT 5"
 )->fetchAll();
+$latestOrders = $db->query(
+    "SELECT o.*,CONCAT(u.first_name,' ',u.last_name) AS driver_name,d.license_plate
+     FROM orders o LEFT JOIN drivers d ON d.id=o.driver_id LEFT JOIN users u ON u.id=d.user_id
+     ORDER BY o.created_at DESC LIMIT 10"
+)->fetchAll();
 
 layout_header('Обзор', 'index');
 ?>
@@ -123,6 +128,14 @@ layout_header('Обзор', 'index');
       <?php endforeach; ?>
     </table>
   <?php endif; ?>
+</div>
+
+<div class="card" style="margin-top:14px;overflow-x:auto">
+  <div class="flex between" style="margin-bottom:10px"><h3>Последние заказы</h3><a class="btn ghost sm" href="orders.php">Все заказы →</a></div>
+  <table><thead><tr><th>Номер / время</th><th>Статус</th><th>Маршрут</th><th>Водитель</th><th style="text-align:right">Цена</th></tr></thead><tbody>
+  <?php foreach($latestOrders as $o):?><tr><td><code><?=h(substr($o['order_number'],-18))?></code><div class="mut"><?=h(fmt_date($o['created_at']))?></div></td><td><span class="chip <?=$o['status']==='completed'?'ok':($o['status']==='cancelled'?'bad':'warn')?>"><?=h(Taxi::STATUS_TEXT[$o['status']]??$o['status'])?></span></td><td><b><?=h($o['pickup_address'])?></b><div class="mut">→ <?=h((string)($o['destination_address']??'—'))?></div></td><td><?=h((string)($o['driver_name']??'—'))?><div class="mut"><?=h((string)($o['license_plate']??''))?></div></td><td style="text-align:right;font-weight:900;color:#fde047"><?=money((float)($o['final_price']??$o['estimated_price']))?></td></tr><?php endforeach;?>
+  <?php if(!$latestOrders):?><tr><td colspan="5" class="mut" style="text-align:center">Заказов пока нет</td></tr><?php endif;?>
+  </tbody></table>
 </div>
 
 <?php layout_footer();
