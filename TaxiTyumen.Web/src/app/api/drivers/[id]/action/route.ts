@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { drivers, balanceTransactions } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { publishEvent } from "@/lib/bus";
+import { readClaims, unauthorized, forbidden } from "@/lib/session";
 
 export async function POST(
   req: Request,
@@ -15,6 +16,20 @@ export async function POST(
     const action = String(body.action ?? "");
     const [driver] = await db.select().from(drivers).where(eq(drivers.id, id));
     if (!driver) return NextResponse.json({ error: "Водитель не найден" }, { status: 404 });
+
+    // Авторизация: статус/локация — только сам водитель; финансы/верификация — только админ
+    const claims = readClaims(req);
+    if (!claims) return unauthorized();
+    if (action === "status" || action === "location") {
+      if (claims.role !== "driver" || claims.driverId !== id) {
+        return forbidden("Управлять своим статусом может только сам водитель");
+      }
+    }
+    if (action === "topup" || action === "verify") {
+      if (claims.role !== "admin") {
+        return forbidden("Баланс и верификация управляются только администратором");
+      }
+    }
 
     if (action === "status") {
       const status = String(body.status ?? "offline");

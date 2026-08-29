@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { tariffs } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { ensureSeeded } from "@/lib/seed";
+import { readClaims, forbidden } from "@/lib/session";
 
 export async function GET() {
   await ensureSeeded();
@@ -13,6 +14,11 @@ export async function GET() {
 
 export async function PUT(req: Request) {
   try {
+    // Редактирование тарифов — только администратор
+    const claims = readClaims(req);
+    if (!claims || claims.role !== "admin") {
+      return forbidden("Редактировать тарифы может только администратор");
+    }
     const body = await req.json();
     const id = String(body.id ?? "");
     const [existing] = await db.select().from(tariffs).where(eq(tariffs.id, id));

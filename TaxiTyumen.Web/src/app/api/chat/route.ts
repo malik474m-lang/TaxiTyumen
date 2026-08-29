@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { chatMessages, orders, users } from "@/db/schema";
 import { eq, asc, desc } from "drizzle-orm";
 import { publishEvent } from "@/lib/bus";
+import { readClaims, unauthorized, forbidden } from "@/lib/session";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -24,6 +25,14 @@ export async function POST(req: Request) {
     const body = await req.json();
     const orderId = String(body.orderId ?? "");
     const senderId = String(body.senderId ?? "");
+
+    // Сообщение можно отправить только от своего имени
+    const claims = readClaims(req);
+    if (!claims) return unauthorized();
+    if (claims.uid !== senderId) {
+      return forbidden("Нельзя писать от чужого имени");
+    }
+
     const text = String(body.text ?? "").trim();
     if (!orderId || !senderId || !text)
       return NextResponse.json(

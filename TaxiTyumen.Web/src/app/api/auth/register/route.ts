@@ -7,6 +7,7 @@ import { hashPassword, normalizePhone } from "@/lib/auth";
 import { serializeUser } from "@/lib/serialize";
 import { ensureSeeded } from "@/lib/seed";
 import { CITY } from "@/lib/taxi";
+import { signToken } from "@/lib/session";
 
 export async function POST(req: Request) {
   try {
@@ -66,7 +67,11 @@ export async function POST(req: Request) {
       driverId = dp.id;
     }
 
-    return NextResponse.json({ user: serializeUser(user, driverId) }, { status: 201 });
+    const token = signToken({ uid: user.id, role: user.role, driverId });
+    return NextResponse.json(
+      { user: { ...serializeUser(user, driverId), token } },
+      { status: 201 }
+    );
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Ошибка регистрации" },

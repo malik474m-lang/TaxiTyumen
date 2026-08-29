@@ -149,7 +149,7 @@ export default function OperatorPage() {
 
   if (!loaded) return null;
   // Диспетчерская — только операторам (даже админ сюда не входит)
-  if (!user || user.role !== "operator") {
+  if (!user || user.role !== "operator" || !user.token) {
     return <LoginScreen role="operator" onAuthed={setUser} />;
   }
   const onlineDrivers = drivers.filter((d) => d.status !== "offline");

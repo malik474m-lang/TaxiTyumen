@@ -9,6 +9,8 @@ export interface SessionUser {
   role: "client" | "driver" | "operator" | "admin";
   rating: number;
   driverId?: string | null;
+  /** HMAC-токен сессии (выдаётся сервером при логине) */
+  token?: string;
 }
 
 export interface OrderDriverInfo {
@@ -49,6 +51,7 @@ export interface OrderDto {
   finalPrice: number | null;
   estimatedDistance: number | null;
   estimatedDuration: number | null;
+  routePoints?: [number, number][] | null;
   paymentMethod: string;
   paymentMethodName: string;
   comment: string | null;
@@ -141,9 +144,14 @@ export function setSession(user: SessionUser | null) {
 }
 
 export async function api<T>(url: string, options?: RequestInit): Promise<T> {
+  const session = getSession();
   const res = await fetch(url, {
     ...options,
-    headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
+      ...(options?.headers ?? {}),
+    },
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {

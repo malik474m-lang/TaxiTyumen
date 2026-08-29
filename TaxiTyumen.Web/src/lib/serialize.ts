@@ -67,6 +67,9 @@ export async function serializeOrder(order: Order) {
     finalPrice: order.finalPrice,
     estimatedDistance: order.estimatedDistance,
     estimatedDuration: order.estimatedDuration,
+    routePoints: order.routeGeometry
+      ? (JSON.parse(order.routeGeometry) as [number, number][])
+      : null,
     paymentMethod: order.paymentMethod,
     paymentMethodName: PAYMENT_NAMES[order.paymentMethod] ?? order.paymentMethod,
     comment: order.comment,

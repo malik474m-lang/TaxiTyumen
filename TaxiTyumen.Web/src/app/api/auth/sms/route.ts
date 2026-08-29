@@ -9,6 +9,7 @@ import { eq } from "drizzle-orm";
 import { normalizePhone, hashPassword } from "@/lib/auth";
 import { serializeUser } from "@/lib/serialize";
 import { ensureSeeded } from "@/lib/seed";
+import { signToken } from "@/lib/session";
 import { randomBytes } from "node:crypto";
 
 export async function POST(req: Request) {
@@ -103,7 +104,10 @@ export async function POST(req: Request) {
         const [dp] = await db.select().from(drivers).where(eq(drivers.userId, user.id));
         driverId = dp?.id ?? null;
       }
-      return NextResponse.json({ user: serializeUser(user, driverId) });
+      const token = signToken({ uid: user.id, role: user.role, driverId });
+      return NextResponse.json({
+        user: { ...serializeUser(user, driverId), token },
+      });
     }
 
     return NextResponse.json({ error: `Неизвестный action: ${action}` }, { status: 400 });

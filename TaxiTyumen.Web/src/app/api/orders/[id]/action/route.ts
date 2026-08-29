@@ -7,12 +7,14 @@ import {
   orders,
   drivers,
   tariffs,
+  users,
   orderRejections,
   balanceTransactions,
 } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql, and, isNotNull } from "drizzle-orm";
 import { serializeOrder } from "@/lib/serialize";
 import { publishEvent } from "@/lib/bus";
+import { readClaims, unauthorized, forbidden } from "@/lib/session";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -59,6 +61,36 @@ export async function POST(req: Request, ctx: Ctx) {
     const action = String(body.action ?? "");
     const order = await loadOrder(id);
     if (!order) return NextResponse.json({ error: "Заказ не найден" }, { status: 404 });
+
+    // ── Авторизация действий по ролям (роли не пересекаются) ─────────────
+    const claims = readClaims(req);
+    if (!claims) return unauthorized();
+
+    if (["accept", "reject", "arrived", "start", "complete"].includes(action)) {
+      const requestedDriverId = String(body.driverId ?? order.driverId ?? "");
+      if (claims.role !== "driver" || claims.driverId !== requestedDriverId) {
+        return forbidden("Действие доступно только водителю от своего имени");
+      }
+      if (
+        ["arrived", "start", "complete"].includes(action) &&
+        order.driverId !== claims.driverId
+      ) {
+        return forbidden("Этот заказ принадлежит другому водителю");
+      }
+    } else if (action === "assign") {
+      if (claims.role !== "operator" && claims.role !== "admin") {
+        return forbidden("Назначать водителя может только диспетчерская");
+      }
+    } else if (action === "cancel") {
+      const isOwner = order.clientId !== null && order.clientId === claims.uid;
+      if (!isOwner && claims.role !== "operator" && claims.role !== "admin") {
+        return forbidden("Отменить заказ может клиент-владелец или диспетчерская");
+      }
+    } else if (action === "rate") {
+      if (order.clientId !== claims.uid) {
+        return forbidden("Оценить поездку может только клиент заказа");
+      }
+    }
 
     // ── AcceptOrderAsync ──────────────────────────────────────────────────
     if (action === "accept") {
@@ -239,6 +271,23 @@ export async function POST(req: Request, ctx: Ctx) {
         .update(orders)
         .set({ clientRating: rating })
         .where(eq(orders.id, id));
+
+      // Пересчёт рейтинга водителя по всем оценённым поездкам (как Rating в оригинале)
+      if (order.driverId) {
+        const [agg] = await db
+          .select({ avg: sql<number>`avg(${orders.clientRating})::float` })
+          .from(orders)
+          .where(
+            and(eq(orders.driverId, order.driverId), isNotNull(orders.clientRating))
+          );
+        const [drv] = await db.select().from(drivers).where(eq(drivers.id, order.driverId));
+        if (drv && agg?.avg != null) {
+          await db
+            .update(users)
+            .set({ rating: Math.round(agg.avg * 10) / 10 })
+            .where(eq(users.id, drv.userId));
+        }
+      }
       publishEvent("orders");
       return NextResponse.json(await serializeOrder((await loadOrder(id))!));
     }

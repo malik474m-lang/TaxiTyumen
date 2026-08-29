@@ -27,6 +27,7 @@ import AppHeader from "@/components/AppHeader";
 import OrderChat from "@/components/OrderChat";
 import TaxiMap, { type MapMarker } from "@/components/TaxiMap";
 import { useEvents } from "@/lib/use-events";
+import { estimateEtaMinutes } from "@/lib/city";
 import {
   api,
   getSession,
@@ -66,6 +67,7 @@ export default function ClientPage() {
     from?: { lat: number; lng: number };
     to?: { lat: number; lng: number };
   }>({});
+  const [geoLine, setGeoLine] = useState<[number, number][] | null>(null);
   const [estimating, setEstimating] = useState(false);
   const [active, setActive] = useState<OrderDto | null>(null);
   const [history, setHistory] = useState<OrderDto[]>([]);
@@ -119,15 +121,18 @@ export default function ClientPage() {
             estimates: EstimateDto[];
             from?: { lat: number; lng: number };
             to?: { lat: number; lng: number };
+            geometry?: [number, number][];
           }>("/api/pricing", {
             method: "POST",
             body: JSON.stringify({ fromAddress: pickup, toAddress: destination }),
           });
           setEstimates(res.estimates);
           setGeo({ from: res.from, to: res.to });
+          setGeoLine(res.geometry ?? null);
         } catch {
           setEstimates([]);
           setGeo({});
+          setGeoLine(null);
         } finally {
           setEstimating(false);
         }
@@ -135,6 +140,7 @@ export default function ClientPage() {
     } else {
       setEstimates([]);
       setGeo({});
+      setGeoLine(null);
     }
   }, [pickup, destination]);
 
@@ -185,7 +191,8 @@ export default function ClientPage() {
   }
 
   if (!loaded) return null;
-  if (!user || user.role !== "client") {
+  // Сессия без токена (старая локальная запись) → повторный вход
+  if (!user || user.role !== "client" || !user.token) {
     return <LoginScreen role="client" onAuthed={setUser} />;
   }
   const step = active ? statusIndex(active.status) : -1;
@@ -225,16 +232,29 @@ export default function ClientPage() {
       ]
     : [];
   const liveLine: [number, number][] | null =
-    active?.driver
-      ? active.status === "in_progress" && active.destinationLatitude != null
-        ? [
-            [active.driver.latitude, active.driver.longitude],
-            [active.destinationLatitude, active.destinationLongitude ?? 0],
-          ]
-        : [
-            [active.driver.latitude, active.driver.longitude],
-            [active.pickupLatitude, active.pickupLongitude],
-          ]
+    active?.routePoints && active.routePoints.length > 1
+      ? active.routePoints
+      : active?.driver
+        ? active.status === "in_progress" && active.destinationLatitude != null
+          ? [
+              [active.driver.latitude, active.driver.longitude],
+              [active.destinationLatitude, active.destinationLongitude ?? 0],
+            ]
+          : [
+              [active.driver.latitude, active.driver.longitude],
+              [active.pickupLatitude, active.pickupLongitude],
+            ]
+        : null;
+
+  // ETA: водитель → точка подачи
+  const etaToPickup: number | null =
+    active?.driver && ["driver_assigned", "driver_en_route"].includes(active.status)
+      ? estimateEtaMinutes(
+          active.driver.latitude,
+          active.driver.longitude,
+          active.pickupLatitude,
+          active.pickupLongitude
+        )
       : null;
 
   // Маркеры карты: режим выбора маршрута
@@ -247,12 +267,13 @@ export default function ClientPage() {
       : []),
   ];
   const formLine: [number, number][] | null =
-    geo.from && geo.to
+    geoLine ??
+    (geo.from && geo.to
       ? [
           [geo.from.lat, geo.from.lng],
           [geo.to.lat, geo.to.lng],
         ]
-      : null;
+      : null);
 
   return (
     <div className="min-h-screen">
@@ -279,9 +300,16 @@ export default function ClientPage() {
                       </span>
                     </div>
                   ) : (
-                    <div className="chip bg-emerald-400/10 text-emerald-300">
-                      <Clock className="h-3.5 w-3.5" />
-                      {fmtDate(active.createdAt)}
+                    <div className="flex flex-col items-end gap-1.5">
+                      {etaToPickup !== null && (
+                        <span className="chip bg-amber-400/15 text-amber-300">
+                          <Clock className="h-3.5 w-3.5" />
+                          Подача ≈ {etaToPickup} мин
+                        </span>
+                      )}
+                      <div className="chip bg-emerald-400/10 text-emerald-300">
+                        {fmtDate(active.createdAt)}
+                      </div>
                     </div>
                   )}
                 </div>

@@ -12,12 +12,21 @@ import { serializeOrder } from "@/lib/serialize";
 import { normalizePhone } from "@/lib/auth";
 import { ensureSeeded } from "@/lib/seed";
 import { publishEvent } from "@/lib/bus";
+import { readClaims, forbidden } from "@/lib/session";
+import { getRouteGeometry } from "@/lib/taxi";
 
 export async function POST(req: Request) {
   try {
     await ensureSeeded();
+
+    // Авторизация: заказы по телефону создают только оператор и админ
+    const claims = readClaims(req);
+    if (!claims || (claims.role !== "operator" && claims.role !== "admin")) {
+      return forbidden("Создание операторского заказа доступно только диспетчерской");
+    }
+
     const body = await req.json();
-    const operatorId = String(body.operatorId ?? "");
+    const operatorId = String(body.operatorId ?? claims.uid);
     const clientPhone = normalizePhone(String(body.clientPhone ?? ""));
     const clientName = String(body.clientName ?? "").trim();
     const pickupAddress = String(body.pickupAddress ?? "").trim();
@@ -50,12 +59,15 @@ export async function POST(req: Request) {
     let estimatedPrice = 0;
     let estimatedDistance: number | null = null;
     let estimatedDuration: number | null = null;
+    let routeGeometry: string | null = null;
 
     if (destinationAddress && Number.isFinite(destLat)) {
       const est = await calculatePriceEstimate(pickupLat, pickupLng, destLat, destLng, tariff);
       estimatedPrice = est.price;
       estimatedDistance = est.distanceKm;
       estimatedDuration = est.durationMinutes;
+      const geo = await getRouteGeometry(pickupLat, pickupLng, destLat, destLng);
+      routeGeometry = JSON.stringify(geo);
     }
     // Если координаты назначения не указаны — минимальная цена тарифа
     if (estimatedPrice === 0) {
@@ -82,6 +94,7 @@ export async function POST(req: Request) {
         estimatedPrice,
         estimatedDistance,
         estimatedDuration,
+        routeGeometry,
         comment: body.comment ?? null,
         passengerCount: Number(body.passengerCount ?? 1) || 1,
         status: "searching",

@@ -18,6 +18,7 @@ import {
   TrendingUp,
   CheckCircle2,
   XCircle,
+  FileDown,
 } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import {
@@ -139,8 +140,31 @@ export default function AdminPage() {
     return () => clearTimeout(t);
   }, [message]);
 
+  // Экспорт заказов в CSV (порт Export.razor)
+  async function downloadCsv() {
+    try {
+      const res = await fetch("/api/export/orders", {
+        headers: user?.token ? { Authorization: `Bearer ${user.token}` } : {},
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error ?? "Экспорт недоступен");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `taxi-tyumen-orders-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMessage("CSV выгружен");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Ошибка экспорта");
+    }
+  }
+
   if (!loaded) return null;
-  if (!user || user.role !== "admin") {
+  if (!user || user.role !== "admin" || !user.token) {
     return <LoginScreen role="admin" onAuthed={setUser} />;
   }
 
@@ -254,7 +278,17 @@ export default function AdminPage() {
 
         {/* ── ЗАКАЗЫ ────────────────────────────────────────────────── */}
         {tab === "orders" && (
-          <div className="card overflow-hidden">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-zinc-500">
+                Последние заказы: <b className="text-zinc-200">{orders.length}</b>
+              </p>
+              <button onClick={downloadCsv} className="btn-ghost !px-3.5 !py-2 !text-xs">
+                <FileDown className="h-3.5 w-3.5" />
+                Экспорт CSV
+              </button>
+            </div>
+            <div className="card overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[860px] text-sm">
                 <thead>
@@ -316,6 +350,7 @@ export default function AdminPage() {
                 <p className="py-16 text-center text-sm text-zinc-600">Заказов пока нет</p>
               )}
             </div>
+          </div>
           </div>
         )}
 

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { tariffs } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { getRealRoute, computePrice, geocodeAddress } from "@/lib/taxi";
+import { getRealRoute, getRouteGeometry, computePrice, geocodeAddress } from "@/lib/taxi";
 import { ensureSeeded } from "@/lib/seed";
 
 export async function POST(req: Request) {
@@ -33,6 +33,7 @@ export async function POST(req: Request) {
     }
 
     const route = await getRealRoute(fromLat, fromLng, toLat, toLng);
+    const geometry = await getRouteGeometry(fromLat, fromLng, toLat, toLng);
     const activeTariffs = await db.select().from(tariffs).where(eq(tariffs.isActive, true));
 
     const estimates = activeTariffs
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       from: { lat: fromLat, lng: fromLng },
       to: { lat: toLat, lng: toLng },
+      geometry,
       estimates,
     });
   } catch (e) {

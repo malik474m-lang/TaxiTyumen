@@ -14,6 +14,8 @@ import { serializeOrder } from "@/lib/serialize";
 import { ensureSeeded } from "@/lib/seed";
 import { advanceDriversGps } from "@/lib/simulate";
 import { publishEvent } from "@/lib/bus";
+import { readClaims, forbidden } from "@/lib/session";
+import { getRouteGeometry } from "@/lib/taxi";
 
 export async function POST(req: Request) {
   try {
@@ -22,6 +24,12 @@ export async function POST(req: Request) {
     const clientId = String(body.clientId ?? "");
     if (!clientId)
       return NextResponse.json({ error: "clientId обязателен" }, { status: 400 });
+
+    // Авторизация: клиент создаёт заказ только от своего имени
+    const claims = readClaims(req);
+    if (!claims || claims.role !== "client" || claims.uid !== clientId) {
+      return forbidden("Создать заказ может только его клиент");
+    }
 
     const pickupAddress = String(body.pickupAddress ?? "").trim();
     let pickupLat = Number(body.pickupLatitude);
@@ -51,11 +59,15 @@ export async function POST(req: Request) {
     let estimatedPrice = 0;
     let estimatedDistance: number | null = null;
     let estimatedDuration: number | null = null;
+    let routeGeometry: string | null = null;
     if (destinationAddress && Number.isFinite(destLat)) {
       const est = await calculatePriceEstimate(pickupLat, pickupLng, destLat, destLng, tariff);
       estimatedPrice = est.price;
       estimatedDistance = est.distanceKm;
       estimatedDuration = est.durationMinutes;
+      // Геометрия по дорогам для карты
+      const geo = await getRouteGeometry(pickupLat, pickupLng, destLat, destLng);
+      routeGeometry = JSON.stringify(geo);
     } else {
       const [t] = await db.select().from(tariffs).where(eq(tariffs.type, tariff as never));
       estimatedPrice = t?.minimumFare ?? 99;
@@ -78,6 +90,7 @@ export async function POST(req: Request) {
         estimatedPrice,
         estimatedDistance,
         estimatedDuration,
+        routeGeometry,
         comment: body.comment ?? null,
         passengerCount: Number(body.passengerCount ?? 1) || 1,
         paymentMethod: (body.paymentMethod as never) ?? "cash",

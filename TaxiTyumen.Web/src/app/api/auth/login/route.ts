@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { verifyPassword, normalizePhone } from "@/lib/auth";
 import { serializeUser } from "@/lib/serialize";
 import { ensureSeeded } from "@/lib/seed";
+import { signToken } from "@/lib/session";
 
 export async function POST(req: Request) {
   try {
@@ -42,7 +43,10 @@ export async function POST(req: Request) {
       driverId = dp?.id ?? null;
     }
 
-    return NextResponse.json({ user: serializeUser(user, driverId) });
+    const token = signToken({ uid: user.id, role: user.role, driverId });
+    return NextResponse.json({
+      user: { ...serializeUser(user, driverId), token },
+    });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Ошибка входа" },

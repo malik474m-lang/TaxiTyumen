@@ -2,9 +2,9 @@
 import { db } from "@/db";
 import { tariffs, type Tariff } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { CITY } from "@/lib/city";
+import { CITY, getDistanceKm } from "@/lib/city";
 
-export { CITY };
+export { CITY, getDistanceKm };
 
 // ── Координаты популярных мест Тюмени (для подсказок адресов) ───────────────
 export const PLACES: { name: string; lat: number; lng: number }[] = [
@@ -45,25 +45,7 @@ export function geocodeAddress(address: string): { lat: number; lng: number } {
 }
 
 // ── DistanceCalculator.cs ────────────────────────────────────────────────────
-
-function toRadians(deg: number) {
-  return (deg * Math.PI) / 180;
-}
-
-export function getDistanceKm(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number
-): number {
-  const R = 6371;
-  const dLat = toRadians(lat2 - lat1);
-  const dLng = toRadians(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+// getDistanceKm переехал в @/lib/city (переэкспортирован выше)
 
 export function getRoadDistanceKm(
   lat1: number,
@@ -110,6 +92,33 @@ export async function getRealRoute(
     distanceKm: Math.round(dist * 10) / 10,
     durationMinutes: estimateDurationMinutes(dist),
   };
+}
+
+// Полная геометрия маршрута по дорогам через OSRM (для polyline на карте)
+export async function getRouteGeometry(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): Promise<[number, number][]> {
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${lng1},${lat1};${lng2},${lat2}?overview=full&geometries=geojson`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (res.ok) {
+      const json = await res.json();
+      const coords = json?.routes?.[0]?.geometry?.coordinates;
+      if (Array.isArray(coords) && coords.length > 1) {
+        // GeoJSON: [lng, lat] → Leaflet: [lat, lng]
+        return coords.map((c: [number, number]) => [c[1], c[0]] as [number, number]);
+      }
+    }
+  } catch {
+    /* fallback ниже */
+  }
+  return [
+    [lat1, lng1],
+    [lat2, lng2],
+  ];
 }
 
 // ── PricingService.cs ────────────────────────────────────────────────────────

@@ -168,6 +168,7 @@ export const orders = pgTable("orders", {
   finalPrice: doublePrecision("final_price"),
   estimatedDistance: doublePrecision("estimated_distance"),
   estimatedDuration: integer("estimated_duration"),
+  routeGeometry: text("route_geometry"),
   paymentMethod: paymentMethodEnum("payment_method")
     .notNull()
     .default("cash"),

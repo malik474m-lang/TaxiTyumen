@@ -121,7 +121,7 @@ export default function DriverPage() {
   }
 
   if (!loaded) return null;
-  if (!user || user.role !== "driver" || !user.driverId) {
+  if (!user || user.role !== "driver" || !user.driverId || !user.token) {
     return <LoginScreen role="driver" onAuthed={setUser} />;
   }
   if (!me) {
@@ -168,15 +168,17 @@ export default function DriverPage() {
         }))),
   ];
   const mapLine: [number, number][] | null = current
-    ? current.status === "in_progress" && current.destinationLatitude != null
-      ? [
-          [me.latitude, me.longitude],
-          [current.destinationLatitude, current.destinationLongitude ?? 0],
-        ]
-      : [
-          [me.latitude, me.longitude],
-          [current.pickupLatitude, current.pickupLongitude],
-        ]
+    ? (current.routePoints && current.routePoints.length > 1
+        ? current.routePoints
+        : current.status === "in_progress" && current.destinationLatitude != null
+          ? [
+              [me.latitude, me.longitude],
+              [current.destinationLatitude, current.destinationLongitude ?? 0],
+            ]
+          : [
+              [me.latitude, me.longitude],
+              [current.pickupLatitude, current.pickupLongitude],
+            ])
     : null;
 
   return (

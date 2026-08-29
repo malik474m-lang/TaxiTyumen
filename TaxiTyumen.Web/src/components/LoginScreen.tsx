@@ -136,6 +136,13 @@ export default function LoginScreen({
 
   useEffect(() => {
     const s = getSession();
+    // Сессия без серверного токена — недействительна, входим заново
+    if (s && !s.token) {
+      setSession(null);
+      setExisting(null);
+      setView("login");
+      return;
+    }
     setExisting(s);
     setView(s && s.role !== role ? "conflict" : "login");
   }, [role]);
