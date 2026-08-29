@@ -67,6 +67,9 @@ if ($action === 'verify') {
     if ($user['is_blocked']) {
         Response::error('Аккаунт заблокирован: ' . ($user['block_reason'] ?? ''), 403);
     }
+    if (!empty($user['is_archived'])) {
+        Response::error('Аккаунт перенесён в архив. Обратитесь к администратору.', 403);
+    }
 
     $db->prepare(
         'UPDATE users SET sms_code = NULL, sms_code_expiry = NULL, is_phone_verified = 1, last_login_at = ? WHERE id = ?'

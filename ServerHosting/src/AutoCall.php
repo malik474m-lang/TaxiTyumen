@@ -63,7 +63,9 @@ final class AutoCall
     private static function tryAutoAssign(\PDO $db, array $order, array $settings): bool
     {
         $free = $db->query(
-            "SELECT * FROM drivers WHERE status = 'available' AND is_verified = 1"
+            "SELECT d.* FROM drivers d JOIN users u ON u.id = d.user_id
+             WHERE d.status = 'available' AND d.is_verified = 1
+               AND u.is_active = 1 AND u.is_blocked = 0 AND u.is_archived = 0"
         )->fetchAll();
 
         $rejected = $db->prepare('SELECT driver_id FROM order_rejections WHERE order_id = ?');

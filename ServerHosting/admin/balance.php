@@ -55,7 +55,7 @@ $flow = $db->query(
 
 $drivers = $db->query(
     'SELECT d.id,d.balance,d.min_balance_for_orders,d.total_earnings,d.completed_trips,d.license_plate,
-     u.first_name,u.last_name FROM drivers d JOIN users u ON u.id=d.user_id ORDER BY d.balance ASC'
+     u.first_name,u.last_name FROM drivers d JOIN users u ON u.id=d.user_id WHERE u.is_archived=0 ORDER BY d.balance ASC'
 )->fetchAll();
 
 layout_header('Балансы', 'balance');

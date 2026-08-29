@@ -80,6 +80,10 @@ export const users = pgTable("users", {
   rating: doublePrecision("rating").notNull().default(5),
   totalTrips: integer("total_trips").notNull().default(0),
   isPhoneVerified: boolean("is_phone_verified").notNull().default(false),
+  isArchived: boolean("is_archived").notNull().default(false),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  archivedBy: uuid("archived_by"),
+  archiveReason: text("archive_reason"),
   smsCode: text("sms_code"),
   smsCodeExpiry: timestamp("sms_code_expiry", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
@@ -118,6 +122,9 @@ export const drivers = pgTable("drivers", {
     .notNull()
     .default(100),
   rejectionPenalty: doublePrecision("rejection_penalty").notNull().default(0),
+  photoDriver: text("photo_driver"),
+  photoLicense: text("photo_license"),
+  photoCar: text("photo_car"),
   currentOrderId: uuid("current_order_id"),
 });
 

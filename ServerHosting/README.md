@@ -31,6 +31,7 @@
 | `POST /api/orders/action.php` | по ролям | `accept/reject/arrived/start/complete/cancel/assign/rate` — комиссия 15 %, штрафы, рейтинг |
 | `GET /api/drivers/?online=1` | все | Список водителей с координатами |
 | `POST /api/drivers/action.php` | driver/admin | `status/location` (GPS+history) — водителем; `topup` — operator/admin, `verify` — admin |
+| `GET/POST /api/drivers/photo.php` | staff / driver-владелец | Фото водителя, ВУ и авто: выдача, загрузка (admin), удаление |
 | `GET /api/drivers/track.php` | driver/operator/admin | GPS-история водителя/заказа, расчёт километража |
 | `GET /api/tariffs/` | все | Тарифы; `PUT` — редактирование (admin) |
 | `POST /api/pricing.php` | все | Оценка цены всех тарифов + геометрия маршрута |

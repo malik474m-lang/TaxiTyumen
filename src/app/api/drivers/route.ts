@@ -13,7 +13,9 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const onlineOnly = url.searchParams.get("online") === "1";
 
-  const conditions = onlineOnly ? and(ne(drivers.status, "offline")) : undefined;
+  const conditions = onlineOnly
+    ? and(ne(drivers.status, "offline"), eq(users.isArchived, false))
+    : eq(users.isArchived, false);
   const rows = await db
     .select({ driver: drivers, user: users })
     .from(drivers)

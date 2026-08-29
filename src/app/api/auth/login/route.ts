@@ -36,6 +36,12 @@ export async function POST(req: Request) {
         { status: 403 }
       );
     }
+    if (user.isArchived) {
+      return NextResponse.json(
+        { error: "Аккаунт перенесён в архив. Обратитесь к администратору." },
+        { status: 403 }
+      );
+    }
     if (!user.isActive) {
       return NextResponse.json({ error: "Аккаунт деактивирован" }, { status: 403 });
     }

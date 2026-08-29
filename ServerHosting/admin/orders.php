@@ -30,7 +30,7 @@ $stmt->execute($statusFilter !== '' ? [$statusFilter] : []);
 $rows = $stmt->fetchAll();
 $assignDrivers = $db->query(
     "SELECT d.id,d.status,d.license_plate,u.first_name,u.last_name FROM drivers d
-     JOIN users u ON u.id=d.user_id WHERE d.is_verified=1 AND u.is_active=1 AND u.is_blocked=0
+     JOIN users u ON u.id=d.user_id WHERE d.is_verified=1 AND u.is_active=1 AND u.is_blocked=0 AND u.is_archived=0
      ORDER BY FIELD(d.status,'available','on_route','in_trip','busy','offline'),u.last_name"
 )->fetchAll();
 

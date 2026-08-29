@@ -90,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $d = $db->prepare(
-            'SELECT d.*, u.id AS uid, u.is_blocked FROM drivers d JOIN users u ON u.id=d.user_id WHERE d.id=? LIMIT 1'
+            'SELECT d.*, u.id AS uid, u.is_blocked, u.is_active, u.is_archived FROM drivers d JOIN users u ON u.id=d.user_id WHERE d.id=? LIMIT 1'
         );
         $d->execute([$id]);
         $driver = $d->fetch();
@@ -140,6 +140,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
+        if ($cmd === 'active') {
+            $active = $driver['is_active'] ? 0 : 1;
+            $db->prepare('UPDATE users SET is_active=? WHERE id=?')->execute([$active, $driver['uid']]);
+            if (!$active) {
+                $db->prepare("UPDATE drivers SET status='offline', current_order_id=NULL WHERE id=?")->execute([$id]);
+            }
+            Bus::publish('drivers');
+            header('Location: drivers.php?ok=' . urlencode($active ? 'Водитель активирован' : 'Водитель деактивирован'));
+            exit;
+        }
+
+        if ($cmd === 'archive') {
+            Archive::assertDriverArchivable($db, $driver);
+            Archive::archiveUser($db, (string) $driver['uid'], (string) $admin['id'],
+                trim((string) ($_POST['reason'] ?? '')) ?: null);
+            Bus::publish('drivers');
+            header('Location: drivers.php?ok=' . urlencode('Водитель перенесён в архив'));
+            exit;
+        }
+
+        if ($cmd === 'restore') {
+            Archive::restoreUser($db, (string) $driver['uid']);
+            Bus::publish('drivers');
+            header('Location: drivers.php?view=archive&ok=' . urlencode('Водитель восстановлен из архива'));
+            exit;
+        }
+
+        if ($cmd === 'photo') {
+            $kind = (string) ($_POST['kind'] ?? '');
+            if (($_POST['photo_action'] ?? '') === 'remove') {
+                DriverPhotos::remove($db, $id, $kind);
+                header('Location: drivers.php?ok=' . urlencode('Фото удалено'));
+                exit;
+            }
+            DriverPhotos::store($db, $id, $kind, $_FILES['photo'] ?? []);
+            header('Location: drivers.php?ok=' . urlencode('Фото загружено'));
+            exit;
+        }
+
         if ($cmd === 'delete') {
             if (!empty($driver['current_order_id'])) {
                 throw new RuntimeException('Нельзя удалить водителя с активным заказом');
@@ -149,6 +188,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $db->prepare('DELETE FROM order_rejections WHERE driver_id=?')->execute([$id]);
             $db->prepare('DELETE FROM balance_transactions WHERE driver_id=?')->execute([$id]);
             $db->prepare('DELETE FROM driver_location_history WHERE driver_id=?')->execute([$id]);
+            DriverPhotos::removeAll($db, $id);
             $db->prepare('DELETE FROM notifications WHERE recipient_id=?')->execute([$driver['uid']]);
             $db->prepare('DELETE FROM drivers WHERE id=?')->execute([$id]);
             $db->prepare('DELETE FROM users WHERE id=?')->execute([$driver['uid']]);
@@ -198,10 +238,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$view = ($_GET['view'] ?? '') === 'archive' ? 'archive' : 'active';
 $rows = $db->query(
-    'SELECT d.*, u.first_name, u.last_name, u.phone, u.rating, u.is_blocked
-     FROM drivers d JOIN users u ON u.id=d.user_id ORDER BY u.last_name, u.first_name'
+    'SELECT d.*, u.first_name, u.last_name, u.phone, u.rating, u.is_blocked, u.is_active,
+            u.is_archived, u.archived_at, u.archive_reason
+     FROM drivers d JOIN users u ON u.id=d.user_id
+     WHERE u.is_archived = ' . ($view === 'archive' ? '1' : '0') . '
+     ORDER BY u.last_name, u.first_name'
 )->fetchAll();
+$archivedCount = (int) $db->query(
+    "SELECT COUNT(*) FROM drivers d JOIN users u ON u.id=d.user_id WHERE u.is_archived=1"
+)->fetchColumn();
 
 $statusChip = function (string $s): string {
     $cls = $s === 'offline' ? '' : ($s === 'available' ? 'ok' : 'info');
@@ -212,13 +259,21 @@ $statusChip = function (string $s): string {
 layout_header('Водители', 'drivers');
 ?>
 <div class="flex between">
-  <div><h1>Водители</h1><p class="mut"><?= count($rows) ?> профилей в системе</p></div>
-  <span class="chip info">На линии: <?= count(array_filter($rows, fn($d) => $d['status'] !== 'offline')) ?></span>
+  <div>
+    <h1>Водители<?= $view === 'archive' ? ' · архив' : '' ?></h1>
+    <p class="mut"><?= count($rows) ?> <?= $view === 'archive' ? 'в архиве' : 'активных профилей' ?></p>
+  </div>
+  <div class="flex">
+    <a class="btn <?= $view === 'active' ? '' : 'ghost' ?> sm" href="drivers.php">Активные</a>
+    <a class="btn <?= $view === 'archive' ? '' : 'ghost' ?> sm" href="drivers.php?view=archive">Архив<?= $archivedCount ? ' · ' . $archivedCount : '' ?></a>
+    <?php if ($view === 'active'): ?><span class="chip info">На линии: <?= count(array_filter($rows, fn($d) => $d['status'] !== 'offline')) ?></span><?php endif; ?>
+  </div>
 </div>
 
 <?php if (!empty($_GET['ok'])): ?><div class="flash" style="margin-top:14px">✓ <?= h((string) $_GET['ok']) ?></div><?php endif; ?>
 <?php if ($error): ?><div class="flash" style="margin-top:14px;border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);color:#fca5a5">Ошибка: <?= h($error) ?></div><?php endif; ?>
 
+<?php if ($view === "active"): ?>
 <details class="card" style="margin-top:18px" <?= $error ? 'open' : '' ?>>
   <summary style="cursor:pointer;font-weight:900;font-size:16px;color:#7dd3fc">＋ Добавить водителя</summary>
   <form method="post" style="margin-top:16px">
@@ -250,6 +305,7 @@ layout_header('Водители', 'drivers');
     </div>
   </form>
 </details>
+<?php endif; ?>
 
 <div class="grid q2" style="margin-top:14px">
 <?php foreach ($rows as $d): $low = $d['balance'] < $d['min_balance_for_orders']; ?>
@@ -273,6 +329,15 @@ layout_header('Водители', 'drivers');
       <div><div class="mut">Рейтинг</div><b style="font-size:18px">★ <?= number_format((float) $d['rating'], 1) ?></b></div>
     </div>
 
+    <?php if ($view === 'archive'): ?>
+    <div class="mut" style="margin-top:12px;padding:10px;background:#0f0f13;border-radius:11px">
+      В архиве с <?= h(fmt_date($d['archived_at'])) ?><?= $d['archive_reason'] ? ' · ' . h($d['archive_reason']) : '' ?>
+    </div>
+    <div class="flex" style="margin-top:12px">
+      <form method="post"><input type="hidden" name="cmd" value="restore"><input type="hidden" name="id" value="<?= h($d['id']) ?>"><button class="btn sm">Вернуть из архива</button></form>
+      <form method="post" onsubmit="return confirm('Удалить водителя и его историю? Действие необратимо.')"><input type="hidden" name="cmd" value="delete"><input type="hidden" name="id" value="<?= h($d['id']) ?>"><button class="btn danger sm">Удалить навсегда</button></form>
+    </div>
+    <?php else: ?>
     <div class="flex" style="margin-top:14px">
       <a class="btn ghost sm" href="messages.php?recipient=<?= h($d['user_id']) ?>">Написать</a>
       <a class="btn ghost sm" href="driver-track.php?id=<?=h($d['id'])?>">GPS-трек</a>
@@ -311,6 +376,36 @@ layout_header('Водители', 'drivers');
         </div>
       </form>
     </details>
+
+    <details style="margin-top:10px;border-top:1px solid rgba(255,255,255,.07);padding-top:10px">
+      <summary class="mut" style="cursor:pointer;font-weight:700">Фотографии: водитель, ВУ, автомобиль</summary>
+      <div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:12px">
+        <?php foreach (DriverPhotos::KINDS as $kind => $meta):
+              $url = DriverPhotos::url($d['id'], $kind, $d[$meta['column']] ?? null); ?>
+        <div style="padding:10px;background:#0f0f13;border-radius:12px">
+          <div class="mut" style="font-size:11px;margin-bottom:6px"><?= h($meta['label']) ?></div>
+          <?php if ($url): ?>
+            <a href="<?= h($url) ?>" target="_blank"><img src="<?= h($url) ?>" alt="" style="width:100%;height:96px;object-fit:cover;border-radius:9px;background:#000"></a>
+          <?php else: ?>
+            <div class="mut" style="height:96px;display:flex;align-items:center;justify-content:center;border:1px dashed rgba(255,255,255,.15);border-radius:9px;font-size:11px">нет фото</div>
+          <?php endif; ?>
+          <form method="post" enctype="multipart/form-data" style="margin-top:8px">
+            <input type="hidden" name="cmd" value="photo"><input type="hidden" name="id" value="<?= h($d['id']) ?>"><input type="hidden" name="kind" value="<?= h($kind) ?>">
+            <input type="file" name="photo" accept="image/png,image/jpeg,image/webp" required style="font-size:11px">
+            <button class="btn sm" style="width:100%;margin-top:6px">Загрузить</button>
+          </form>
+          <?php if ($url): ?>
+          <form method="post" style="margin-top:5px">
+            <input type="hidden" name="cmd" value="photo"><input type="hidden" name="id" value="<?= h($d['id']) ?>"><input type="hidden" name="kind" value="<?= h($kind) ?>"><input type="hidden" name="photo_action" value="remove">
+            <button class="btn danger sm" style="width:100%">Удалить фото</button>
+          </form>
+          <?php endif; ?>
+        </div>
+        <?php endforeach; ?>
+      </div>
+      <div class="mut" style="font-size:11px;margin-top:8px">PNG, JPEG или WebP · до 5 МБ · документы видны только персоналу</div>
+    </details>
+    <?php endif; ?>
   </div>
 <?php endforeach; ?>
 </div>

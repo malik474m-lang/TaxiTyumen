@@ -32,6 +32,9 @@ if (!Auth::verifyPassword($password, $user['password_hash'])) {
 if ($user['is_blocked']) {
     Response::error('Аккаунт заблокирован: ' . ($user['block_reason'] ?? ''), 403);
 }
+if (!empty($user['is_archived'])) {
+    Response::error('Аккаунт перенесён в архив. Обратитесь к администратору.', 403);
+}
 if (!$user['is_active']) {
     Response::error('Аккаунт деактивирован', 403);
 }

@@ -210,6 +210,15 @@ final class Seed
         }
         Access::ensureTables($db);
 
+        // Архив персонала и фото водителя
+        self::addColumn($db, 'users', 'is_archived', "TINYINT(1) NOT NULL DEFAULT 0 AFTER is_phone_verified");
+        self::addColumn($db, 'users', 'archived_at', "DATETIME NULL AFTER is_archived");
+        self::addColumn($db, 'users', 'archived_by', "CHAR(36) NULL AFTER archived_at");
+        self::addColumn($db, 'users', 'archive_reason', "VARCHAR(255) NULL AFTER archived_by");
+        self::addColumn($db, 'drivers', 'photo_driver', "VARCHAR(255) NULL AFTER accept_sbp");
+        self::addColumn($db, 'drivers', 'photo_license', "VARCHAR(255) NULL AFTER photo_driver");
+        self::addColumn($db, 'drivers', 'photo_car', "VARCHAR(255) NULL AFTER photo_license");
+
         // Новые поля профиля водителя из исходной Driver.cs
         self::addColumn($db, 'drivers', 'license_expiry', "DATETIME NULL AFTER driver_license");
         self::addColumn($db, 'drivers', 'verified_at', "DATETIME NULL AFTER is_verified");

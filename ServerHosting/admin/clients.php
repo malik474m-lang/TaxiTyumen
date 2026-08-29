@@ -42,7 +42,7 @@ if ($q !== '') {
         "SELECT u.*,
           (SELECT COUNT(*) FROM orders o WHERE o.client_id=u.id) AS trip_count,
           (SELECT COALESCE(SUM(o.final_price),0) FROM orders o WHERE o.client_id=u.id AND o.status='completed') AS spent
-         FROM users u WHERE u.role='client' ORDER BY u.created_at DESC LIMIT 200"
+         FROM users u WHERE u.role='client' AND u.is_archived=0 ORDER BY u.created_at DESC LIMIT 200"
     );
 }
 $clients = $stmt->fetchAll();

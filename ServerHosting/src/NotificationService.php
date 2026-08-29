@@ -68,7 +68,7 @@ final class NotificationService
         string $channel = 'in_app',
         ?string $createdBy = null
     ): int {
-        $stmt = $db->prepare("SELECT id FROM users WHERE role=? AND is_active=1 AND is_blocked=0");
+        $stmt = $db->prepare("SELECT id FROM users WHERE role=? AND is_active=1 AND is_blocked=0 AND is_archived=0");
         $stmt->execute([$role]);
         $count = 0;
         foreach ($stmt->fetchAll() as $user) {
@@ -86,7 +86,7 @@ final class NotificationService
         string $channel = 'in_app',
         ?string $createdBy = null
     ): int {
-        $users = $db->query('SELECT id FROM users WHERE is_active=1 AND is_blocked=0')->fetchAll();
+        $users = $db->query('SELECT id FROM users WHERE is_active=1 AND is_blocked=0 AND is_archived=0')->fetchAll();
         $count = 0;
         foreach ($users as $user) {
             self::create($db, $user['id'], $type, $title, $message, null, [], $channel, $createdBy);
@@ -101,7 +101,8 @@ final class NotificationService
             "SELECT d.id,d.user_id,d.latitude,d.longitude FROM drivers d
              JOIN users u ON u.id=d.user_id
              WHERE d.status='available' AND d.is_verified=1
-               AND d.balance>=d.min_balance_for_orders AND u.is_active=1 AND u.is_blocked=0"
+               AND d.balance>=d.min_balance_for_orders
+               AND u.is_active=1 AND u.is_blocked=0 AND u.is_archived=0"
         )->fetchAll();
         $items = [];
         foreach ($drivers as $driver) {

@@ -43,7 +43,7 @@ $preselect = (string) ($_GET['recipient'] ?? '');
 $users = $db->query(
     "SELECT u.id,u.first_name,u.last_name,u.phone,u.role,u.is_blocked,
       d.license_plate FROM users u LEFT JOIN drivers d ON d.user_id=u.id
-     WHERE u.role IN ('client','driver','operator') ORDER BY u.role,u.last_name,u.first_name LIMIT 1000"
+     WHERE u.role IN ('client','driver','operator') AND u.is_archived=0 ORDER BY u.role,u.last_name,u.first_name LIMIT 1000"
 )->fetchAll();
 
 $history = $db->query(

@@ -21,7 +21,7 @@ $byTariff=$db->prepare("SELECT tariff,COUNT(*) cnt,COALESCE(SUM(final_price),0) 
 $byTariff->execute([$since]);$tariffs=$byTariff->fetchAll();
 $byStatus=$db->prepare('SELECT status,COUNT(*) cnt FROM orders WHERE created_at>=? GROUP BY status ORDER BY cnt DESC');
 $byStatus->execute([$since]);$statuses=$byStatus->fetchAll();
-$topDrivers=$db->prepare("SELECT u.first_name,u.last_name,d.license_plate,COUNT(o.id) trips,COALESCE(SUM(o.final_price),0) revenue,u.rating FROM orders o JOIN drivers d ON d.id=o.driver_id JOIN users u ON u.id=d.user_id WHERE o.status='completed' AND o.completed_at>=? GROUP BY d.id,u.first_name,u.last_name,d.license_plate,u.rating ORDER BY trips DESC LIMIT 10");
+$topDrivers=$db->prepare("SELECT u.first_name,u.last_name,d.license_plate,COUNT(o.id) trips,COALESCE(SUM(o.final_price),0) revenue,u.rating FROM orders o JOIN drivers d ON d.id=o.driver_id JOIN users u ON u.id=d.user_id WHERE u.is_archived=0 AND o.status='completed' AND o.completed_at>=? GROUP BY d.id,u.first_name,u.last_name,d.license_plate,u.rating ORDER BY trips DESC LIMIT 10");
 $topDrivers->execute([$since]);$drivers=$topDrivers->fetchAll();
 $topOperators=$db->prepare("SELECT u.first_name,u.last_name,COUNT(o.id) orders_count FROM orders o JOIN users u ON u.id=o.operator_id WHERE o.created_at>=? GROUP BY u.id,u.first_name,u.last_name ORDER BY orders_count DESC LIMIT 10");
 $topOperators->execute([$since]);$operators=$topOperators->fetchAll();
