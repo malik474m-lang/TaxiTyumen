@@ -66,13 +66,13 @@ export async function POST(req: Request, ctx: Ctx) {
     const claims = readClaims(req);
     if (!claims) return unauthorized();
 
-    if (["accept", "reject", "arrived", "start", "complete"].includes(action)) {
+    if (["accept", "reject", "arrived", "start", "complete", "waiting-start", "waiting-stop"].includes(action)) {
       const requestedDriverId = String(body.driverId ?? order.driverId ?? "");
       if (claims.role !== "driver" || claims.driverId !== requestedDriverId) {
         return forbidden("Действие доступно только водителю от своего имени");
       }
       if (
-        ["arrived", "start", "complete"].includes(action) &&
+        ["arrived", "start", "complete", "waiting-start", "waiting-stop"].includes(action) &&
         order.driverId !== claims.driverId
       ) {
         return forbidden("Этот заказ принадлежит другому водителю");
@@ -180,12 +180,77 @@ export async function POST(req: Request, ctx: Ctx) {
       return NextResponse.json(await serializeOrder((await loadOrder(id))!));
     }
 
+    // ── Простой: пауза по просьбе пассажира, тарифицируется поминутно ─────
+    if (action === "waiting-start") {
+      if (order.status !== "driver_arrived" && order.status !== "in_progress") {
+        return NextResponse.json(
+          { error: "Простой доступен после прибытия и во время поездки" },
+          { status: 409 }
+        );
+      }
+      if (!order.waitingStartedAt) {
+        await db
+          .update(orders)
+          .set({ waitingStartedAt: new Date() })
+          .where(eq(orders.id, id));
+        publishEvent("orders");
+      }
+      return NextResponse.json(await serializeOrder((await loadOrder(id))!));
+    }
+
+    if (action === "waiting-stop") {
+      if (order.waitingStartedAt) {
+        const elapsed = Math.max(
+          0,
+          Math.floor((Date.now() - order.waitingStartedAt.getTime()) / 1000)
+        );
+        await db
+          .update(orders)
+          .set({
+            waitingStartedAt: null,
+            waitingSeconds: order.waitingSeconds + elapsed,
+          })
+          .where(eq(orders.id, id));
+        publishEvent("orders");
+      }
+      return NextResponse.json(await serializeOrder((await loadOrder(id))!));
+    }
+
     // ── CompleteOrderAsync ────────────────────────────────────────────────
     if (action === "complete") {
-      const finalPrice = Number(body.finalPrice ?? order.estimatedPrice) || order.estimatedPrice;
+      // Закрываем открытый интервал простоя и считаем общее время
+      let totalWaitingSeconds = order.waitingSeconds;
+      if (order.waitingStartedAt) {
+        totalWaitingSeconds += Math.max(
+          0,
+          Math.floor((Date.now() - order.waitingStartedAt.getTime()) / 1000)
+        );
+      }
+
+      // Биллинг простоя по тарифу: бесплатные минуты не оплачиваются,
+      // дальше — поминутно (округление части минуты вверх)
+      const [tariff] = await db
+        .select()
+        .from(tariffs)
+        .where(eq(tariffs.type, order.tariff));
+      const freeMinutes = Math.max(0, tariff?.freeWaitingMinutes ?? 0);
+      const perMinute = Math.max(0, tariff?.paidWaitingPerMinute ?? 0);
+      const waitingMinutes = Math.ceil(totalWaitingSeconds / 60);
+      const billableMinutes = Math.max(0, waitingMinutes - freeMinutes);
+      const waitingCost = Math.round(billableMinutes * perMinute * 100) / 100;
+
+      const basePrice = Number(body.finalPrice ?? order.estimatedPrice) || order.estimatedPrice;
+      const finalPrice = basePrice + waitingCost;
       await db
         .update(orders)
-        .set({ status: "completed", completedAt: new Date(), finalPrice })
+        .set({
+          status: "completed",
+          completedAt: new Date(),
+          finalPrice,
+          waitingStartedAt: null,
+          waitingSeconds: totalWaitingSeconds,
+          waitingCost,
+        })
         .where(eq(orders.id, id));
 
       if (order.driverId) {
@@ -202,10 +267,6 @@ export async function POST(req: Request, ctx: Ctx) {
             })
             .where(eq(drivers.id, driver.id));
 
-          const [tariff] = await db
-            .select()
-            .from(tariffs)
-            .where(eq(tariffs.type, order.tariff));
           const commissionPercent = tariff?.commissionPercent ?? 15;
           await chargeCommission(driver.id, id, finalPrice, commissionPercent);
         }

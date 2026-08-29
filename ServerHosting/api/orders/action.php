@@ -28,14 +28,14 @@ if (!$order) {
 }
 
 $claims = Guard::claims();
-$driverActions = ['accept', 'reject', 'en_route', 'arrived', 'start', 'complete'];
+$driverActions = ['accept', 'reject', 'en_route', 'arrived', 'start', 'complete', 'waiting-start', 'waiting-stop'];
 
 if (in_array($action, $driverActions, true)) {
     $requestedDriverId = (string) ($body['driverId'] ?? $order['driver_id'] ?? '');
     if (($claims['role'] ?? '') !== 'driver' || ($claims['driverId'] ?? '') !== $requestedDriverId) {
         Response::error('Действие доступно только водителю от своего имени', 403);
     }
-    if (in_array($action, ['en_route', 'arrived', 'start', 'complete'], true) && $order['driver_id'] !== $claims['driverId']) {
+    if (in_array($action, ['en_route', 'arrived', 'start', 'complete', 'waiting-start', 'waiting-stop'], true) && $order['driver_id'] !== $claims['driverId']) {
         Response::error('Этот заказ принадлежит другому водителю', 403);
     }
 } elseif ($action === 'assign') {
@@ -185,6 +185,32 @@ switch ($action) {
         $result();
     }
 
+    case 'waiting-start': {
+        // Простой: открыть интервал (после прибытия или в поездке)
+        if (!in_array($order['status'], ['driver_arrived', 'in_progress'], true)) {
+            Response::error('Простой доступен после прибытия и во время поездки', 409);
+        }
+        if (empty($order['waiting_started_at'])) {
+            $db->prepare('UPDATE orders SET waiting_started_at = ? WHERE id = ?')
+                ->execute([Db::utcNow(), $id]);
+            Bus::publish('orders');
+        }
+        NotificationService::notifyOperatorsOrderUpdate($db, $load());
+        $result();
+    }
+
+    case 'waiting-stop': {
+        // Простой: закрыть интервал и накопить секунды
+        if (!empty($order['waiting_started_at'])) {
+            $elapsed = max(0, time() - strtotime($order['waiting_started_at'] . ' UTC'));
+            $db->prepare('UPDATE orders SET waiting_started_at = NULL, waiting_seconds = waiting_seconds + ? WHERE id = ?')
+                ->execute([$elapsed, $id]);
+            Bus::publish('orders');
+        }
+        NotificationService::notifyOperatorsOrderUpdate($db, $load());
+        $result();
+    }
+
     case 'complete': {
         $finalPrice = (float) ($body['finalPrice'] ?? $order['estimated_price']) ?: (float) $order['estimated_price'];
         // Фактическое расстояние по сохранённому GPS-треку
@@ -199,8 +225,21 @@ switch ($action) {
             );
         }
         $actualDistance = $actualDistance > 0 ? round($actualDistance, 2) : null;
-        $db->prepare("UPDATE orders SET status='completed',completed_at=?,final_price=?,actual_distance=? WHERE id=?")
-            ->execute([Db::utcNow(), $finalPrice, $actualDistance, $id]);
+        // Простой: закрываем открытый интервал и считаем поминутно по тарифу
+        $waitingSeconds = (int) ($order['waiting_seconds'] ?? 0);
+        if (!empty($order['waiting_started_at'])) {
+            $waitingSeconds += max(0, time() - strtotime($order['waiting_started_at'] . ' UTC'));
+        }
+        $tf = $db->prepare('SELECT free_waiting_minutes, paid_waiting_per_minute, commission_percent FROM tariffs WHERE type = ? LIMIT 1');
+        $tf->execute([$order['tariff']]);
+        $tariffRow = $tf->fetch() ?: ['free_waiting_minutes' => 0, 'paid_waiting_per_minute' => 0, 'commission_percent' => 15];
+        $freeMin = max(0, (int) $tariffRow['free_waiting_minutes']);
+        $perMin = max(0, (float) $tariffRow['paid_waiting_per_minute']);
+        $billMin = max(0, (int) ceil($waitingSeconds / 60) - $freeMin);
+        $waitingCost = round($billMin * $perMin, 2);
+        $finalPrice = round($finalPrice + $waitingCost, 2);
+        $db->prepare("UPDATE orders SET status='completed',completed_at=?,final_price=?,actual_distance=?,waiting_started_at=NULL,waiting_seconds=?,waiting_cost=? WHERE id=?")
+            ->execute([Db::utcNow(), $finalPrice, $actualDistance, $waitingSeconds, $waitingCost, $id]);
         $db->prepare("UPDATE transactions SET amount=?,status='completed',completed_at=? WHERE order_id=?")
             ->execute([$finalPrice, Db::utcNow(), $id]);
 
@@ -213,9 +252,7 @@ switch ($action) {
             )->execute([$finalPrice, $finalPrice, $order['driver_id']]);
 
             // Комиссия тарифа
-            $t = $db->prepare('SELECT commission_percent FROM tariffs WHERE type = ? LIMIT 1');
-            $t->execute([$order['tariff']]);
-            $percent = (float) ($t->fetchColumn() ?: 15);
+            $percent = (float) ($tariffRow['commission_percent'] ?: 15);
             $commission = round($finalPrice * $percent / 100, 2);
             $chargeTransaction(
                 $order['driver_id'], $id, 'commission', -$commission,

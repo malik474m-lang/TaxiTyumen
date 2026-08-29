@@ -210,6 +210,24 @@
                                     Clicked="OnCancelActiveOrder"/>
                         </Grid>
 
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
+                            <Button Grid.Column="0" x:Name="WaitingBtn"
+                                    Text="Простой"
+                                    BackgroundColor="#333"
+                                    TextColor="White"
+                                    CornerRadius="8"
+                                    HeightRequest="40"
+                                    IsVisible="False"
+                                    Clicked="OnToggleWaiting"/>
+                            <Label Grid.Column="1" x:Name="WaitingLabel"
+                                   Text=""
+                                   TextColor="#7dd3fc"
+                                   FontSize="14"
+                                   FontAttributes="Bold"
+                                   VerticalOptions="Center"
+                                   Margin="10,0,4,0"/>
+                        </Grid>
+
                         <Button Text=" Чат с клиентом"
                                 BackgroundColor="#2196F3"
                                 TextColor="White"

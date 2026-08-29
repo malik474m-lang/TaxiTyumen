@@ -20,6 +20,7 @@ API Controllers/Hubs/Background Services, TaxiAdmin, TaxiClient, TaxiDriver, Tax
 | SignalR Hub | ✅ адаптировано | MySQL events/notifications polling; публичные события MAUI сохранены |
 | OperatorsController shift start/end | ✅ | profile/hours/orders/earned + накопительные показатели |
 | FleetChat (чат водителей автопарка) | ✅ | api/fleet-chat.php: история/?after=, анти-спам 1.5 c, модерация DELETE; монитор admin/fleet-chat.php |
+| Простой (платное ожидание пассажира) | ✅ | orders/action.php: waiting-start/stop; биллинг при complete по free_waiting_minutes/paid_waiting_per_minute; поля в admin/tariffs.php; кнопка и живой таймер в TaxiDriver |
 
 ## Доменная модель
 

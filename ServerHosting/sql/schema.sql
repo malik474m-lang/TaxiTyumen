@@ -130,6 +130,9 @@ CREATE TABLE IF NOT EXISTS orders (
   trip_started_at      DATETIME NULL,
   completed_at         DATETIME NULL,
   cancelled_at         DATETIME NULL,
+  waiting_started_at   DATETIME NULL,
+  waiting_seconds      INT NOT NULL DEFAULT 0,
+  waiting_cost         DOUBLE NOT NULL DEFAULT 0,
   INDEX (status), INDEX (client_id), INDEX (driver_id), INDEX (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

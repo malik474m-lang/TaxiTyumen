@@ -18,6 +18,9 @@ import {
   Loader2,
   TrendingUp,
   AlertTriangle,
+  Hourglass,
+  PauseCircle,
+  PlayCircle,
 } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import OrderChat from "@/components/OrderChat";
@@ -33,6 +36,7 @@ import {
   type SessionUser,
   type OrderDto,
   type DriverDto,
+  type TariffDto,
 } from "@/lib/client";
 
 export default function DriverApp({ branding }: { branding: BrandingData }) {
@@ -42,8 +46,23 @@ export default function DriverApp({ branding }: { branding: BrandingData }) {
   const [available, setAvailable] = useState<OrderDto[]>([]);
   const [current, setCurrent] = useState<OrderDto | null>(null);
   const [history, setHistory] = useState<OrderDto[]>([]);
+  const [tariffs, setTariffs] = useState<TariffDto[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [, setTick] = useState(0);
+
+  // Тарифы простоя — для живого расчёта стоимости паузы
+  useEffect(() => {
+    api<TariffDto[]>("/api/tariffs").then(setTariffs).catch(() => {});
+  }, []);
+
+  // Тикаем раз в секунду, пока идёт простой — таймер и сумма живые
+  const waitingActive = current?.waitingActive ?? false;
+  useEffect(() => {
+    if (!waitingActive) return;
+    const t = setInterval(() => setTick((v) => v + 1), 1000);
+    return () => clearInterval(t);
+  }, [waitingActive]);
 
   useEffect(() => {
     setUser(getSession());
@@ -136,6 +155,22 @@ export default function DriverApp({ branding }: { branding: BrandingData }) {
 
   const online = me.status !== "offline";
   const lowBalance = me.balance < me.minBalanceForOrders;
+
+  // ── Простой: живой таймер и поминутная стоимость по тарифу ────────────
+  const waitingTariff = current ? tariffs.find((t) => t.type === current.tariff) : undefined;
+  const freeWaitMin = Math.max(0, Math.floor(waitingTariff?.freeWaitingMinutes ?? 0));
+  const waitPerMin = Math.max(0, waitingTariff?.paidWaitingPerMinute ?? 0);
+  const waitingOpenSec =
+    current?.waitingActive && current.waitingStartedAt
+      ? Math.max(0, Math.floor((Date.now() - new Date(current.waitingStartedAt).getTime()) / 1000))
+      : 0;
+  const waitingTotalSec = (current?.waitingSeconds ?? 0) + waitingOpenSec;
+  const waitingBillMin = Math.max(0, Math.ceil(waitingTotalSec / 60) - freeWaitMin);
+  const waitingCostNow = Math.round(waitingBillMin * waitPerMin * 100) / 100;
+  const fmtDuration = (sec: number) =>
+    `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
+  const canToggleWaiting =
+    !!current && (current.status === "driver_arrived" || current.status === "in_progress");
 
   // Маркеры карты: я + доступные заказы / текущая цель
   const mapMarkers: MapMarker[] = [
@@ -362,6 +397,63 @@ export default function DriverApp({ branding }: { branding: BrandingData }) {
                   </div>
                 )}
 
+                {/* ── Простой (остановка по просьбе пассажира) ─────────── */}
+                {canToggleWaiting && (
+                  <div
+                    className={`mt-4 rounded-2xl border p-4 transition ${
+                      current.waitingActive
+                        ? "border-sky-400/40 bg-sky-400/[0.06]"
+                        : "border-white/8 bg-white/[0.03]"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-sm font-black">
+                        <Hourglass
+                          className={`h-4 w-4 ${current.waitingActive ? "animate-pulse text-sky-300" : "text-zinc-500"}`}
+                        />
+                        Простой
+                        {current.waitingActive && (
+                          <span className="chip bg-sky-400/15 text-sky-300">идёт</span>
+                        )}
+                      </div>
+                      <div
+                        className={`font-mono text-xl font-black tabular-nums ${
+                          current.waitingActive ? "text-sky-300" : "text-zinc-400"
+                        }`}
+                      >
+                        {fmtDuration(waitingTotalSec)}
+                      </div>
+                    </div>
+                    <div className="mt-1.5 text-[11px] font-semibold text-zinc-500">
+                      Бесплатно {freeWaitMin} мин · далее {waitPerMin} ₽/мин
+                      {waitingCostNow > 0 && (
+                        <>
+                          {" "}· к оплате ≈ <b className="text-sky-300">{fmtPrice(waitingCostNow)}</b>
+                        </>
+                      )}
+                    </div>
+                    <button
+                      onClick={() =>
+                        orderAction(current.id, current.waitingActive ? "waiting-stop" : "waiting-start")
+                      }
+                      disabled={busy}
+                      className={`mt-3 w-full !py-2.5 !text-xs ${
+                        current.waitingActive ? "btn-taxi" : "btn-ghost"
+                      }`}
+                    >
+                      {current.waitingActive ? (
+                        <>
+                          <PlayCircle className="h-4 w-4" /> Завершить простой
+                        </>
+                      ) : (
+                        <>
+                          <PauseCircle className="h-4 w-4" /> Начать простой
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
                 {/* Кнопки этапов */}
                 <div className="mt-5 grid gap-2.5">
                   {current.status === "driver_assigned" && (
@@ -375,9 +467,16 @@ export default function DriverApp({ branding }: { branding: BrandingData }) {
                     </button>
                   )}
                   {current.status === "in_progress" && (
-                    <button onClick={() => orderAction(current.id, "complete")} disabled={busy} className="btn-taxi w-full">
-                      <CheckCircle2 className="h-4 w-4" /> Завершить · {fmtPrice(current.estimatedPrice)}
-                    </button>
+                    <>
+                      <button onClick={() => orderAction(current.id, "complete")} disabled={busy} className="btn-taxi w-full">
+                        <CheckCircle2 className="h-4 w-4" /> Завершить · {fmtPrice(current.estimatedPrice + waitingCostNow)}
+                      </button>
+                      {waitingCostNow > 0 && (
+                        <div className="text-center text-[11px] font-semibold text-zinc-500">
+                          поездка {fmtPrice(current.estimatedPrice)} + простой {fmtPrice(waitingCostNow)}
+                        </div>
+                      )}
+                    </>
                   )}
                   {(current.status === "driver_assigned" || current.status === "driver_arrived") && (
                     <button

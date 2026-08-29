@@ -646,7 +646,8 @@ export default function AdminPage() {
                         ["nightMultiplier", "Ночной ×"],
                         ["peakMultiplier", "Час пик ×"],
                         ["commissionPercent", "Комиссия, %"],
-                        ["paidWaitingPerMinute", "Ожидание, ₽/мин"],
+                        ["freeWaitingMinutes", "Простой бесплатно, мин"],
+                        ["paidWaitingPerMinute", "Простой, ₽/мин"],
                       ] as const
                     ).map(([key, label]) => (
                       <div key={key} className="grid grid-cols-[1fr_110px] items-center gap-3">
@@ -701,6 +702,10 @@ export default function AdminPage() {
                       <div className="rounded-xl bg-white/[0.04] p-2 text-xs text-zinc-400">
                         Комиссия <b className="text-zinc-100">{t.commissionPercent}%</b>
                       </div>
+                    </div>
+                    <div className="mt-2 rounded-xl bg-white/[0.04] p-2 text-center text-xs text-zinc-400">
+                      Простой: бесплатно <b className="text-zinc-100">{t.freeWaitingMinutes} мин</b>
+                      , далее <b className="text-zinc-100">{t.paidWaitingPerMinute} ₽/мин</b>
                     </div>
                     <button onClick={() => setEditTariff(t)} className="btn-ghost mt-4 w-full !py-2.5 !text-xs">
                       <Wallet className="h-3.5 w-3.5" /> Редактировать тариф

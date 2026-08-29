@@ -60,6 +60,10 @@ export interface OrderDto {
   cancellationReason: string | null;
   passengerCount: number;
   clientRating: number | null;
+  waitingStartedAt: string | null;
+  waitingSeconds: number;
+  waitingCost: number;
+  waitingActive: boolean;
   createdAt: string;
   acceptedAt: string | null;
   completedAt: string | null;
@@ -100,6 +104,7 @@ export interface TariffDto {
   nightMultiplier: number;
   peakMultiplier: number;
   commissionPercent: number;
+  freeWaitingMinutes: number;
   paidWaitingPerMinute: number;
   isActive: boolean;
 }

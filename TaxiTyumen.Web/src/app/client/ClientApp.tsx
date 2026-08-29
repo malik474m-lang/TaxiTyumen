@@ -22,6 +22,7 @@ import {
   DoorOpen,
   Loader2,
   Car,
+  Timer,
 } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import OrderChat from "@/components/OrderChat";
@@ -383,6 +384,20 @@ export default function ClientApp({ branding }: { branding: BrandingData }) {
                     </span>
                   )}
                   <span className="chip bg-amber-400/15 text-amber-300">{fmtPrice(active.finalPrice ?? active.estimatedPrice)}</span>
+                  {(active.waitingActive || (active.waitingSeconds ?? 0) > 0) && (
+                    <span className={`chip ${active.waitingActive ? "bg-sky-400/15 text-sky-300" : "bg-white/6 text-zinc-300"}`}>
+                      <Timer className="h-3 w-3" />
+                      Простой {Math.max(
+                        1,
+                        Math.ceil(
+                          ((active.waitingSeconds ?? 0) +
+                            (active.waitingActive && active.waitingStartedAt
+                              ? Math.max(0, Math.floor((Date.now() - new Date(active.waitingStartedAt).getTime()) / 1000))
+                              : 0)) / 60
+                        )
+                      )} мин
+                    </span>
+                  )}
                 </div>
 
                 {(active.status === "searching" || active.status === "no_driver_found" || active.status === "driver_assigned") && (
@@ -657,7 +672,14 @@ export default function ClientApp({ branding }: { branding: BrandingData }) {
                         <span className={`chip ${h.status === "completed" ? "bg-emerald-400/10 text-emerald-300" : "bg-red-400/10 text-red-300"}`}>
                           {h.statusText}
                         </span>
-                        <span className="text-sm font-black">{fmtPrice(h.finalPrice ?? h.estimatedPrice)}</span>
+                        <span className="text-right">
+                          <span className="text-sm font-black">{fmtPrice(h.finalPrice ?? h.estimatedPrice)}</span>
+                          {(h.waitingCost ?? 0) > 0 && (
+                            <div className="text-[11px] font-semibold text-sky-300/80">
+                              в т.ч. простой {fmtPrice(h.waitingCost)}
+                            </div>
+                          )}
+                        </span>
                       </div>
                       <div className="mt-2 space-y-1 text-sm">
                         <div className="flex items-center gap-2 text-zinc-300">

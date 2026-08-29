@@ -95,6 +95,12 @@ public class ApiService
         await _http.PostAsync($"orders/{orderId}/complete", null);
     }
 
+    public async Task SetOrderWaitingAsync(Guid orderId, Guid driverId, bool start)
+    {
+        var action = start ? "waiting-start" : "waiting-stop";
+        await _http.PostAsync($"orders/{orderId}/{action}?driverId={driverId}", null);
+    }
+
     public async Task CancelOrderAsync(Guid orderId, Guid driverId, string reason)
     {
         await _http.PostAsJsonAsync($"orders/{orderId}/cancel", new

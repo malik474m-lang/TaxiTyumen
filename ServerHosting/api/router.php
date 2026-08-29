@@ -135,7 +135,7 @@ if (preg_match('#^orders/history/([0-9a-f-]+)$#i',$route,$m)) {
     if($role==='driver'){$d=$db->prepare('SELECT id FROM drivers WHERE user_id=?');$d->execute([$m[1]]);$dispatch($api.'/orders/index.php',[],['view'=>'history','driverId'=>$d->fetchColumn()]);}
     $dispatch($api.'/orders/index.php',[],['view'=>'history','clientId'=>$m[1]]);
 }
-if (preg_match('#^orders/([0-9a-f-]+)/(accept|reject|complete|force-assign|cancel|rate|status)$#i',$route,$m)) {
+if (preg_match('#^orders/([0-9a-f-]+)/(accept|reject|complete|force-assign|cancel|rate|status|waiting-start|waiting-stop)$#i',$route,$m)) {
     $action=strtolower($m[2]);
     $map=['force-assign'=>'assign'];$action=$map[$action]??$action;
     if($action==='status'){

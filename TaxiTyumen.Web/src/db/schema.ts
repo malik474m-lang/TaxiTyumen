@@ -185,6 +185,11 @@ export const orders = pgTable("orders", {
     .notNull()
     .default("cash"),
   status: orderStatusEnum("status").notNull().default("searching"),
+  // Простой по просьбе пассажира: накопленные секунды + открытый интервал,
+  // стоимость считается при завершении по тарифу (free_waiting_minutes / paid_waiting_per_minute)
+  waitingStartedAt: timestamp("waiting_started_at", { withTimezone: true }),
+  waitingSeconds: integer("waiting_seconds").notNull().default(0),
+  waitingCost: doublePrecision("waiting_cost").notNull().default(0),
   escalatedAt: timestamp("escalated_at", { withTimezone: true }),
   comment: text("comment"),
   cancellationReason: text("cancellation_reason"),

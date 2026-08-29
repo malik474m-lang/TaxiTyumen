@@ -704,7 +704,69 @@ public partial class MainDriverPage : ContentPage
         ActivePriceLabel.Text = order.EstimatedPrice.ToString("F0") + " ₽";
         ActiveTariffLabel.Text = order.TariffName;
 
+        UpdateWaitingUi(order);
+        if (order.WaitingActive) EnsureWaitingTimer();
+
         UpdateStatusButton();
+    }
+
+    private bool _waitingTimerStarted;
+
+    // Простой: кнопка видна после прибытия и в поездке; таймер живой (1 с)
+    private void UpdateWaitingUi(OrderResponse order)
+    {
+        var canWait = order.Status is "driver_arrived" or "in_progress";
+        WaitingBtn.IsVisible = canWait;
+        if (!canWait)
+        {
+            WaitingLabel.Text = "";
+            return;
+        }
+        WaitingBtn.Text = order.WaitingActive ? "Стоп простой" : "Простой";
+        WaitingBtn.BackgroundColor = Color.FromArgb(order.WaitingActive ? "#0EA5E9" : "#333");
+
+        var total = order.WaitingSeconds;
+        if (order.WaitingActive && order.WaitingStartedAt.HasValue)
+        {
+            var startedUtc = order.WaitingStartedAt.Value.Kind == DateTimeKind.Utc
+                ? order.WaitingStartedAt.Value
+                : DateTime.SpecifyKind(order.WaitingStartedAt.Value, DateTimeKind.Utc);
+            total += Math.Max(0, (int)(DateTime.UtcNow - startedUtc).TotalSeconds);
+        }
+        WaitingLabel.Text = total > 0 || order.WaitingActive
+            ? $"{total / 60:00}:{total % 60:00}"
+            : "";
+    }
+
+    private void EnsureWaitingTimer()
+    {
+        if (_waitingTimerStarted) return;
+        _waitingTimerStarted = true;
+        Dispatcher.StartTimer(TimeSpan.FromSeconds(1), () =>
+        {
+            if (_activeOrder != null && _activeOrder.WaitingActive)
+            {
+                UpdateWaitingUi(_activeOrder);
+                return true;
+            }
+            _waitingTimerStarted = false;
+            return false;
+        });
+    }
+
+    private async void OnToggleWaiting(object? sender, EventArgs e)
+    {
+        if (_activeOrder == null || _auth.DriverId == null) return;
+        try
+        {
+            var start = !_activeOrder.WaitingActive;
+            await _api.SetOrderWaitingAsync(_activeOrder.Id, _auth.DriverId.Value, start);
+            _activeOrder.WaitingActive = start;
+            _activeOrder.WaitingStartedAt = start ? DateTime.UtcNow : null;
+            UpdateWaitingUi(_activeOrder);
+            if (start) EnsureWaitingTimer();
+        }
+        catch { }
     }
 
     private void UpdateStatusButton()

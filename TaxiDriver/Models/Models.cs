@@ -39,6 +39,12 @@ public class OrderResponse
     public string? Comment { get; set; }
     public int PassengerCount { get; set; }
     public DateTime CreatedAt { get; set; }
+
+    // Простой по просьбе пассажира (поминутная тарификация)
+    public DateTime? WaitingStartedAt { get; set; }
+    public int WaitingSeconds { get; set; }
+    public decimal WaitingCost { get; set; }
+    public bool WaitingActive { get; set; }
 }
 
 public class UpdateLocationRequest

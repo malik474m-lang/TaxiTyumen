@@ -234,6 +234,13 @@ final class Seed
         self::addColumn($db, 'drivers', 'accept_card_transfer', "TINYINT(1) NOT NULL DEFAULT 1 AFTER payment_card_holder");
         self::addColumn($db, 'drivers', 'accept_sbp', "TINYINT(1) NOT NULL DEFAULT 1 AFTER accept_card_transfer");
 
+        // Простой по просьбе пассажира (поминутная тарификация при завершении)
+        self::addColumn($db, 'tariffs', 'free_waiting_minutes', "DOUBLE NOT NULL DEFAULT 3 AFTER commission_percent");
+        self::addColumn($db, 'tariffs', 'paid_waiting_per_minute', "DOUBLE NOT NULL DEFAULT 0 AFTER free_waiting_minutes");
+        self::addColumn($db, 'orders', 'waiting_started_at', "DATETIME NULL AFTER cancelled_at");
+        self::addColumn($db, 'orders', 'waiting_seconds', "INT NOT NULL DEFAULT 0 AFTER waiting_started_at");
+        self::addColumn($db, 'orders', 'waiting_cost', "DOUBLE NOT NULL DEFAULT 0 AFTER waiting_seconds");
+
         // Загружаемый логотип для серверного брендинга
         self::addColumn($db, 'branding_settings', 'logo_path', "VARCHAR(255) NULL AFTER logo_icon");
 

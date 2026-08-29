@@ -35,6 +35,7 @@ export async function PUT(req: Request) {
       nightMultiplier: Number(body.nightMultiplier ?? existing.nightMultiplier),
       peakMultiplier: Number(body.peakMultiplier ?? existing.peakMultiplier),
       commissionPercent: Number(body.commissionPercent ?? existing.commissionPercent),
+      freeWaitingMinutes: Number(body.freeWaitingMinutes ?? existing.freeWaitingMinutes),
       paidWaitingPerMinute: Number(body.paidWaitingPerMinute ?? existing.paidWaitingPerMinute),
       isActive: Boolean(body.isActive ?? existing.isActive),
       updatedAt: new Date(),
