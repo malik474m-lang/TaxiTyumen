@@ -3,6 +3,18 @@
 declare(strict_types=1);
 require_once __DIR__ . '/_bootstrap.php';
 
+$msgDto = function (array $m): array {
+    return [
+        'id' => $m['id'],
+        'orderId' => $m['order_id'],
+        'senderId' => $m['sender_id'],
+        'senderName' => $m['sender_name'],
+        'senderRole' => $m['sender_role'],
+        'text' => $m['text'],
+        'createdAt' => $m['created_at'],
+    ];
+};
+
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $orderId = (string) ($_GET['orderId'] ?? '');
     if ($orderId === '') {
@@ -10,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     }
     $stmt = $db->prepare('SELECT * FROM chat_messages WHERE order_id = ? ORDER BY created_at ASC LIMIT 100');
     $stmt->execute([$orderId]);
-    Response::json($stmt->fetchAll());
+    Response::json(array_map($msgDto, $stmt->fetchAll()));
 }
 
 $claims = Guard::claims();
@@ -45,4 +57,4 @@ $db->prepare(
 Bus::publish('chat');
 $stmt = $db->prepare('SELECT * FROM chat_messages WHERE id = ?');
 $stmt->execute([$id]);
-Response::json($stmt->fetch(), 201);
+Response::json($msgDto($stmt->fetch()), 201);

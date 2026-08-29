@@ -28,12 +28,21 @@ $stats = function (string $since) use ($db, $uid) {
     ];
 };
 
+$shiftDto = function (array $s): array {
+    return [
+        'id' => $s['id'],
+        'operatorId' => $s['operator_id'],
+        'startedAt' => $s['started_at'],
+        'endedAt' => $s['ended_at'],
+    ];
+};
+
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $shift = $openShift();
     if (!$shift) {
         Response::json(['active' => false]);
     }
-    Response::json(array_merge(['active' => true, 'shift' => $shift], $stats($shift['started_at'])));
+    Response::json(array_merge(['active' => true, 'shift' => $shiftDto($shift)], $stats($shift['started_at'])));
 }
 
 $body = Response::requirePostJson();
@@ -42,11 +51,16 @@ $shift = $openShift();
 
 if ($action === 'start') {
     if ($shift) {
-        Response::json(array_merge(['active' => true, 'shift' => $shift, 'already' => true], $stats($shift['started_at'])));
+        Response::json(array_merge(['active' => true, 'shift' => $shiftDto($shift), 'already' => true], $stats($shift['started_at'])));
     }
     $id = Db::uuid();
     $db->prepare('INSERT INTO operator_shifts (id, operator_id) VALUES (?,?)')->execute([$id, $uid]);
-    Response::json(['active' => true, 'shift' => ['id' => $id, 'operator_id' => $uid, 'started_at' => Db::utcNow()], 'ordersCreated' => 0, 'ordersCompleted' => 0]);
+    Response::json([
+        'active' => true,
+        'shift' => ['id' => $id, 'operatorId' => $uid, 'startedAt' => Db::utcNow(), 'endedAt' => null],
+        'ordersCreated' => 0,
+        'ordersCompleted' => 0,
+    ]);
 }
 
 if ($action === 'end') {

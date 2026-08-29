@@ -21,7 +21,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $t->execute([$id]);
         Response::json([
             'balance' => (float) $driver['balance'],
-            'transactions' => $t->fetchAll(),
+            'transactions' => array_map(fn(array $tr) => [
+                'id' => $tr['id'],
+                'driverId' => $tr['driver_id'],
+                'orderId' => $tr['order_id'],
+                'type' => $tr['type'],
+                'amount' => (float) $tr['amount'],
+                'balanceAfter' => (float) $tr['balance_after'],
+                'description' => $tr['description'],
+                'createdBy' => $tr['created_by'],
+                'createdAt' => $tr['created_at'],
+            ], $t->fetchAll()),
         ]);
     }
 
