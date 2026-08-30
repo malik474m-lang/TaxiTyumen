@@ -186,6 +186,7 @@ C:\TaxiTyumen\TaxiDriver\bin\Release\net10.0-android\publish\ru.taxityumen.drive
 | Просит лицензии Android (license not accepted) | В Visual Studio собрать проект один раз через меню Build — примет лицензии, либо `"%ProgramFiles(x86)%\Android\android-sdk\tools\bin\sdkmanager" --licenses` и отвечать `y` |
 | JDK/keytool не найден | Переустановите нагрузку MAUI (Шаг 1) — JDK ставится вместе с ней; путь ищите в `C:\Program Files\Microsoft\jdk-*` |
 | Телефон не виден при `dotnet build -t:Run` | Включите «Отладку по USB», выберите на телефоне режим USB «Передача файлов», перевоткните кабель |
+| «Бесконечная установка» на телефоне | 1) Раз подождать 3–4 мин (APK большой). 2) Удалить старую версию приложения (конфликт подписей) + перезагрузить телефон. 3) Свободно ≥500 МБ. 4) Разрешение «из неизвестных источников» выдано тому приложению, что открывает APK. 5) Ставить через USB: `& "C:\Program Files (x86)\Android\android-sdk\platform-tools\adb.exe" install -r "..\ru.taxityumen.driver-Signed.apk"` — покажет точную ошибку. 6) Очистить кэш системного «Установщика пакетов» |
 | APK ставится «поверх» с ошибкой `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | Телефон уже имеет приложение с другим ключом — удалите старое и поставьте заново (поэтому берегите keystore!) |
 | Очень долгая первая сборка | Это нормально: скачиваются Android SDK и NuGet (10–25 минут). Дальше сборки быстрее |
 | Для Google Play | Собирайте AAB: замените `-p:AndroidPackageFormat=apk` на `aab` |
