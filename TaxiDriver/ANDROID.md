@@ -179,6 +179,7 @@ C:\TaxiTyumen\TaxiDriver\bin\Release\net8.0-android\publish\ru.taxityumen.driver
 |---|---|
 | `dotnet не является командой` | ШАГ 1 не выполнен; перезагрузите терминал после установки VS |
 | `workload ... maui-android not installed` | Терминал **от администратора**: `dotnet workload install maui-android` |
+| `error XA5300: Не удалось найти каталог пакета SDK для Android` | Visual Studio Installer → Изменить → нагрузка «мультиплатформенные приложения .NET» → справа отметить **Android SDK** → Установить. Затем VS → Средства → Android → Android SDK Manager → установить платформы, принять лицензии, переоткрыть PowerShell. Либо собрать с явным путём: `-p:AndroidSdkDirectory="C:\Program Files (x86)\Android\android-sdk"` |
 | `error XA...` / Android SDK не найден | Откройте Visual Studio → Tools → Android → Android SDK Manager → примите лицензии и доустановите SDK Platform |
 | Просит лицензии Android (license not accepted) | В Visual Studio собрать проект один раз через меню Build — примет лицензии, либо `"%ProgramFiles(x86)%\Android\android-sdk\tools\bin\sdkmanager" --licenses` и отвечать `y` |
 | JDK/keytool не найден | Переустановите нагрузку MAUI (Шаг 1) — JDK ставится вместе с ней; путь ищите в `C:\Program Files\Microsoft\jdk-*` |
