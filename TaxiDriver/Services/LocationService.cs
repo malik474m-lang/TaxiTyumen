@@ -60,6 +60,11 @@ public class LocationService
         // Экран водителя «на линии» не должен гаснуть
         try { DeviceDisplay.Current.KeepScreenOn = true; } catch { }
 
+#if ANDROID
+        // Фон: foreground-сервис держит процесс при свёрнутом приложении
+        StartAndroidTrackingService();
+#endif
+
         _timer = Application.Current!.Dispatcher.CreateTimer();
         _timer.Interval = TimeSpan.FromSeconds(5);
         _timer.Tick += async (s, e) => await UpdateLocationAsync();
@@ -76,7 +81,42 @@ public class LocationService
         _timer?.Stop();
         _timer = null;
         try { DeviceDisplay.Current.KeepScreenOn = false; } catch { }
+#if ANDROID
+        StopAndroidTrackingService();
+#endif
     }
+
+#if ANDROID
+    private static void StartAndroidTrackingService()
+    {
+        try
+        {
+            var context = global::Android.App.Application.Context;
+            var intent = new global::Android.Content.Intent(
+                context, typeof(global::TaxiDriver.Platforms.Android.DriverTrackingService));
+            // Геолокация уже подтверждена EnsureLocationPermissionAsync —
+            // требование Android 14 для foregroundServiceType=location выполнено
+            if (global::Android.OS.Build.VERSION.SdkInt >= global::Android.OS.BuildVersionCodes.O)
+                context.StartForegroundService(intent);
+            else
+                context.StartService(intent);
+        }
+        catch { /* сервис недоступен — работаем на видимом экране */ }
+    }
+
+    private static void StopAndroidTrackingService()
+    {
+        try
+        {
+            var context = global::Android.App.Application.Context;
+            var intent = new global::Android.Content.Intent(
+                context, typeof(global::TaxiDriver.Platforms.Android.DriverTrackingService));
+            intent.SetAction(global::TaxiDriver.Platforms.Android.DriverTrackingService.ActionStop);
+            context.StartService(intent);
+        }
+        catch { }
+    }
+#endif
 
     private async Task UpdateLocationAsync()
     {
