@@ -1,7 +1,20 @@
 # TaxiDriver для Android — сборка и установка
 
-Приложение водителя теперь собирается под **Android** (ранее — только Windows).
+> **Инструкция для водителя (установка, работа с заказами, простой, чаты):**
+> [`USER-GUIDE.md`](USER-GUIDE.md)
+
+Приложение водителя собирается под **Android** (и Windows).
 Бэкенд уже настроен: `https://taxi.event72.ru/api/` (`Services/ApiService.cs`).
+
+## Версия 1.1 (versionCode 2)
+
+- **Чат автопарка** — общий канал водителей (`Views/FleetChatPage`), кнопка
+  на главном экране; сервер: `api/fleet-chat.php`
+- **Простой** — платное ожидание пассажира с живым таймером:
+  `orders/{id}/waiting-start|waiting-stop`, биллинг на сервере
+- **POST_NOTIFICATIONS** — разрешение уведомлений на Android 13+
+  (манифест + рантайм-запрос в `App.xaml.cs`)
+- `WAKE_LOCK`, `FOREGROUND_SERVICE[_LOCATION]` — заготовка фонового трекинга
 
 ## Что добавлено для Android
 
