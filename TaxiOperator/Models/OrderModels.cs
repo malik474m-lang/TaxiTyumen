@@ -21,7 +21,7 @@ public class OrderResponse
     public int? EstimatedDuration { get; set; }
 
     public DriverShortInfo? Driver { get; set; }
-    public DateTime CreatedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
     public string? Comment { get; set; }
     public string Source { get; set; } = string.Empty;
 }
@@ -102,7 +102,7 @@ public class BalanceTransactionDto
     public decimal Amount { get; set; }
     public decimal BalanceAfter { get; set; }
     public string Description { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
 
     public string AmountText => Amount >= 0 ? $"+{Amount:F0} ₽" : $"{Amount:F0} ₽";
     public string BalanceAfterText => $"{BalanceAfter:F0} ₽";

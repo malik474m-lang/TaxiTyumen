@@ -892,7 +892,7 @@ public class OrderViewModel
     {
         get
         {
-            var diff = DateTime.UtcNow - Order.CreatedAt;
+            var diff = DateTime.UtcNow - Order.CreatedAt.UtcDateTime;
             if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes} мин";
             return $"{(int)diff.TotalHours} ч";
         }
