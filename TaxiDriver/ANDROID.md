@@ -24,8 +24,9 @@
    ```
    dotnet --version
    ```
-3. Если показало версию **8.x.x** — переходите к ШАГУ 2.
-   Если «dotnet не является командой» или версия ниже 8 — сначала ШАГ 1.
+3. Если показало версию **10.x.x** (8/9 тоже соберут старые цели, но проект — net10) — переходите к ШАГУ 2.
+   Если «dotnet не является командой» — сначала ШАГ 1.
+   Проект собирается под **net10.0-android** (MAUI для .NET 8/9 — NETSDK1202, снят с поддержки).
 
 ## ШАГ 1. Установка Visual Studio 2022 с MAUI (~20–30 минут)
 
@@ -41,7 +42,7 @@
    **Android SDK** — они включаются автоматически с этой нагрузкой.
 5. Нажмите «Установить» и дождитесь конца (скачает ~7–10 ГБ).
 6. После установки **перезагрузите компьютер или заново откройте терминал** —
-   и проверьте из ШАГА 0, что `dotnet --version` теперь = 8.x.x.
+   и проверьте из ШАГА 0, что `dotnet --version` выполняется без ошибки.
 
 > Альтернатива без Visual Studio (чистая командная строка): установите
 > .NET 8 SDK с `https://dotnet.microsoft.com/download`, затем в терминале
@@ -88,7 +89,7 @@ git clone https://github.com/malik474m-lang/TaxiTyumen.git
    «Разрешить отладку USB».
 4. В PowerShell (в папке проекта):
    ```powershell
-   dotnet build -t:Run -f net8.0-android TaxiDriver/TaxiDriver.csproj
+   dotnet build -t:Run -f net10.0-android TaxiDriver/TaxiDriver.csproj
    ```
    Первая сборка идёт 10–25 минут (качаются компоненты). Приложение само
    установится и запустится на телефоне.
@@ -121,7 +122,7 @@ $kt
   присвойте его вручную: `$kt = "C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe"`
 - **Можно вообще без своего ключа (быстрый старт):** пропустите ШАГ 5 и в ШАГЕ 6
   используйте короткую команду без параметров подписи:
-  `dotnet publish TaxiDriver/TaxiDriver.csproj -f net8.0-android -c Release -p:AndroidPackageFormat=apk`
+  `dotnet publish TaxiDriver/TaxiDriver.csproj -f net10.0-android -c Release -p:AndroidPackageFormat=apk`
   — APK подпишется автоматическим debug-ключом и нормально установится.
   Позже при переходе на свой keystore потребуется удалить debug-версию
   с телефонов перед установкой.
@@ -135,7 +136,7 @@ $kt
 В PowerShell (в папке проекта), подставив свой пароль:
 
 ```powershell
-dotnet publish TaxiDriver/TaxiDriver.csproj -f net8.0-android -c Release `
+dotnet publish TaxiDriver/TaxiDriver.csproj -f net10.0-android -c Release `
   -p:AndroidPackageFormat=apk `
   -p:AndroidKeyStore=true `
   -p:AndroidSigningKeyStore=taxi-driver.keystore `
@@ -147,12 +148,12 @@ dotnet publish TaxiDriver/TaxiDriver.csproj -f net8.0-android -c Release `
 Дождитесь строки `Build succeeded`. Готовый APK лежит здесь:
 
 ```
-C:\TaxiTyumen\TaxiDriver\bin\Release\net8.0-android\publish\ru.taxityumen.driver-Signed.apk
+C:\TaxiTyumen\TaxiDriver\bin\Release\net10.0-android\publish\ru.taxityumen.driver-Signed.apk
 ```
 
 > Однострочный вариант (если редактор «съедает» обратные кавычки-переносы):
 > ```
-> dotnet publish TaxiDriver/TaxiDriver.csproj -f net8.0-android -c Release -p:AndroidPackageFormat=apk -p:AndroidKeyStore=true -p:AndroidSigningKeyStore=taxi-driver.keystore -p:AndroidSigningStorePass=ВАШ_ПАРОЛЬ -p:AndroidSigningKeyAlias=taxi-driver -p:AndroidSigningKeyPass=ВАШ_ПАРОЛЬ
+> dotnet publish TaxiDriver/TaxiDriver.csproj -f net10.0-android -c Release -p:AndroidPackageFormat=apk -p:AndroidKeyStore=true -p:AndroidSigningKeyStore=taxi-driver.keystore -p:AndroidSigningStorePass=ВАШ_ПАРОЛЬ -p:AndroidSigningKeyAlias=taxi-driver -p:AndroidSigningKeyPass=ВАШ_ПАРОЛЬ
 > ```
 
 ## ШАГ 7. Раздача водителям
@@ -179,6 +180,7 @@ C:\TaxiTyumen\TaxiDriver\bin\Release\net8.0-android\publish\ru.taxityumen.driver
 |---|---|
 | `dotnet не является командой` | ШАГ 1 не выполнен; перезагрузите терминал после установки VS |
 | `workload ... maui-android not installed` | Терминал **от администратора**: `dotnet workload install maui-android` |
+| `error NETSDK1202: рабочая нагрузка "net8.0-android" не поддерживается` | Исправлено в репозитории: проект переведён на **net10.0**. Обновите код (свежий ZIP / `git pull`). MAUI поддерживает только актуальные версии .NET — нужен SDK 10 |
 | `error XA5300: Не удалось найти каталог пакета SDK для Android` | Visual Studio Installer → Изменить → нагрузка «мультиплатформенные приложения .NET» → справа отметить **Android SDK** → Установить. Затем VS → Средства → Android → Android SDK Manager → установить платформы, принять лицензии, переоткрыть PowerShell. Либо собрать с явным путём: `-p:AndroidSdkDirectory="C:\Program Files (x86)\Android\android-sdk"` |
 | `error XA...` / Android SDK не найден | Откройте Visual Studio → Tools → Android → Android SDK Manager → примите лицензии и доустановите SDK Platform |
 | Просит лицензии Android (license not accepted) | В Visual Studio собрать проект один раз через меню Build — примет лицензии, либо `"%ProgramFiles(x86)%\Android\android-sdk\tools\bin\sdkmanager" --licenses` и отвечать `y` |

@@ -46,7 +46,7 @@
 ```powershell
 cd TaxiService.API; dotnet run                                     # сервер :5000
 cd TaxiAdmin; dotnet run --urls "http://localhost:5200"            # админка
-dotnet run --project TaxiClient -f net8.0-windows10.0.19041.0      # клиент
-dotnet run --project TaxiDriver -f net8.0-windows10.0.19041.0      # водитель
+dotnet run --project TaxiClient -f net10.0-windows10.0.19041.0      # клиент
+dotnet run --project TaxiDriver -f net10.0-windows10.0.19041.0      # водитель
 dotnet run --project TaxiOperator                                  # диспетчерская
 ```
