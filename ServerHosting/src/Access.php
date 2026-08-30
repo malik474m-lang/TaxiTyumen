@@ -23,6 +23,7 @@ final class Access
         'operators' => ['label' => 'Операторы',      'file' => 'operators.php', 'superadminOnly' => false, 'locked' => false],
         'messages'  => ['label' => 'Сообщения',      'file' => 'messages.php',  'superadminOnly' => false, 'locked' => false],
         'fleet'     => ['label' => 'Чат водителей',  'file' => 'fleet-chat.php','superadminOnly' => false, 'locked' => false],
+        'sos'       => ['label' => 'SOS-тревоги',    'file' => 'sos.php',       'superadminOnly' => false, 'locked' => false],
         'balance'   => ['label' => 'Балансы',        'file' => 'balance.php',   'superadminOnly' => false, 'locked' => false],
         'tariffs'   => ['label' => 'Тарифы',         'file' => 'tariffs.php',   'superadminOnly' => false, 'locked' => false],
         'zones'     => ['label' => 'Зоны и цены',    'file' => 'zones.php',     'superadminOnly' => false, 'locked' => false],

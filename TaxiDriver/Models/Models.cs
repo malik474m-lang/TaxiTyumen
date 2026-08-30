@@ -95,6 +95,21 @@ public class ChatMessageDto
     public DateTime CreatedAt { get; set; }
     public bool IsRead { get; set; }
 }
+public class SosAlertDto
+{
+    public Guid Id { get; set; }
+    public Guid DriverId { get; set; }
+    public string DriverName { get; set; } = "";
+    public string? DriverPhone { get; set; }
+    public string CarInfo { get; set; } = "";
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
+    public string? Comment { get; set; }
+    public string Status { get; set; } = "active";
+    public string MapUrl { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
 public class FleetMessageDto
 {
     public Guid Id { get; set; }

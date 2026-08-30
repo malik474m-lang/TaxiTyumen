@@ -322,6 +322,15 @@
 
                 <!-- Сортировка (перенос на маленьких экранах) -->
                 <FlexLayout Wrap="Wrap" Direction="Row">
+                    <Button x:Name="SosBtn"
+                            Text="🆘 SOS"
+                            BackgroundColor="#DC2626"
+                            TextColor="White"
+                            FontAttributes="Bold"
+                            CornerRadius="16"
+                            HeightRequest="34"
+                            Margin="0,0,8,8"
+                            Clicked="OnSosClicked"/>
                     <Button x:Name="FleetChatBtn"
                             Text="Чат автопарка"
                             BackgroundColor="#2196F3"

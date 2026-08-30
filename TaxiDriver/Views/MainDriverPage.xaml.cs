@@ -58,6 +58,7 @@ public partial class MainDriverPage : ContentPage
         _ = LoadDriverStatsAsync();
 
         InitOrdersRefreshTimer();
+        _ = LoadSosAlertsAsync();
         UpdateSortButtons();
     }
 
@@ -76,6 +77,7 @@ public partial class MainDriverPage : ContentPage
                 {
                     if (_isOnline && _activeOrder == null)
                         await LoadAvailableOrdersAsync();
+                    await LoadSosAlertsAsync();   // чужие тревоги — тем же тиком (5 с)
                 }
                 catch { }
             };
@@ -1009,7 +1011,69 @@ public partial class MainDriverPage : ContentPage
         }
         catch { }
     }
-        private async void OnOpenFleetChat(object? sender, EventArgs e)
+        // ── Тревожная кнопка: подтверждение → отправка координат → оповещение всех ──
+    private async void OnSosClicked(object? sender, EventArgs e)
+    {
+        var confirmed = await DisplayAlert(
+            "Тревожная кнопка",
+            "Отправить сигнал SOS? Ваши координаты получат все водители автопарка и диспетчерская.",
+            "Отправить SOS", "Отмена");
+        if (!confirmed) return;
+
+        try
+        {
+            // Свежие координаты; при недоступности GPS сервер возьмёт последнюю известную точку
+            double lat = _location.CurrentLat, lng = _location.CurrentLng;
+            try
+            {
+                var loc = await Geolocation.GetLocationAsync(
+                    new GeolocationRequest(GeolocationAccuracy.Best, TimeSpan.FromSeconds(5)));
+                if (loc != null) { lat = loc.Latitude; lng = loc.Longitude; }
+            }
+            catch { }
+
+            var alert = await _api.RaiseSosAsync(lat, lng, _activeOrder?.Id, null);
+            await DisplayAlert(
+                alert != null ? "SOS отправлен" : "Ошибка",
+                alert != null
+                    ? "Сигнал получен диспетчерской и водителями автопарка. Оставайтесь на связи."
+                    : "Не удалось отправить сигнал. Позвоните диспетчеру.",
+                "OK");
+            if (alert != null) await LoadSosAlertsAsync();
+        }
+        catch
+        {
+            await DisplayAlert("Ошибка", "Нет связи с сервером. Позвоните диспетчеру.", "OK");
+        }
+    }
+
+    private readonly HashSet<Guid> _shownSos = new();
+
+    // Чужие тревоги: показываем баннером-алертом один раз на каждую
+    private async Task LoadSosAlertsAsync()
+    {
+        try
+        {
+            var alerts = await _api.GetSosAlertsAsync();
+            foreach (var a in alerts)
+            {
+                if (a.DriverId == _auth.DriverId) continue;   // своя тревога
+                if (!_shownSos.Add(a.Id)) continue;           // уже показывали
+
+                var open = await DisplayAlert(
+                    "🆘 SOS · " + a.DriverName,
+                    $"{a.CarInfo}\n{(string.IsNullOrWhiteSpace(a.Comment) ? "" : a.Comment + "\n")}Координаты: {a.Latitude:F5}, {a.Longitude:F5}",
+                    "Открыть карту", "Закрыть");
+                if (open)
+                {
+                    try { await Launcher.OpenAsync(new Uri(a.MapUrl)); } catch { }
+                }
+            }
+        }
+        catch { }
+    }
+
+    private async void OnOpenFleetChat(object? sender, EventArgs e)
     {
         try
         {

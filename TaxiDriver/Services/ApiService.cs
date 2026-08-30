@@ -142,6 +142,32 @@ public class ApiService
         return messages;
     }
 
+    // ── Тревожная кнопка (SOS) ──────────────────────────────────────────────
+    public async Task<SosAlertDto?> RaiseSosAsync(double lat, double lng, Guid? orderId, string? comment)
+    {
+        var resp = await _http.PostAsJsonAsync("sos", new
+        {
+            Latitude = lat,
+            Longitude = lng,
+            OrderId = orderId,
+            Comment = comment
+        });
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<SosAlertDto>(_json);
+    }
+
+    public async Task<List<SosAlertDto>> GetSosAlertsAsync()
+    {
+        var resp = await _http.GetAsync("sos");
+        if (!resp.IsSuccessStatusCode) return new();
+        return await resp.Content.ReadFromJsonAsync<List<SosAlertDto>>(_json) ?? new();
+    }
+
+    public async Task ResolveSosAsync(Guid alertId)
+    {
+        await _http.PostAsync($"sos/{alertId}/resolve", null);
+    }
+
     public async Task SendFleetMessageAsync(string text)
     {
         await _http.PostAsJsonAsync("fleetchat/send", new { Text = text });

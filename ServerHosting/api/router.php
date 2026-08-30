@@ -127,6 +127,22 @@ if (preg_match('#^chat/([0-9a-f-]+)$#i',$route,$m) && $method==='GET') {
     $dispatch($api.'/chat.php',[],['orderId'=>$m[1]]);
 }
 
+// ── SOS (тревожная кнопка водителя) ─────────────────────────────────────────
+if ($routeLower === 'sos' && $method === 'GET') {
+    $dispatch($api.'/sos.php', [], ['history' => (string) ($_GET['history'] ?? '')]);
+}
+if ($routeLower === 'sos' || $routeLower === 'sos/raise') {
+    $dispatch($api.'/sos.php', [
+        'latitude' => $body['latitude'] ?? $body['Latitude'] ?? null,
+        'longitude' => $body['longitude'] ?? $body['Longitude'] ?? null,
+        'comment' => $body['comment'] ?? $body['Comment'] ?? null,
+        'orderId' => $body['orderId'] ?? $body['OrderId'] ?? null,
+    ]);
+}
+if (preg_match('#^sos/([0-9a-f-]+)/resolve$#i', $route, $m)) {
+    $dispatch($api.'/sos.php', ['action' => 'resolve', 'id' => $m[1]]);
+}
+
 // ── FleetChat (общий чат водителей автопарка) ────────────────────────────────
 if ($routeLower === 'fleetchat' && $method === 'GET') {
     $dispatch($api.'/fleet-chat.php', [], ['after' => (string) ($_GET['after'] ?? '0')]);

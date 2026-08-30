@@ -200,6 +200,8 @@ C:\TaxiTyumen\TaxiDriver\bin\Release\net10.0-android\publish\ru.taxityumen.drive
 | Заказы, этапы, навигация, чат с клиентом, баланс | 1.0 |
 | Чат автопарка, платный простой, уведомления Android 13+ | 1.1 |
 | Фоновый GPS-трекинг при свёрнутом приложении (foreground service) | 1.2 |
+| Чат без дублей, перенос кнопок на узких экранах | 1.2.1 |
+| **Тревожная кнопка SOS** с рассылкой координат всем водителям | 1.3 |
 
 Бэкенд: `https://taxi.event72.ru/api/` (`Services/ApiService.cs`).
 Минимум: Android 8.0 (API 26). HTTPS-only.
