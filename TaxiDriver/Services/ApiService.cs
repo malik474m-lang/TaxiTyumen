@@ -101,10 +101,11 @@ public class ApiService
         await _http.PostAsync($"orders/{orderId}/complete", null);
     }
 
-    public async Task SetOrderWaitingAsync(Guid orderId, Guid driverId, bool start)
+    public async Task<bool> SetOrderWaitingAsync(Guid orderId, Guid driverId, bool start)
     {
         var action = start ? "waiting-start" : "waiting-stop";
-        await _http.PostAsync($"orders/{orderId}/{action}?driverId={driverId}", null);
+        var resp = await _http.PostAsync($"orders/{orderId}/{action}?driverId={driverId}", null);
+        return resp.IsSuccessStatusCode;
     }
 
     public async Task CancelOrderAsync(Guid orderId, Guid driverId, string reason)

@@ -4,9 +4,73 @@
              x:Class="TaxiDriver.Views.MainDriverPage"
              Title=""
              Shell.NavBarIsVisible="False"
+             NavigationPage.HasNavigationBar="False"
              BackgroundColor="#1E1E2E">
 
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+
+        <!-- ПОЛНОЭКРАННАЯ КАРТА: оверлей поверх всего экрана -->
+        <Grid x:Name="FullscreenMapOverlay"
+              Grid.RowSpan="5"
+              IsVisible="False"
+              BackgroundColor="#1E1E2E"
+              ZIndex="99">
+            <WebView x:Name="FullscreenMap" BackgroundColor="#1E1E2E"/>
+
+            <Button Text="✕"
+                    FontSize="20"
+                    BackgroundColor="#CC252536"
+                    TextColor="White"
+                    CornerRadius="24"
+                    HeightRequest="48"
+                    WidthRequest="48"
+                    Margin="12"
+                    HorizontalOptions="End"
+                    VerticalOptions="Start"
+                    Clicked="OnToggleMapFullscreen"/>
+
+            <Label x:Name="FullscreenWaitingLabel"
+                   Text=""
+                   TextColor="White"
+                   BackgroundColor="#CC0EA5E9"
+                   FontAttributes="Bold"
+                   FontSize="15"
+                   Padding="12,7"
+                   Margin="12"
+                   HorizontalOptions="Start"
+                   VerticalOptions="Start"
+                   IsVisible="False"/>
+
+            <!-- Кнопки управления заказом поверх полноэкранной карты -->
+            <Grid VerticalOptions="End" Margin="12"
+                  ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <Button Grid.Column="0" x:Name="FsStatusBtn"
+                        Text="Я на месте"
+                        BackgroundColor="#FF9800"
+                        TextColor="White"
+                        FontAttributes="Bold"
+                        FontSize="16"
+                        CornerRadius="12"
+                        HeightRequest="54"
+                        Clicked="OnStatusButtonClick"/>
+                <Button Grid.Column="1" x:Name="FsWaitingBtn"
+                        Text="Простой"
+                        BackgroundColor="#0EA5E9"
+                        TextColor="White"
+                        CornerRadius="12"
+                        HeightRequest="54"
+                        WidthRequest="104"
+                        Clicked="OnToggleWaiting"/>
+                <Button Grid.Column="2"
+                        Text="Навиг."
+                        BackgroundColor="#2196F3"
+                        TextColor="White"
+                        CornerRadius="12"
+                        HeightRequest="54"
+                        WidthRequest="92"
+                        Clicked="OnYandexNavClicked"/>
+            </Grid>
+        </Grid>
 
         <!-- Шапка -->
         <Border x:Name="HeaderBorder" Grid.Row="0" BackgroundColor="#252536" Padding="15,12">

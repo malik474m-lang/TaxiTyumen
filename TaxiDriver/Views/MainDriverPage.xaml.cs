@@ -722,7 +722,7 @@ public partial class MainDriverPage : ContentPage
 
             var apiKey = await MapHtml.GetApiKeyAsync();
             // До посадки ведём к точке подачи, в поездке — к точке назначения
-            var toPickup = order.Status is not "in_progress";
+            var toPickup = NormStatus(order.Status) != "inprogress";
             double? toLat = toPickup ? order.PickupLatitude : order.DestinationLatitude;
             double? toLng = toPickup ? order.PickupLongitude : order.DestinationLongitude;
 
@@ -734,7 +734,10 @@ public partial class MainDriverPage : ContentPage
                 toPickup ? order.DestinationLatitude : null,
                 toPickup ? order.DestinationLongitude : null);
 
+            _lastMapHtml = html;
             RouteMap.Source = new HtmlWebViewSource { Html = html };
+            if (_mapFullscreen)
+                FullscreenMap.Source = new HtmlWebViewSource { Html = html };
         }
         catch
         {
@@ -744,10 +747,16 @@ public partial class MainDriverPage : ContentPage
 
     private bool _waitingTimerStarted;
 
+    /// Статус заказа приходит в двух форматах: 'DriverArrived' (мобильный контракт)
+    /// и 'driver_arrived' (веб). Приводим к единому нижнему регистру без подчёркиваний.
+    private static string NormStatus(string? status)
+        => (status ?? string.Empty).Replace("_", string.Empty).ToLowerInvariant();
+
     // Простой: кнопка видна после прибытия и в поездке; таймер живой (1 с)
     private void UpdateWaitingUi(OrderResponse order)
     {
-        var canWait = order.Status is "driver_arrived" or "in_progress";
+        var st = NormStatus(order.Status);
+        var canWait = st is "driverarrived" or "inprogress";
         WaitingBtn.IsVisible = canWait;
         if (!canWait)
         {
@@ -773,6 +782,7 @@ public partial class MainDriverPage : ContentPage
         MapWaitingBtn.BackgroundColor = Color.FromArgb(order.WaitingActive ? "#0EA5E9" : "#475569");
         MapWaitingLabel.Text = order.WaitingActive ? "Простой " + timer : timer;
         MapWaitingLabel.IsVisible = order.WaitingActive || total > 0;
+        if (_mapFullscreen) SyncFullscreenButtons();
     }
 
     private void EnsureWaitingTimer()
@@ -797,13 +807,23 @@ public partial class MainDriverPage : ContentPage
         try
         {
             var start = !_activeOrder.WaitingActive;
-            await _api.SetOrderWaitingAsync(_activeOrder.Id, _auth.DriverId.Value, start);
+            var ok = await _api.SetOrderWaitingAsync(_activeOrder.Id, _auth.DriverId.Value, start);
+            if (!ok)
+            {
+                await DisplayAlert("Простой",
+                    "Не удалось изменить простой. Он доступен после нажатия «Я на месте» и во время поездки.",
+                    "OK");
+                return;
+            }
             _activeOrder.WaitingActive = start;
             _activeOrder.WaitingStartedAt = start ? DateTimeOffset.UtcNow : null;
             UpdateWaitingUi(_activeOrder);
             if (start) EnsureWaitingTimer();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            await DisplayAlert("Простой", "Ошибка связи: " + ex.Message, "OK");
+        }
     }
 
     private void UpdateStatusButton()
@@ -814,6 +834,7 @@ public partial class MainDriverPage : ContentPage
         // Дублируем текущий этап на кнопке поверх карты
         MapStatusBtn.Text = _statusLabels[_orderStatusStep];
         MapStatusBtn.BackgroundColor = Color.FromArgb(_statusColors[_orderStatusStep]);
+        if (_mapFullscreen) SyncFullscreenButtons();
     }
 
     private async void OnStatusButtonClick(object? sender, EventArgs e)
@@ -857,25 +878,51 @@ public partial class MainDriverPage : ContentPage
     }
 
     private bool _mapFullscreen;
+    private string? _lastMapHtml;
 
-    /// Полноэкранный режим карты: карточка заказа и списки скрываются,
-    /// остаются карта и кнопки поверх неё.
+    /// Карта на весь экран: отдельный оверлей поверх страницы (не «окно» в списке).
     private void OnToggleMapFullscreen(object? sender, EventArgs e)
     {
         try
         {
             _mapFullscreen = !_mapFullscreen;
+            FullscreenMapOverlay.IsVisible = _mapFullscreen;
 
-            // Растягиваем карту и прячем всё остальное содержимое страницы
-            MapContainer.HeightRequest = _mapFullscreen ? -1 : 340;
-            MapContainer.VerticalOptions = _mapFullscreen ? LayoutOptions.Fill : LayoutOptions.Start;
-            MapExpandBtn.Text = _mapFullscreen ? "✕" : "⛶";
-
-            // Полный экран: прячем шапку и статистику, карта занимает всё место
-            HeaderBorder.IsVisible = !_mapFullscreen;
-            StatsGrid.IsVisible = !_mapFullscreen;
+            if (_mapFullscreen)
+            {
+                // Переносим текущую карту в полноэкранный WebView
+                if (!string.IsNullOrEmpty(_lastMapHtml))
+                    FullscreenMap.Source = new HtmlWebViewSource { Html = _lastMapHtml };
+                SyncFullscreenButtons();
+            }
         }
         catch { }
+    }
+
+    /// Кнопки полноэкранной карты повторяют состояние основных
+    private void SyncFullscreenButtons()
+    {
+        try
+        {
+            FsStatusBtn.Text = MapStatusBtn.Text;
+            FsStatusBtn.BackgroundColor = MapStatusBtn.BackgroundColor;
+            FsWaitingBtn.Text = MapWaitingBtn.Text;
+            FsWaitingBtn.BackgroundColor = MapWaitingBtn.BackgroundColor;
+            FullscreenWaitingLabel.Text = MapWaitingLabel.Text;
+            FullscreenWaitingLabel.IsVisible = MapWaitingLabel.IsVisible;
+        }
+        catch { }
+    }
+
+    /// Аппаратная кнопка «Назад» закрывает полноэкранную карту
+    protected override bool OnBackButtonPressed()
+    {
+        if (_mapFullscreen)
+        {
+            OnToggleMapFullscreen(null, EventArgs.Empty);
+            return true;
+        }
+        return base.OnBackButtonPressed();
     }
 
     private void HideRouteMap()
@@ -884,6 +931,8 @@ public partial class MainDriverPage : ContentPage
         {
             MapContainer.IsVisible = false;
             MapWaitingLabel.IsVisible = false;
+            FullscreenMapOverlay.IsVisible = false;
+            _mapFullscreen = false;
         }
         catch { }
     }
