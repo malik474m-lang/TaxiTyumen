@@ -127,6 +127,12 @@ if (preg_match('#^chat/([0-9a-f-]+)$#i',$route,$m) && $method==='GET') {
     $dispatch($api.'/chat.php',[],['orderId'=>$m[1]]);
 }
 
+// ── Анкеты соискателей (публичный приём с лендинга) ─────────────────────────
+if ($routeLower === 'applications' || $routeLower === 'apply') {
+    require __DIR__ . '/applications.php';
+    exit;
+}
+
 // ── SOS (тревожная кнопка водителя) ─────────────────────────────────────────
 if ($routeLower === 'sos' && $method === 'GET') {
     $dispatch($api.'/sos.php', [], ['history' => (string) ($_GET['history'] ?? '')]);

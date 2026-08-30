@@ -20,6 +20,7 @@ final class Access
         'orders'    => ['label' => 'Заказы',         'file' => 'orders.php',    'superadminOnly' => false, 'locked' => false],
         'drivers'   => ['label' => 'Водители',       'file' => 'drivers.php',   'superadminOnly' => false, 'locked' => false],
         'clients'   => ['label' => 'Клиенты',        'file' => 'clients.php',   'superadminOnly' => false, 'locked' => false],
+        'applicants'=> ['label' => 'Соискатели',     'file' => 'applicants.php','superadminOnly' => false, 'locked' => false],
         'operators' => ['label' => 'Операторы',      'file' => 'operators.php', 'superadminOnly' => false, 'locked' => false],
         'messages'  => ['label' => 'Сообщения',      'file' => 'messages.php',  'superadminOnly' => false, 'locked' => false],
         'fleet'     => ['label' => 'Чат водителей',  'file' => 'fleet-chat.php','superadminOnly' => false, 'locked' => false],

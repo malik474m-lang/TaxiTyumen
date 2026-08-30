@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Работа водителем на своём авто — Такси Тюмень</title>
+<style>
+:root{--bg:#0a0a0c;--card:#141418;--line:#26262e;--brand:#FACC15;--ink:#0a0a0c;--mut:#a1a1aa}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:#fafafa;font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:720px;margin:0 auto;padding:28px 18px 60px}
+h1{font-size:26px;font-weight:900;margin:0 0 6px}
+.mut{color:var(--mut);font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin-top:18px}
+label{display:block;margin-top:14px;font-size:13px;font-weight:700;color:#d4d4d8}
+input,textarea,select{width:100%;margin-top:6px;padding:11px 13px;background:#0f0f13;border:1px solid var(--line);
+  border-radius:10px;color:#fafafa;font-size:15px;font-family:inherit}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:560px){.row{grid-template-columns:1fr}}
+.btn{width:100%;margin-top:22px;padding:15px;background:var(--brand);color:var(--ink);border:0;border-radius:12px;
+  font-size:16px;font-weight:900;cursor:pointer}
+.btn:disabled{opacity:.6;cursor:wait}
+.check{display:flex;align-items:center;gap:10px;margin-top:16px;padding:13px;background:#0f0f13;border-radius:10px}
+.check input{width:20px;height:20px;margin:0;accent-color:var(--brand)}
+.check label{margin:0;font-size:14px}
+.files{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+@media(max-width:560px){.files{grid-template-columns:1fr}}
+.file{background:#0f0f13;border:1px dashed var(--line);border-radius:10px;padding:12px}
+.file b{display:block;font-size:12px;margin-bottom:6px}
+.file.ok{border-color:#4ade80;border-style:solid}
+.msg{margin-top:16px;padding:14px;border-radius:12px;font-weight:600;display:none}
+.msg.err{display:block;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.35);color:#fca5a5}
+.msg.ok{display:block;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.35);color:#6ee7b7}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Работа водителем на своём автомобиле</h1>
+  <p class="mut">Заполните анкету — мы проверим документы и свяжемся с вами по телефону.
+     После собеседования создадим вам учётную запись в приложении водителя.</p>
+
+  <form id="f" class="card" enctype="multipart/form-data">
+    <div class="row">
+      <div><label>Фамилия *<input name="lastName" required maxlength="60"></label></div>
+      <div><label>Имя *<input name="firstName" required maxlength="60"></label></div>
+    </div>
+    <div class="row">
+      <div><label>Отчество<input name="middleName" maxlength="60"></label></div>
+      <div><label>Телефон * <input name="phone" type="tel" required placeholder="+7 999 123-45-67"></label></div>
+    </div>
+    <div class="row">
+      <div><label>Город<input name="city" maxlength="80" value="Тюмень"></label></div>
+      <div><label>Стаж вождения, лет<input name="experienceYears" type="number" min="0" max="60" value="3"></label></div>
+    </div>
+    <div class="row">
+      <div><label>Номер ВУ<input name="licenseNumber" maxlength="40"></label></div>
+      <div><label>ВУ действует до<input name="licenseExpiry" type="date"></label></div>
+    </div>
+
+    <h3 style="margin:22px 0 0;font-size:16px">Автомобиль</h3>
+    <div class="row">
+      <div><label>Марка *<input name="carBrand" required maxlength="40" placeholder="Kia"></label></div>
+      <div><label>Модель *<input name="carModel" required maxlength="40" placeholder="Rio"></label></div>
+    </div>
+    <div class="row">
+      <div><label>Цвет<input name="carColor" maxlength="30" placeholder="Белый"></label></div>
+      <div><label>Год выпуска<input name="carYear" type="number" min="1990" max="2030" value="2018"></label></div>
+    </div>
+    <label>Госномер *<input name="licensePlate" required maxlength="15" placeholder="А123ВС72" style="text-transform:uppercase"></label>
+
+    <div class="check">
+      <input type="checkbox" id="seat" name="hasChildSeat" value="1">
+      <label for="seat">Есть детское кресло для перевозки детей</label>
+    </div>
+    <label>Комментарий к креслу (возраст/группа)<input name="childSeatNote" maxlength="120" placeholder="Группа 1-2-3, 9–36 кг"></label>
+
+    <h3 style="margin:22px 0 0;font-size:16px">Фотографии *</h3>
+    <p class="mut">Чёткие снимки, JPG/PNG до 6 МБ каждый</p>
+    <div class="files" id="files">
+      <div class="file"><b>Водительское удостоверение</b><input type="file" name="photo_license" accept="image/*" required></div>
+      <div class="file"><b>Ваша фотография</b><input type="file" name="photo_selfie" accept="image/*" required></div>
+      <div class="file"><b>Авто спереди</b><input type="file" name="photo_car_front" accept="image/*" required></div>
+      <div class="file"><b>Авто сзади</b><input type="file" name="photo_car_back" accept="image/*" required></div>
+      <div class="file"><b>Авто слева</b><input type="file" name="photo_car_left" accept="image/*" required></div>
+      <div class="file"><b>Авто справа</b><input type="file" name="photo_car_right" accept="image/*" required></div>
+    </div>
+
+    <label>О себе / комментарий<textarea name="comment" rows="3" maxlength="500"></textarea></label>
+
+    <button class="btn" id="btn" type="submit">Отправить анкету</button>
+    <div class="msg" id="msg"></div>
+    <p class="mut" style="margin-top:14px">Отправляя анкету, вы соглашаетесь на обработку персональных данных.</p>
+  </form>
+</div>
+
+<script>
+// ⚠️ Укажите адрес вашего сервера API (домен, где стоит ServerHosting):
+var API = 'https://taxi.event72.ru/api/applications.php';
+
+document.getElementById('files').addEventListener('change', function (e) {
+  if (e.target.type === 'file') e.target.closest('.file').classList.toggle('ok', !!e.target.files.length);
+});
+
+document.getElementById('f').addEventListener('submit', async function (e) {
+  e.preventDefault();
+  var btn = document.getElementById('btn'), msg = document.getElementById('msg');
+  btn.disabled = true; btn.textContent = 'Отправляем…'; msg.className = 'msg';
+  try {
+    var res = await fetch(API, { method: 'POST', body: new FormData(e.target) });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('Ошибка ' + res.status));
+    msg.className = 'msg ok';
+    msg.textContent = data.message || 'Анкета принята! Мы свяжемся с вами.';
+    e.target.reset();
+    document.querySelectorAll('.file').forEach(function (f) { f.classList.remove('ok'); });
+  } catch (err) {
+    msg.className = 'msg err';
+    msg.textContent = err.message || 'Не удалось отправить анкету';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Отправить анкету';
+  }
+});
+</script>
+</body>
+</html>
