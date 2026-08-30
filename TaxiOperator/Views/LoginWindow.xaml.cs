@@ -13,8 +13,19 @@ public partial class LoginWindow : Window
         InitializeComponent();
         _api = api;
 
+        ApplyBranding();
+
         // Фокус на поле пароля если телефон уже заполнен
         Loaded += (s, e) => PasswordBox.Focus();
+    }
+
+    /// Название сервиса и подпись экрана входа — из админки
+    private void ApplyBranding()
+    {
+        var b = BrandingService.Current;
+        Title = BrandingService.WindowTitle("Вход");
+        BrandTitleText.Text = b.ServiceName;
+        BrandSubtitleText.Text = string.IsNullOrWhiteSpace(b.HeroTitle) ? b.AppName : b.HeroTitle;
     }
 
     // Enter в любом месте окна  войти

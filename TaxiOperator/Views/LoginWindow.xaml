@@ -17,12 +17,12 @@
                        HorizontalAlignment="Center"
                        Margin="0,0,0,5"/>
 
-            <TextBlock Text="Такси Тюмень"
+            <TextBlock x:Name="BrandTitleText" Text="Такси"
                        FontSize="24" FontWeight="Bold"
-                       Foreground="#FFD700"
+                       Foreground="{DynamicResource BrandBrush}"
                        HorizontalAlignment="Center"/>
 
-            <TextBlock Text="Панель оператора"
+            <TextBlock x:Name="BrandSubtitleText" Text="Пульт оператора"
                        FontSize="13" Foreground="LightGray"
                        HorizontalAlignment="Center"
                        Margin="0,0,0,25"/>

@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private SipService? _sip;
     private DispatcherTimer? _callTimer;
     private DateTime _callStartedAt;
+    private DispatcherTimer? _brandTimer;
 
     public MainWindow(ApiService api)
     {
@@ -51,10 +52,39 @@ public partial class MainWindow : Window
         if (_api.CurrentUser != null)
             OperatorNameText.Text = $"{_api.CurrentUser.FirstName} {_api.CurrentUser.LastName}";
 
+        ApplyBranding(BrandingService.Current);
+        BrandingService.Updated += b => Dispatcher.Invoke(() => ApplyBranding(b));
+
+        // Бренд может измениться в админке во время смены — тянем раз в 5 минут
+        _brandTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(5) };
+        _brandTimer.Tick += async (_, _) => await BrandingService.LoadAsync();
+        _brandTimer.Start();
+
         InitSip();
 
         // Корректно отпускаем SIP-регистрацию и звук при закрытии пульта
-        Closed += (_, _) => _sip?.Dispose();
+        Closed += (_, _) =>
+        {
+            _brandTimer?.Stop();
+            _sip?.Dispose();
+        };
+    }
+
+    /// Брендинг из админки: заголовок окна, название сервиса, телефон поддержки, цвета
+    private void ApplyBranding(BrandingData b)
+    {
+        try
+        {
+            Title = BrandingService.WindowTitle(
+                string.IsNullOrWhiteSpace(b.HeroTitle) ? "Пульт оператора" : b.HeroTitle);
+            BrandNameText.Text = b.ServiceName;
+            BrandAppText.Text = string.IsNullOrWhiteSpace(b.AppName) ? "Пульт оператора" : b.AppName;
+            BrandSupportText.Text = string.IsNullOrWhiteSpace(b.SupportPhone)
+                ? ""
+                : "Поддержка: " + b.SupportPhone;
+            BrandingService.Apply(b);   // обновляем кисти BrandBrush в ресурсах
+        }
+        catch { }
     }
 
     // ── Телефония: инициализация, события, управление вызовом ──────────────
