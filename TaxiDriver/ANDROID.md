@@ -102,16 +102,29 @@ APK для установки на телефоны должен быть под
 обновления подписываются ТЕМ ЖЕ ключом (иначе водителям придётся
 удалять старое приложение перед установкой).
 
-В PowerShell (в папке проекта):
+В PowerShell (в папке проекта). Версия JDK у всех разная, поэтому сначала
+найдите keytool на вашем компьютере и сохраните путь в переменную `$kt`:
 
 ```powershell
-& "C:\Program Files\Microsoft\jdk-17.0.13\bin\keytool.exe" -genkeypair -v `
-  -keystore taxi-driver.keystore -alias taxi-driver `
-  -keyalg RSA -keysize 2048 -validity 10000
+$kt = (Get-ChildItem "C:\Program Files","C:\Program Files (x86)" -Recurse -Filter keytool.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName)
+$kt
 ```
 
-- Если путь к keytool не найден — поищите папку: `explorer "C:\Program Files\Microsoft"`
-  → там будет `jdk-...`, подставьте её в команду выше (внутри `\bin\keytool.exe`).
+Затем создайте ключ через эту переменную (путь подставится сам):
+
+```powershell
+& $kt -genkeypair -v -keystore taxi-driver.keystore -alias taxi-driver -keyalg RSA -keysize 2048 -validity 10000
+```
+
+- Если поиск ничего не нашёл — установлена ли Android Studio? Тогда keytool
+  обычно в `C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe`:
+  присвойте его вручную: `$kt = "C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe"`
+- **Можно вообще без своего ключа (быстрый старт):** пропустите ШАГ 5 и в ШАГЕ 6
+  используйте короткую команду без параметров подписи:
+  `dotnet publish TaxiDriver/TaxiDriver.csproj -f net8.0-android -c Release -p:AndroidPackageFormat=apk`
+  — APK подпишется автоматическим debug-ключом и нормально установится.
+  Позже при переходе на свой keystore потребуется удалить debug-версию
+  с телефонов перед установкой.
 - Придумайте и введите пароль (дважды), на вопросы про имя можно жать Enter.
 - Файл `taxi-driver.keystore` появится в папке проекта.
   **Сделайте его резервную копию** (например, в облако). Потеря ключа = нельзя
