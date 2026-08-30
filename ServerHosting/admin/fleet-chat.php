@@ -51,6 +51,7 @@ layout_header('Чат водителей', 'fleet');
 </div>
 
 <script>
+var CSRF_TOKEN = <?= json_encode(admin_csrf_token(), JSON_UNESCAPED_SLASHES) ?>;
 var lastMs = 0;
 var list = document.getElementById('chatList');
 var emptyState = document.getElementById('emptyState');
@@ -102,7 +103,7 @@ function poll(){
 }
 function delMsg(id,btn){
   if(!confirm('Удалить это сообщение?'))return;
-  var fd=new FormData();fd.append('id',id);fd.append('ajax','1');
+  var fd=new FormData();fd.append('id',id);fd.append('ajax','1');fd.append('_csrf',CSRF_TOKEN);
   fetch('fleet-chat.php',{method:'POST',body:fd,credentials:'same-origin'})
     .then(function(r){return r.json()})
     .then(function(d){if(d&&d.ok){list.querySelectorAll('[data-id="'+id+'"]').forEach(function(e){e.remove()});updateCount();}})
