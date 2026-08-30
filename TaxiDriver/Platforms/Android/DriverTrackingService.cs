@@ -72,7 +72,7 @@ public class DriverTrackingService : Service
 
         builder.SetContentTitle("Вы на линии · Такси Тюмень")
             .SetContentText("Координаты передаются на сервер каждые 5 секунд")
-            .SetSmallIcon(Resource.Mipmap.appicon)
+            .SetSmallIcon(ApplicationInfo!.Icon)
             .SetOngoing(true)
             .SetOnlyAlertOnce(true);
         if (pending != null) builder.SetContentIntent(pending);
