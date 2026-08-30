@@ -321,12 +321,13 @@
                 </Border>
 
                 <!-- Сортировка (перенос на маленьких экранах) -->
-                <FlexLayout Wrap="Wrap" RowGap="8" ColumnGap="8">
+                <FlexLayout Wrap="Wrap" Direction="Row">
                     <Button x:Name="FleetChatBtn"
                             Text="Чат автопарка"
                             BackgroundColor="#2196F3"
                             TextColor="White"
                             CornerRadius="16"
+                            Margin="0,0,8,8"
                             HeightRequest="34"
                             FontSize="12"
                             Clicked="OnOpenFleetChat"/>
@@ -335,6 +336,7 @@
                             BackgroundColor="#FFD700"
                             TextColor="#1E1E2E"
                             CornerRadius="16"
+                            Margin="0,0,8,8"
                             HeightRequest="34"
                             FontSize="12"
                             Clicked="OnSortNearby"/>
@@ -343,6 +345,7 @@
                             BackgroundColor="#333"
                             TextColor="White"
                             CornerRadius="16"
+                            Margin="0,0,8,8"
                             HeightRequest="34"
                             FontSize="12"
                             Clicked="OnSortOld"/>
@@ -351,6 +354,7 @@
                             BackgroundColor="#333"
                             TextColor="White"
                             CornerRadius="16"
+                            Margin="0,0,8,8"
                             HeightRequest="34"
                             FontSize="12"
                             Clicked="OnSortExpensive"/>
