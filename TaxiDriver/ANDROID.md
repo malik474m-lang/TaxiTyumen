@@ -1,101 +1,194 @@
-# TaxiDriver для Android — сборка и установка
+# TaxiDriver для Android — полная инструкция по сборке APK
 
-> **Инструкция для водителя (установка, работа с заказами, простой, чаты):**
-> [`USER-GUIDE.md`](USER-GUIDE.md)
+> **Инструкция для водителя** (как пользоваться приложением): [`USER-GUIDE.md`](USER-GUIDE.md)
 
-Приложение водителя собирается под **Android** (и Windows).
-Бэкенд уже настроен: `https://taxi.event72.ru/api/` (`Services/ApiService.cs`).
+Ниже — пошаговый путь «с чистого компьютера до готового APK».
+Рассчитан на человека, который делает это впервые. Время: ~40–60 минут
+(большая часть — скачивание компонентов).
 
-## Версия 1.2 (versionCode 3)
+---
 
-- **Фоновый GPS-трекинг** — `Platforms/Android/DriverTrackingService.cs`:
-  foreground-сервис типа `location` стартует при выходе «на линию»
-  (`LocationService.StartTrackingAsync`) и останавливается при уходе.
-  Система показывает постоянное уведомление «Вы на линии» — тап возвращает
-  в приложение. Процесс не убивается при свёрнутом приложении: заказы,
-  координаты (каждые 5 с) и карта продолжают работать в фоне
-- Требование Android 14 выполняется автоматически: сервис стартует только
-  после подтверждённого разрешения геолокации
-- Осознанное поведение: **свайп-закрытие приложения = сход с линии**
-  (существующий обработчик `Window.Destroying` ставит offline)
+## Что понадобится
 
-## Версия 1.1 (versionCode 2)
+- Компьютер с **Windows 10/11 (64-bit)** и 25–30 ГБ свободного места
+- Интернет
+- Android-телефон водителя (Android 8.0+) — только для проверки; APK можно
+  собрать и без телефона
 
-- **Чат автопарка** — общий канал водителей (`Views/FleetChatPage`), кнопка
-  на главном экране; сервер: `api/fleet-chat.php`
-- **Простой** — платное ожидание пассажира с живым таймером:
-  `orders/{id}/waiting-start|waiting-stop`, биллинг на сервере
-- **POST_NOTIFICATIONS** — разрешение уведомлений на Android 13+
-  (манифест + рантайм-запрос в `App.xaml.cs`)
-- `WAKE_LOCK`, `FOREGROUND_SERVICE[_LOCATION]` — заготовка фонового трекинга
+---
 
-## Что добавлено для Android
+## ШАГ 0. Проверка: есть ли уже .NET? (1 минута)
 
-| Изменение | Файл |
+1. Нажмите `Win + R`, введите `cmd`, Enter.
+2. В чёрном окне напечатайте:
+   ```
+   dotnet --version
+   ```
+3. Если показало версию **8.x.x** — переходите к ШАГУ 2.
+   Если «dotnet не является командой» или версия ниже 8 — сначала ШАГ 1.
+
+## ШАГ 1. Установка Visual Studio 2022 с MAUI (~20–30 минут)
+
+.NET MAUI (инструмент сборки мобильных приложений) ставится вместе с
+бесплатной Visual Studio Community:
+
+1. Откройте в браузере: `https://visualstudio.microsoft.com/ru/vs/community/`
+2. Скачайте **Visual Studio 2022 Community** (бесплатно) и запустите установщик.
+3. В окне «Рабочие нагрузки» отметьте галочку:
+   > ✅ **Разработка мультиплатформенных приложений .NET**
+   > (в англ. интерфейсе: *.NET Multi-platform App UI development*)
+4. Справа в «Сведениях об установке» убедитесь, что стоят подгалочки
+   **Android SDK** — они включаются автоматически с этой нагрузкой.
+5. Нажмите «Установить» и дождитесь конца (скачает ~7–10 ГБ).
+6. После установки **перезагрузите компьютер или заново откройте терминал** —
+   и проверьте из ШАГА 0, что `dotnet --version` теперь = 8.x.x.
+
+> Альтернатива без Visual Studio (чистая командная строка): установите
+> .NET 8 SDK с `https://dotnet.microsoft.com/download`, затем в терминале
+> **от имени администратора** выполните:
+> ```
+> dotnet workload install maui-android
+> ```
+
+## ШАГ 2. Скачивание кода проекта (3 минуты)
+
+Вариант А — через Git (если установлен):
+```
+cd C:\
+git clone https://github.com/malik474m-lang/TaxiTyumen.git
+```
+
+Вариант Б — без Git:
+1. Откройте `https://github.com/malik474m-lang/TaxiTyumen`
+2. Зелёная кнопка **Code → Download ZIP**
+3. Распакуйте, например, в `C:\TaxiTyumen`
+
+Дальше во всех инструкциях папка проекта — `C:\TaxiTyumen`.
+(Если распаковали иначе — подставьте свой путь.)
+
+## ШАГ 3. Открыть терминал в папке проекта (30 секунд)
+
+Команды сборки вводятся в PowerShell из папки проекта:
+
+1. Откройте `C:\TaxiTyumen` в Проводнике.
+2. Способ 1: в адресной строке Проводника наберите `powershell` → Enter —
+   откроется окно сразу в этой папке.
+   Способ 2: `Shift + ПКМ` по пустому месту → «Открыть окно PowerShell здесь».
+
+Проверьте: в начале строки ввода видно `PS C:\TaxiTyumen>`.
+
+## ШАГ 4. Проверка телефона (Debug-запуск) — необязательный
+
+Если хотите сразу запустить приложение на телефоне без APK:
+
+1. На телефоне: **Настройки → О телефоне → 7 раз тапните «Номер сборки»** —
+   включится режим разработчика.
+2. **Настройки → Для разработчиков → Отладка по USB** — включите.
+3. Подключите телефон кабелем; на экране телефона подтвердите
+   «Разрешить отладку USB».
+4. В PowerShell (в папке проекта):
+   ```powershell
+   dotnet build -t:Run -f net8.0-android TaxiDriver/TaxiDriver.csproj
+   ```
+   Первая сборка идёт 10–25 минут (качаются компоненты). Приложение само
+   установится и запустится на телефоне.
+
+Если телефона под рукой нет — просто переходите к сборке APK.
+
+## ШАГ 5. Создание ключа подписи (один раз, навсегда)
+
+APK для установки на телефоны должен быть подписан вашим ключом.
+Ключ создаётся один раз — **сохраните файл и пароли**: все будущие
+обновления подписываются ТЕМ ЖЕ ключом (иначе водителям придётся
+удалять старое приложение перед установкой).
+
+В PowerShell (в папке проекта):
+
+```powershell
+& "C:\Program Files\Microsoft\jdk-17.0.13\bin\keytool.exe" -genkeypair -v `
+  -keystore taxi-driver.keystore -alias taxi-driver `
+  -keyalg RSA -keysize 2048 -validity 10000
+```
+
+- Если путь к keytool не найден — поищите папку: `explorer "C:\Program Files\Microsoft"`
+  → там будет `jdk-...`, подставьте её в команду выше (внутри `\bin\keytool.exe`).
+- Придумайте и введите пароль (дважды), на вопросы про имя можно жать Enter.
+- Файл `taxi-driver.keystore` появится в папке проекта.
+  **Сделайте его резервную копию** (например, в облако). Потеря ключа = нельзя
+  обновлять приложение без переустановки у водителей.
+
+## ШАГ 6. Сборка Release APK (5–20 минут)
+
+В PowerShell (в папке проекта), подставив свой пароль:
+
+```powershell
+dotnet publish TaxiDriver/TaxiDriver.csproj -f net8.0-android -c Release `
+  -p:AndroidPackageFormat=apk `
+  -p:AndroidKeyStore=true `
+  -p:AndroidSigningKeyStore=taxi-driver.keystore `
+  -p:AndroidSigningStorePass=ВАШ_ПАРОЛЬ `
+  -p:AndroidSigningKeyAlias=taxi-driver `
+  -p:AndroidSigningKeyPass=ВАШ_ПАРОЛЬ
+```
+
+Дождитесь строки `Build succeeded`. Готовый APK лежит здесь:
+
+```
+C:\TaxiTyumen\TaxiDriver\bin\Release\net8.0-android\publish\ru.taxityumen.driver-Signed.apk
+```
+
+> Однострочный вариант (если редактор «съедает» обратные кавычки-переносы):
+> ```
+> dotnet publish TaxiDriver/TaxiDriver.csproj -f net8.0-android -c Release -p:AndroidPackageFormat=apk -p:AndroidKeyStore=true -p:AndroidSigningKeyStore=taxi-driver.keystore -p:AndroidSigningStorePass=ВАШ_ПАРОЛЬ -p:AndroidSigningKeyAlias=taxi-driver -p:AndroidSigningKeyPass=ВАШ_ПАРОЛЬ
+> ```
+
+## ШАГ 7. Раздача водителям
+
+1. Отправьте файл `ru.taxityumen.driver-Signed.apk` водителям — в Telegram,
+   WhatsApp или по почте (как есть, не распаковывая).
+2. Водитель открывает файл на телефоне → разрешает «установку из неизвестных
+   источников» → «Установить».
+3. При первом запуске — разрешить **уведомления**, при выходе «на линию» —
+   **геолокацию**. Дальше по инструкции [`USER-GUIDE.md`](USER-GUIDE.md).
+4. Проверка: в админке (Дашборд/диспетчерская) водитель появляется на карте
+   автопарка после выхода «на линию».
+
+## Обновление приложения в будущем
+
+1. Поднимите версию в `TaxiDriver/TaxiDriver.csproj`
+   (`ApplicationDisplayVersion` и `ApplicationVersion` +1).
+2. Повторите ШАГИ 6–7 **с тем же keystore и паролем** — приложение у водителей
+   обновится поверх старого, вход сохранится.
+
+## Если что-то пошло не так
+
+| Ошибка / симптом | Решение |
 |---|---|
-| Таргет `net8.0-android` (мин. Android 8.0 / API 26) | `TaxiDriver.csproj` |
-| Разрешения геолокации `FINE/COARSE_LOCATION` | `Platforms/Android/AndroidManifest.xml` |
-| Запрос разрешения GPS в рантайме при выходе «на линию» | `Services/LocationService.cs` |
-| KeepScreenOn — экран не гаснет у водителя на смене | `Services/LocationService.cs` |
-| Точность GPS повышена до `High` | `Services/LocationService.cs` |
-| Брендированная иконка и сплэш (такси-жёлтый) | `Resources/AppIcon/*`, `Resources/Splash/*` |
-| `android:exported=true`, SingleTop, HTTPS-only | `MainActivity.cs`, манифест |
+| `dotnet не является командой` | ШАГ 1 не выполнен; перезагрузите терминал после установки VS |
+| `workload ... maui-android not installed` | Терминал **от администратора**: `dotnet workload install maui-android` |
+| `error XA...` / Android SDK не найден | Откройте Visual Studio → Tools → Android → Android SDK Manager → примите лицензии и доустановите SDK Platform |
+| Просит лицензии Android (license not accepted) | В Visual Studio собрать проект один раз через меню Build — примет лицензии, либо `"%ProgramFiles(x86)%\Android\android-sdk\tools\bin\sdkmanager" --licenses` и отвечать `y` |
+| JDK/keytool не найден | Переустановите нагрузку MAUI (Шаг 1) — JDK ставится вместе с ней; путь ищите в `C:\Program Files\Microsoft\jdk-*` |
+| Телефон не виден при `dotnet build -t:Run` | Включите «Отладку по USB», выберите на телефоне режим USB «Передача файлов», перевоткните кабель |
+| APK ставится «поверх» с ошибкой `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | Телефон уже имеет приложение с другим ключом — удалите старое и поставьте заново (поэтому берегите keystore!) |
+| Очень долгая первая сборка | Это нормально: скачиваются Android SDK и NuGet (10–25 минут). Дальше сборки быстрее |
+| Для Google Play | Собирайте AAB: замените `-p:AndroidPackageFormat=apk` на `aab` |
 
-Точность: слежение работает, пока приложение открыто («на линии» + экран не гаснет).
-Фоновый трекинг при свёрнутом приложении — см. раздел «Дальше».
+---
 
-## Требования
+## Справочно: что уже встроено в приложение
 
-- **Windows + Visual Studio 2022 17.8+** с workload «.NET Multi-platform App UI»
-  (в инсталлере отметить Android SDK) — *или* чистый CLI:
-  ```powershell
-  dotnet workload install maui-android
-  ```
-- Android 8.0+ (API 26) на устройстве/эмуляторе.
+| Возможность | Версия |
+|---|---|
+| Заказы, этапы, навигация, чат с клиентом, баланс | 1.0 |
+| Чат автопарка, платный простой, уведомления Android 13+ | 1.1 |
+| Фоновый GPS-трекинг при свёрнутом приложении (foreground service) | 1.2 |
 
-## Запуск на телефоне (Debug)
+Бэкенд: `https://taxi.event72.ru/api/` (`Services/ApiService.cs`).
+Минимум: Android 8.0 (API 26). HTTPS-only.
 
-1. На телефоне включите **Режим разработчика → Отладка по USB** (или Wi-Fi debug).
-2. Подключите кабелем, подтвердите RSA-отпечаток на экране телефона.
-3. В PowerShell:
-   ```powershell
-   cd TaxiDriver
-   dotnet build -t:Run -f net8.0-android        # соберёт, установит и запустит
-   ```
-   В VS 2022: выберите таргет `Android → ваше устройство` и F5.
+## Дорожная карта
 
-## Сборка Release APK для раздачи
-
-1. Один раз создайте keystore (храните его и пароли в надёжном месте!):
-   ```powershell
-   keytool -genkeypair -v -keystore taxi-driver.keystore `
-     -alias taxi-driver -keyalg RSA -keysize 2048 -validity 10000
-   ```
-2. Опубликуйте APK:
-   ```powershell
-   dotnet publish TaxiDriver/TaxiDriver.csproj -f net8.0-android -c Release `
-     -p:AndroidPackageFormat=apk `
-     -p:AndroidKeyStore=true `
-     -p:AndroidSigningKeyStore=taxi-driver.keystore `
-     -p:AndroidSigningStorePass=ПАРОЛЬ_KEYSTORE `
-     -p:AndroidSigningKeyAlias=taxi-driver `
-     -p:AndroidSigningKeyPass=ПАРОЛЬ_КЛЮЧА
-   ```
-3. APK лежит в `bin/Release/net8.0-android/publish/` — отправьте водителям
-   (Telegram/почта), они разрешают «установку из неизвестных источников» и ставят.
-
-Для Google Play вместо APK собирайте AAB: `-p:AndroidPackageFormat=aab`.
-
-## Проверка после установки
-
-- Вход водителем: `+79221000001…05` / `Driver123!` (демо) или реальный аккаунт.
-- «Выйти на линию» → системный диалог геолокации → «Разрешить при использовании».
-- На админ-карте автопарка и в диспетчерской водитель появляется на карте Тюмени —
-  координаты уходят на сервер каждые 5 сек (`drivers/location`).
-
-## Дальше (дорожная карта фона)
-
-1. ~~Foreground Service + уведомление~~ — **реализовано в 1.2** (см. выше).
-2. **FCM push** вместо/вместе с polling — мгновенные «Новый заказ» в фоне
-   даже при убитом процессе.
-3. Адаптивная иконка (monochrome-слой для Android 13+).
+1. ~~Foreground service (фоновый трекинг)~~ — сделано в 1.2.
+2. **FCM push** — «Новый заказ» даже при закрытом процессе.
+3. Адаптивная монохромная иконка (Android 13+).
