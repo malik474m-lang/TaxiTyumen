@@ -2,14 +2,15 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="TaxiDriver.Views.MainDriverPage"
-             Title="Такси Тюмень"
+             Title=""
+             Shell.NavBarIsVisible="False"
              BackgroundColor="#1E1E2E">
 
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
 
         <!-- Шапка -->
         <Border Grid.Row="0" BackgroundColor="#252536" Padding="15,12">
-            <Grid ColumnDefinitions="*,Auto">
+            <Grid ColumnDefinitions="*,Auto,Auto">
                 <StackLayout Grid.Column="0" Spacing="2">
                     <Label x:Name="DriverNameLabel"
                            TextColor="White"
@@ -20,7 +21,20 @@
                            FontSize="13"/>
                 </StackLayout>
 
-                <Border Grid.Column="1"
+                <Button Grid.Column="1"
+                        x:Name="SosTopBtn"
+                        Text="SOS"
+                        BackgroundColor="#DC2626"
+                        TextColor="White"
+                        FontAttributes="Bold"
+                        FontSize="14"
+                        CornerRadius="20"
+                        HeightRequest="40"
+                        WidthRequest="72"
+                        Margin="0,0,10,0"
+                        Clicked="OnSosClicked"/>
+
+                <Border Grid.Column="2"
                         x:Name="OnlineBorder"
                         BackgroundColor="#333"
                         Padding="12,8">
@@ -177,6 +191,58 @@
                                FontAttributes="Bold"/>
 
                         <BoxView HeightRequest="1" Color="#333"/>
+
+                        <!-- КАРТА МАРШРУТА с кнопками поверх -->
+                        <Grid x:Name="MapContainer" HeightRequest="260" IsVisible="False">
+                            <WebView x:Name="RouteMap"
+                                     HeightRequest="260"
+                                     BackgroundColor="#1E1E2E"/>
+
+                            <!-- Кнопки этапов поверх карты -->
+                            <Grid VerticalOptions="End" Margin="8"
+                                  ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                                <Button Grid.Column="0" x:Name="MapStatusBtn"
+                                        Text="Я на месте"
+                                        BackgroundColor="#FF9800"
+                                        TextColor="White"
+                                        FontAttributes="Bold"
+                                        CornerRadius="10"
+                                        HeightRequest="46"
+                                        Opacity="0.96"
+                                        Clicked="OnStatusButtonClick"/>
+                                <Button Grid.Column="1" x:Name="MapWaitingBtn"
+                                        Text="Простой"
+                                        BackgroundColor="#0EA5E9"
+                                        TextColor="White"
+                                        CornerRadius="10"
+                                        HeightRequest="46"
+                                        WidthRequest="92"
+                                        Opacity="0.96"
+                                        Clicked="OnToggleWaiting"/>
+                                <Button Grid.Column="2"
+                                        Text="Навиг."
+                                        BackgroundColor="#2196F3"
+                                        TextColor="White"
+                                        CornerRadius="10"
+                                        HeightRequest="46"
+                                        WidthRequest="80"
+                                        Opacity="0.96"
+                                        Clicked="OnYandexNavClicked"/>
+                            </Grid>
+
+                            <!-- Таймер простоя поверх карты -->
+                            <Label x:Name="MapWaitingLabel"
+                                   Text=""
+                                   TextColor="White"
+                                   BackgroundColor="#CC0EA5E9"
+                                   FontAttributes="Bold"
+                                   FontSize="14"
+                                   Padding="10,6"
+                                   Margin="8"
+                                   HorizontalOptions="End"
+                                   VerticalOptions="Start"
+                                   IsVisible="False"/>
+                        </Grid>
 
                         <Grid ColumnDefinitions="20,*">
                             <Label Grid.Column="0" Text="" FontSize="16" VerticalOptions="Center"/>

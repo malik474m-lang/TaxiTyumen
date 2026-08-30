@@ -710,6 +710,36 @@ public partial class MainDriverPage : ContentPage
         if (order.WaitingActive) EnsureWaitingTimer();
 
         UpdateStatusButton();
+        _ = ShowRouteMapAsync(order);
+    }
+
+    /// Карта маршрута в приложении: водитель → подача → (финиш)
+    private async Task ShowRouteMapAsync(OrderResponse order)
+    {
+        try
+        {
+            MapContainer.IsVisible = true;
+
+            var apiKey = await MapHtml.GetApiKeyAsync();
+            // До посадки ведём к точке подачи, в поездке — к точке назначения
+            var toPickup = order.Status is not "in_progress";
+            double? toLat = toPickup ? order.PickupLatitude : order.DestinationLatitude;
+            double? toLng = toPickup ? order.PickupLongitude : order.DestinationLongitude;
+
+            var html = MapHtml.Build(
+                apiKey,
+                _location.CurrentLat, _location.CurrentLng,
+                toLat, toLng,
+                toPickup ? "Подача" : "Назначение",
+                toPickup ? order.DestinationLatitude : null,
+                toPickup ? order.DestinationLongitude : null);
+
+            RouteMap.Source = new HtmlWebViewSource { Html = html };
+        }
+        catch
+        {
+            MapContainer.IsVisible = false;
+        }
     }
 
     private bool _waitingTimerStarted;
@@ -735,9 +765,16 @@ public partial class MainDriverPage : ContentPage
                 : DateTime.SpecifyKind(order.WaitingStartedAt.Value, DateTimeKind.Utc);
             total += Math.Max(0, (int)(DateTime.UtcNow - startedUtc).TotalSeconds);
         }
-        WaitingLabel.Text = total > 0 || order.WaitingActive
+        var timer = total > 0 || order.WaitingActive
             ? $"{total / 60:00}:{total % 60:00}"
             : "";
+        WaitingLabel.Text = timer;
+
+        // Кнопка и таймер простоя поверх карты
+        MapWaitingBtn.Text = order.WaitingActive ? "Стоп" : "Простой";
+        MapWaitingBtn.BackgroundColor = Color.FromArgb(order.WaitingActive ? "#0EA5E9" : "#475569");
+        MapWaitingLabel.Text = order.WaitingActive ? "Простой " + timer : timer;
+        MapWaitingLabel.IsVisible = order.WaitingActive || total > 0;
     }
 
     private void EnsureWaitingTimer()
@@ -776,6 +813,9 @@ public partial class MainDriverPage : ContentPage
         if (_orderStatusStep >= _statusLabels.Length) return;
         StatusBtn.Text = _statusLabels[_orderStatusStep];
         StatusBtn.BackgroundColor = Color.FromArgb(_statusColors[_orderStatusStep]);
+        // Дублируем текущий этап на кнопке поверх карты
+        MapStatusBtn.Text = _statusLabels[_orderStatusStep];
+        MapStatusBtn.BackgroundColor = Color.FromArgb(_statusColors[_orderStatusStep]);
     }
 
     private async void OnStatusButtonClick(object? sender, EventArgs e)
@@ -818,9 +858,20 @@ public partial class MainDriverPage : ContentPage
         await OnOrderCompleted();
     }
 
+    private void HideRouteMap()
+    {
+        try
+        {
+            MapContainer.IsVisible = false;
+            MapWaitingLabel.IsVisible = false;
+        }
+        catch { }
+    }
+
     private async Task OnOrderCompleted()
     {
         _activeOrder = null;
+        HideRouteMap();
         _location.ActiveOrderId = null;
         _orderStatusStep = 0;
 
