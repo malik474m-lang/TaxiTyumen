@@ -37,7 +37,9 @@ if (is_array($body)) {
     $body = $normalized;
 }
 
-$dispatch = function (string $file, array $override = [], array $query = []) use ($body): never {
+$dispatch = function (string $file, array $override = [], array $query = []) use ($body, $db): never {
+    // $db пробрасывается из _bootstrap — обработчики подключаются внутри замыкания
+    // и без capture не видят глобальную переменную (500 на всех маршрутах через router)
     Response::setBodyOverride(array_merge($body, $override));
     foreach ($query as $key => $value) $_GET[$key] = $value;
     require $file;
