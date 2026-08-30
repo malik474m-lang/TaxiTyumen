@@ -495,7 +495,7 @@ public partial class MainDriverPage : ContentPage
 
         layout.Children.Add(header);
 
-        var waitTime = DateTime.UtcNow - order.CreatedAt;
+        var waitTime = DateTime.UtcNow - order.CreatedAt.UtcDateTime;
         var waitText = waitTime.TotalMinutes < 1
             ? "только что"
             : waitTime.TotalMinutes < 60
@@ -760,10 +760,8 @@ public partial class MainDriverPage : ContentPage
         var total = order.WaitingSeconds;
         if (order.WaitingActive && order.WaitingStartedAt.HasValue)
         {
-            var startedUtc = order.WaitingStartedAt.Value.Kind == DateTimeKind.Utc
-                ? order.WaitingStartedAt.Value
-                : DateTime.SpecifyKind(order.WaitingStartedAt.Value, DateTimeKind.Utc);
-            total += Math.Max(0, (int)(DateTime.UtcNow - startedUtc).TotalSeconds);
+            total += Math.Max(0,
+                (int)(DateTimeOffset.UtcNow - order.WaitingStartedAt.Value).TotalSeconds);
         }
         var timer = total > 0 || order.WaitingActive
             ? $"{total / 60:00}:{total % 60:00}"
@@ -801,7 +799,7 @@ public partial class MainDriverPage : ContentPage
             var start = !_activeOrder.WaitingActive;
             await _api.SetOrderWaitingAsync(_activeOrder.Id, _auth.DriverId.Value, start);
             _activeOrder.WaitingActive = start;
-            _activeOrder.WaitingStartedAt = start ? DateTime.UtcNow : null;
+            _activeOrder.WaitingStartedAt = start ? DateTimeOffset.UtcNow : null;
             UpdateWaitingUi(_activeOrder);
             if (start) EnsureWaitingTimer();
         }
@@ -856,6 +854,28 @@ public partial class MainDriverPage : ContentPage
 
         await _api.CancelOrderAsync(_activeOrder.Id, _auth.DriverId!.Value, "Отменён водителем");
         await OnOrderCompleted();
+    }
+
+    private bool _mapFullscreen;
+
+    /// Полноэкранный режим карты: карточка заказа и списки скрываются,
+    /// остаются карта и кнопки поверх неё.
+    private void OnToggleMapFullscreen(object? sender, EventArgs e)
+    {
+        try
+        {
+            _mapFullscreen = !_mapFullscreen;
+
+            // Растягиваем карту и прячем всё остальное содержимое страницы
+            MapContainer.HeightRequest = _mapFullscreen ? -1 : 340;
+            MapContainer.VerticalOptions = _mapFullscreen ? LayoutOptions.Fill : LayoutOptions.Start;
+            MapExpandBtn.Text = _mapFullscreen ? "✕" : "⛶";
+
+            // Полный экран: прячем шапку и статистику, карта занимает всё место
+            HeaderBorder.IsVisible = !_mapFullscreen;
+            StatsGrid.IsVisible = !_mapFullscreen;
+        }
+        catch { }
     }
 
     private void HideRouteMap()

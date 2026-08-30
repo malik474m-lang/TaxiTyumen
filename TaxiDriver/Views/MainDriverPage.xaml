@@ -9,7 +9,7 @@
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
 
         <!-- Шапка -->
-        <Border Grid.Row="0" BackgroundColor="#252536" Padding="15,12">
+        <Border x:Name="HeaderBorder" Grid.Row="0" BackgroundColor="#252536" Padding="15,12">
             <Grid ColumnDefinitions="*,Auto,Auto">
                 <StackLayout Grid.Column="0" Spacing="2">
                     <Label x:Name="DriverNameLabel"
@@ -54,7 +54,7 @@
         </Border>
 
         <!-- Статистика -->
-        <Grid Grid.Row="1" ColumnDefinitions="*,*,*,*"
+        <Grid x:Name="StatsGrid" Grid.Row="1" ColumnDefinitions="*,*,*,*"
               BackgroundColor="#252536"
               Margin="0,1,0,0" Padding="10">
 
@@ -193,10 +193,22 @@
                         <BoxView HeightRequest="1" Color="#333"/>
 
                         <!-- КАРТА МАРШРУТА с кнопками поверх -->
-                        <Grid x:Name="MapContainer" HeightRequest="260" IsVisible="False">
+                        <Grid x:Name="MapContainer" HeightRequest="340" IsVisible="False">
                             <WebView x:Name="RouteMap"
-                                     HeightRequest="260"
                                      BackgroundColor="#1E1E2E"/>
+
+                            <Button x:Name="MapExpandBtn"
+                                    Text="⛶"
+                                    FontSize="18"
+                                    BackgroundColor="#CC252536"
+                                    TextColor="White"
+                                    CornerRadius="10"
+                                    HeightRequest="42"
+                                    WidthRequest="42"
+                                    Margin="8"
+                                    HorizontalOptions="Start"
+                                    VerticalOptions="Start"
+                                    Clicked="OnToggleMapFullscreen"/>
 
                             <!-- Кнопки этапов поверх карты -->
                             <Grid VerticalOptions="End" Margin="8"

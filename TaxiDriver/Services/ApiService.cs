@@ -9,7 +9,13 @@ public class ApiService
     private readonly HttpClient _http;
     private static readonly JsonSerializerOptions _json = new()
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        Converters =
+        {
+            // метки сервера с миллисекундами/Z и MySQL-формат — без падений парсинга
+            new FlexibleDateTimeOffsetConverter(),
+            new FlexibleNullableDateTimeOffsetConverter()
+        }
     };
 
     public AuthResponse? CurrentUser { get; private set; }

@@ -38,10 +38,10 @@ public class OrderResponse
     public int? EstimatedDuration { get; set; }
     public string? Comment { get; set; }
     public int PassengerCount { get; set; }
-    public DateTime CreatedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
 
     // Простой по просьбе пассажира (поминутная тарификация)
-    public DateTime? WaitingStartedAt { get; set; }
+    public DateTimeOffset? WaitingStartedAt { get; set; }
     public int WaitingSeconds { get; set; }
     public decimal WaitingCost { get; set; }
     public bool WaitingActive { get; set; }
@@ -82,7 +82,7 @@ public class BalanceTransactionDto
     public decimal Amount { get; set; }
     public decimal BalanceAfter { get; set; }
     public string Description { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
 }
 public class ChatMessageDto
 {
@@ -92,7 +92,7 @@ public class ChatMessageDto
     public string SenderRole { get; set; } = "";
     public string SenderName { get; set; } = "";
     public string Text { get; set; } = "";
-    public DateTime CreatedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
     public bool IsRead { get; set; }
 }
 public class SosAlertDto
