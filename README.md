@@ -36,6 +36,10 @@
 приложения (клиент `/client`, водитель `/driver`, диспетчерская `/operator`,
 админ `/admin`). Подробности и инструкция запуска: [`TaxiTyumen.Web/README.md`](TaxiTyumen.Web/README.md).
 
+## Пульт оператора (Windows)
+
+Сборка, работа и настройка SIP-телефонии с гарнитурой: [`TaxiOperator/README.md`](TaxiOperator/README.md)
+
 ## Приложение водителя (Android)
 
 Сборка APK и установка на телефон: [`TaxiDriver/ANDROID.md`](TaxiDriver/ANDROID.md)

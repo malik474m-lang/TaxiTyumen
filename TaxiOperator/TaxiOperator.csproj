@@ -2,11 +2,23 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
   </PropertyGroup>
+
+  <!-- SIP-телефония включена по умолчанию.
+       Сборка без неё: dotnet publish -p:DisableSip=true -->
+  <PropertyGroup Condition="'$(DisableSip)' != 'true'">
+    <DefineConstants>$(DefineConstants);SIP_ENABLED</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(DisableSip)' != 'true'">
+    <PackageReference Include="SIPSorcery" Version="8.0.23" />
+    <PackageReference Include="SIPSorceryMedia.Windows" Version="8.0.14" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />

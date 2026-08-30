@@ -22,6 +22,12 @@ public partial class MainWindow : Window
     private List<AddressSuggestion> _pickupSuggestions = new();
     private List<AddressSuggestion> _destSuggestions = new();
 
+    // ── SIP-софтфон ────────────────────────────────────────────────────────
+    private readonly SipSettings _sipSettings = SipSettings.Load();
+    private SipService? _sip;
+    private DispatcherTimer? _callTimer;
+    private DateTime _callStartedAt;
+
     public MainWindow(ApiService api)
     {
         InitializeComponent();
@@ -44,6 +50,115 @@ public partial class MainWindow : Window
 
         if (_api.CurrentUser != null)
             OperatorNameText.Text = $"{_api.CurrentUser.FirstName} {_api.CurrentUser.LastName}";
+
+        InitSip();
+
+        // Корректно отпускаем SIP-регистрацию и звук при закрытии пульта
+        Closed += (_, _) => _sip?.Dispose();
+    }
+
+    // ── Телефония: инициализация, события, управление вызовом ──────────────
+    private void InitSip()
+    {
+        _sip = new SipService(_sipSettings);
+
+        _sip.StatusChanged += text => Dispatcher.Invoke(() => SipStatusText.Text = text);
+
+        _sip.IncomingCall += number => Dispatcher.Invoke(() =>
+        {
+            SipCallerText.Text = "☎ " + number;
+            SipAnswerBtn.IsEnabled = true;
+            SipHangupBtn.IsEnabled = true;
+            Activate();                       // поднимаем окно оператора
+            if (_sipSettings.AutoFillPhone) FillClientPhone(number);
+        });
+
+        _sip.CallConnected += number => Dispatcher.Invoke(() =>
+        {
+            SipAnswerBtn.IsEnabled = false;
+            SipHangupBtn.IsEnabled = true;
+            SipMuteBtn.IsEnabled = true;
+            StartCallTimer();
+            if (_sipSettings.AutoFillPhone && !string.IsNullOrWhiteSpace(number)) FillClientPhone(number);
+        });
+
+        _sip.CallEnded += () => Dispatcher.Invoke(() =>
+        {
+            SipCallerText.Text = "";
+            SipTimerText.Text = "";
+            SipAnswerBtn.IsEnabled = false;
+            SipHangupBtn.IsEnabled = false;
+            SipMuteBtn.IsEnabled = false;
+            SipMuteBtn.IsChecked = false;
+            _callTimer?.Stop();
+        });
+
+        if (!_sip.IsAvailable)
+        {
+            SipStatusText.Text = "SIP-телефония отключена в этой сборке";
+            return;
+        }
+        _ = _sip.StartAsync();
+    }
+
+    /// Номер звонящего → в форму нового заказа (нормализация к +7…)
+    private void FillClientPhone(string number)
+    {
+        var digits = new string(number.Where(char.IsDigit).ToArray());
+        if (digits.Length >= 10)
+        {
+            digits = digits[^10..];
+            ClientPhoneBox.Text = "+7" + digits;
+        }
+        else if (!string.IsNullOrWhiteSpace(number))
+        {
+            ClientPhoneBox.Text = number;
+        }
+        PickupAddressBox.Focus();
+    }
+
+    private void StartCallTimer()
+    {
+        _callStartedAt = DateTime.Now;
+        _callTimer ??= new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _callTimer.Tick -= OnCallTimerTick;
+        _callTimer.Tick += OnCallTimerTick;
+        _callTimer.Start();
+    }
+
+    private void OnCallTimerTick(object? sender, EventArgs e)
+    {
+        var d = DateTime.Now - _callStartedAt;
+        SipTimerText.Text = $"Разговор {d:mm\\:ss}";
+    }
+
+    private void OnSipSettingsClick(object sender, RoutedEventArgs e)
+    {
+        var dlg = new SipSettingsWindow(_sipSettings) { Owner = this };
+        if (dlg.ShowDialog() == true)
+        {
+            _sip?.Stop();
+            _ = _sip?.StartAsync();
+        }
+    }
+
+    private async void OnSipAnswerClick(object sender, RoutedEventArgs e)
+    {
+        if (_sip != null) await _sip.AnswerAsync();
+    }
+
+    private void OnSipHangupClick(object sender, RoutedEventArgs e) => _sip?.Hangup();
+
+    private void OnSipMuteClick(object sender, RoutedEventArgs e)
+        => _sip?.SetMute(SipMuteBtn.IsChecked == true);
+
+    private async void OnSipCallClick(object sender, RoutedEventArgs e)
+    {
+        var number = SipDialBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(number) || _sip == null) return;
+        SipHangupBtn.IsEnabled = true;
+        SipCallerText.Text = "☎ " + number;
+        await _sip.CallAsync(number);
     }
 
     private async void OnWindowLoaded(object sender, RoutedEventArgs e)
