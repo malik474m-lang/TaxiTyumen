@@ -27,6 +27,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Иконка приложения: такси-жёлтая плашка + тёмный глиф (генерирует mipmap/appicon[_round]) -->
+    <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#FFD700" />
     <MauiSplash Include="Resources\Splash\splash.svg" Color="#0A0A0C" BaseSize="200,200" />
   </ItemGroup>
 
