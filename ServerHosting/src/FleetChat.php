@@ -39,11 +39,15 @@ final class FleetChat
     {
         self::ensureTables($db);
         if ($afterMs > 0) {
+            // Порог как строка UTC с миллисекундами: FROM_UNIXTIME зависит от
+            // часового пояса MySQL-сервера и давал рассинхрон -> бесконечные дубли у клиентов
+            $threshold = gmdate('Y-m-d H:i:s.', intdiv($afterMs, 1000))
+                . sprintf('%03d', $afterMs % 1000);
             $stmt = $db->prepare(
-                'SELECT * FROM fleet_messages WHERE created_at > FROM_UNIXTIME(? / 1000)
+                'SELECT * FROM fleet_messages WHERE created_at > ?
                  ORDER BY created_at ASC LIMIT ?'
             );
-            $stmt->bindValue(1, $afterMs, \PDO::PARAM_INT);
+            $stmt->bindValue(1, $threshold, \PDO::PARAM_STR);
             $stmt->bindValue(2, self::HISTORY_LIMIT, \PDO::PARAM_INT);
             $stmt->execute();
             return $stmt->fetchAll();
@@ -65,15 +69,16 @@ final class FleetChat
         );
         $stmt->execute([$senderId]);
         $value = $stmt->fetchColumn();
-        return $value === false ? 0 : (int) $value;
+        return $value === false ? 0 : self::utcMs((string) $value);
     }
 
     public static function post(\PDO $db, string $senderId, string $senderName, string $carInfo, string $text): array
     {
         $id = Db::uuid();
+        $createdAt = gmdate('Y-m-d H:i:s.') . sprintf('%03d', (int) (microtime(true) * 1000) % 1000);
         $db->prepare(
-            'INSERT INTO fleet_messages (id, sender_id, sender_name, car_info, text) VALUES (?,?,?,?,?)'
-        )->execute([$id, $senderId, $senderName, $carInfo, $text]);
+            'INSERT INTO fleet_messages (id, sender_id, sender_name, car_info, text, created_at) VALUES (?,?,?,?,?,?)'
+        )->execute([$id, $senderId, $senderName, $carInfo, $text, $createdAt]);
         $stmt = $db->prepare('SELECT * FROM fleet_messages WHERE id = ?');
         $stmt->execute([$id]);
         return $stmt->fetch();
@@ -86,17 +91,31 @@ final class FleetChat
         return $stmt->rowCount() > 0;
     }
 
-    /** DTO единой формы (как в Next.js-версии). */
+    /** Мс эпохи из метки 'Y-m-d H:i:s[.fff]' в UTC (независимо от TZ хостинга). */
+    private static function utcMs(string $ts): int
+    {
+        $ms = 0;
+        if (preg_match('/\.(\d{1,3})$/', $ts, $m)) {
+            $ms = (int) str_pad($m[1], 3, '0', STR_PAD_RIGHT);
+        }
+        $sec = strtotime($ts . ' UTC');
+        return $sec === false ? 0 : $sec * 1000 + $ms;
+    }
+
+    /** DTO единой формы (как в Next.js-версии): метка строго UTC 'Z' с миллисекундами. */
     public static function dto(array $m): array
     {
-        $ts = strtotime((string) $m['created_at']);
+        $ms = self::utcMs((string) $m['created_at']);
+        $createdAt = $ms > 0
+            ? gmdate('Y-m-d\TH:i:s.', intdiv($ms, 1000)) . sprintf('%03dZ', $ms % 1000)
+            : (string) $m['created_at'];
         return [
             'id' => $m['id'],
             'senderId' => $m['sender_id'],
             'senderName' => $m['sender_name'],
             'carInfo' => $m['car_info'],
             'text' => $m['text'],
-            'createdAt' => $ts === false ? (string) $m['created_at'] : gmdate('c', $ts),
+            'createdAt' => $createdAt,
         ];
     }
 }

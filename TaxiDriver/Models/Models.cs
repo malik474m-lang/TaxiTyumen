@@ -102,7 +102,8 @@ public class FleetMessageDto
     public string SenderName { get; set; } = "";
     public string CarInfo { get; set; } = "";
     public string Text { get; set; } = "";
-    public DateTime CreatedAt { get; set; }
+    // DateTimeOffset: метки сервера UTC 'Z' — миллисекундная точность для ?after=
+    public DateTimeOffset CreatedAt { get; set; }
 }
 
 public class DriverInfoDto

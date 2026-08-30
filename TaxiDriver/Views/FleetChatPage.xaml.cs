@@ -10,6 +10,7 @@ public partial class FleetChatPage : ContentPage
     private readonly ApiService _api;
     private readonly Guid _userId;
     private long _lastMs;
+    private readonly HashSet<Guid> _seen = new(); // дедупликация: сообщение не показывается дважды
     private bool _running;
     private bool _timerStarted;
     private bool _sending;
@@ -53,15 +54,21 @@ public partial class FleetChatPage : ContentPage
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
-                if (full) MessagesList.Children.Clear();
+                if (full)
+                {
+                    MessagesList.Children.Clear();
+                    _seen.Clear();
+                }
 
+                var added = false;
                 foreach (var msg in messages.OrderBy(m => m.CreatedAt))
                 {
+                    _lastMs = Math.Max(_lastMs, msg.CreatedAt.ToUnixTimeMilliseconds());
+                    if (!_seen.Add(msg.Id)) continue; // дубликат — пропускаем
                     AddMessageBubble(msg);
-                    _lastMs = Math.Max(_lastMs,
-                        new DateTimeOffset(msg.CreatedAt.ToUniversalTime()).ToUnixTimeMilliseconds());
+                    added = true;
                 }
-                ScrollToBottom();
+                if (added) ScrollToBottom();
             });
         }
         catch { }

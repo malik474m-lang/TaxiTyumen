@@ -320,8 +320,8 @@
                     </StackLayout>
                 </Border>
 
-                <!-- Сортировка -->
-                <HorizontalStackLayout Spacing="8">
+                <!-- Сортировка (перенос на маленьких экранах) -->
+                <FlexLayout Wrap="Wrap" RowGap="8" ColumnGap="8">
                     <Button x:Name="FleetChatBtn"
                             Text="Чат автопарка"
                             BackgroundColor="#2196F3"
@@ -354,7 +354,7 @@
                             HeightRequest="34"
                             FontSize="12"
                             Clicked="OnSortExpensive"/>
-                </HorizontalStackLayout>
+                </FlexLayout>
 
                 <!-- Пусто -->
                 <Border x:Name="NoOrdersPanel"

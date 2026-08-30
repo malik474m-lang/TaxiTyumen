@@ -105,7 +105,7 @@ function delMsg(id,btn){
   var fd=new FormData();fd.append('id',id);fd.append('ajax','1');
   fetch('fleet-chat.php',{method:'POST',body:fd,credentials:'same-origin'})
     .then(function(r){return r.json()})
-    .then(function(d){if(d&&d.ok){var el=list.querySelector('[data-id="'+id+'"]');if(el)el.remove();updateCount();}})
+    .then(function(d){if(d&&d.ok){list.querySelectorAll('[data-id="'+id+'"]').forEach(function(e){e.remove()});updateCount();}})
     .catch(function(){});
 }
 appendAll(initial);
