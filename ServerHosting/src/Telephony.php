@@ -212,7 +212,15 @@ final class Telephony
             'ok' => $ok,
             'balance' => $balance,
             'durationMs' => $duration,
-            'message' => $ok ? 'Телефония доступна' : 'Ошибка запроса к API телефонии',
+            'message' => $ok
+                ? 'Телефония доступна'
+                : ($code === 0
+                    ? 'Нет соединения с API телефонии: ' . mb_substr($raw, 0, 200)
+                    : ($code === 401 || $code === 403
+                        ? 'Неверный API-токен или Client ID (HTTP ' . $code . ')'
+                        : ($code === 404
+                            ? 'Адрес метода неверный (HTTP 404) — нажмите «Диагностика подключения»'
+                            : 'Ошибка API телефонии, HTTP ' . $code))),
             'response' => mb_substr($raw, 0, 800),
         ];
     }
@@ -273,27 +281,74 @@ final class Telephony
         return $digits;
     }
 
-    private static function request(array $s, string $path, string $method, ?array $payload = null): array
+    /** Заголовки авторизации Plusofon: Bearer-токен + идентификатор приложения. */
+    private static function authHeaders(array $s): array
     {
-        $url = rtrim((string) $s['base_url'], '/') . '/' . ltrim($path, '/');
         $headers = [
-            'Authorization: Bearer ' . $s['api_token'],
+            'Authorization: Bearer ' . trim((string) $s['api_token']),
             'Accept: application/json',
             'User-Agent: TaxiService/1.0',
         ];
-        if (trim((string) $s['client_id']) !== '') {
-            // Plusofon идентифицирует приложение отдельным заголовком
-            $headers[] = 'Client: ' . $s['client_id'];
-            $headers[] = 'Client-ID: ' . $s['client_id'];
+        $client = trim((string) ($s['client_id'] ?? ''));
+        if ($client !== '') {
+            $headers[] = 'Client: ' . $client;      // основной заголовок Plusofon
+            $headers[] = 'Client-ID: ' . $client;   // совместимость со старым форматом
         }
+        return $headers;
+    }
+
+    /**
+     * HTTP-запрос к API телефонии. cURL — основной транспорт (работает на
+     * хостингах с выключенным allow_url_fopen), file_get_contents — резерв.
+     * Возвращает [httpCode, body]; при сетевой ошибке code=0 и текст причины.
+     */
+    private static function request(array $s, string $path, string $method, ?array $payload = null): array
+    {
+        $url = rtrim((string) $s['base_url'], '/') . '/' . ltrim($path, '/');
+        $headers = self::authHeaders($s);
+
         $body = null;
         if ($payload !== null) {
             $body = json_encode($payload, JSON_UNESCAPED_UNICODE);
             $headers[] = 'Content-Type: application/json';
+        }
+
+        // ── cURL ────────────────────────────────────────────────────────────
+        if (function_exists('curl_init')) {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CUSTOMREQUEST => strtoupper($method),
+                CURLOPT_HTTPHEADER => $headers,
+                CURLOPT_TIMEOUT => 15,
+                CURLOPT_CONNECTTIMEOUT => 8,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
+            ]);
+            if ($body !== null) {
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+            }
+            $raw = curl_exec($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            $err = curl_error($ch);
+            curl_close($ch);
+
+            if ($raw === false) {
+                return [0, 'Сеть недоступна: ' . ($err !== '' ? $err : 'curl error')];
+            }
+            return [$code, (string) $raw];
+        }
+
+        // ── Резерв: file_get_contents ───────────────────────────────────────
+        if (!ini_get('allow_url_fopen')) {
+            return [0, 'На хостинге нет cURL и выключен allow_url_fopen — включите один из них в PHP-настройках'];
+        }
+        if ($body !== null) {
             $headers[] = 'Content-Length: ' . strlen($body);
         }
         $ctx = stream_context_create(['http' => [
-            'timeout' => 12,
+            'timeout' => 15,
             'method' => $method,
             'ignore_errors' => true,
             'header' => implode("\r\n", $headers) . "\r\n",
@@ -306,7 +361,77 @@ final class Telephony
                 $code = (int) $m[1];
             }
         }
-        return [$code, $raw !== false ? $raw : 'Ошибка соединения с API телефонии'];
+        if ($raw === false) {
+            return [$code, 'Не удалось соединиться с ' . $url];
+        }
+        return [$code, (string) $raw];
+    }
+
+    /**
+     * Диагностика подключения: перебирает известные базовые адреса и методы
+     * баланса Plusofon и показывает, какая комбинация отвечает 2xx.
+     * Позволяет настроить интеграцию без разработчика.
+     */
+    public static function diagnose(\PDO $db): array
+    {
+        $s = self::settings($db);
+        $token = trim((string) $s['api_token']);
+        $rows = [];
+
+        $env = [
+            'curl' => function_exists('curl_init'),
+            'allowUrlFopen' => (bool) ini_get('allow_url_fopen'),
+            'tokenSet' => $token !== '',
+            'clientIdSet' => trim((string) $s['client_id']) !== '',
+            'callerNumberSet' => trim((string) $s['caller_number']) !== '',
+        ];
+        if ($token === '') {
+            return ['env' => $env, 'rows' => [], 'best' => null,
+                'message' => 'Введите API-токен из личного кабинета Плюсофон и сохраните настройки'];
+        }
+
+        $bases = array_values(array_unique(array_filter([
+            rtrim((string) $s['base_url'], '/'),
+            'https://api.plusofon.ru/rest/v1',
+            'https://restapi.plusofon.ru/api/v1',
+            'https://api.plusofon.ru/api/v1',
+        ])));
+        $paths = array_values(array_unique(array_filter([
+            (string) $s['endpoint_balance'],
+            '/customer/balance',
+            '/account/balance',
+            '/balance',
+        ])));
+
+        $best = null;
+        foreach ($bases as $base) {
+            foreach ($paths as $path) {
+                $probe = $s;
+                $probe['base_url'] = $base;
+                $started = microtime(true);
+                [$code, $raw] = self::request($probe, $path, 'GET');
+                $ms = (int) round((microtime(true) - $started) * 1000);
+                $ok = $code >= 200 && $code < 300;
+                $rows[] = [
+                    'base' => $base,
+                    'path' => $path,
+                    'httpCode' => $code,
+                    'ok' => $ok,
+                    'durationMs' => $ms,
+                    'response' => mb_substr(trim($raw), 0, 220),
+                ];
+                if ($ok && $best === null) {
+                    $best = ['baseUrl' => $base, 'endpointBalance' => $path];
+                }
+            }
+            if ($best !== null) break; // рабочая база найдена — дальше не перебираем
+        }
+
+        $message = $best !== null
+            ? 'Подключение работает: ' . $best['baseUrl'] . $best['endpointBalance']
+            : 'Ни один адрес не ответил успешно — проверьте токен, Client ID и доступ к api.plusofon.ru с хостинга';
+
+        return ['env' => $env, 'rows' => $rows, 'best' => $best, 'message' => $message];
     }
 
     private static function log(

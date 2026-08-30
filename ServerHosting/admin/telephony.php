@@ -6,6 +6,7 @@ require_once __DIR__ . '/_init.php';
 $admin = admin_require($db, 'telephony');
 $error = '';
 $result = null;
+$diag = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
@@ -33,6 +34,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($cmd === 'balance') {
             $result = Telephony::checkBalance($db);
+        }
+
+        if ($cmd === 'diagnose') {
+            $diag = Telephony::diagnose($db);
+            // Если рабочая комбинация найдена — сразу сохраняем её в настройки
+            if (!empty($diag['best'])) {
+                Telephony::update($db, [
+                    'baseUrl' => $diag['best']['baseUrl'],
+                    'endpointBalance' => $diag['best']['endpointBalance'],
+                ]);
+            }
         }
 
         if ($cmd === 'test_call') {
@@ -72,6 +84,33 @@ layout_header('Телефония', 'telephony');
 
 <?php if (!empty($_GET['ok'])): ?><div class="flash" style="margin-top:14px">✓ <?= h((string) $_GET['ok']) ?></div><?php endif; ?>
 <?php if ($error): ?><div class="flash" style="margin-top:14px;border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);color:#fca5a5">Ошибка: <?= h($error) ?></div><?php endif; ?>
+<?php if ($diag): ?>
+<div class="card" style="margin-top:14px">
+  <h3 style="font-weight:900;font-size:15px;margin-bottom:8px">Диагностика подключения</h3>
+  <div class="flex" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
+    <span class="chip <?= $diag['env']['curl'] ? 'ok' : 'bad' ?>">cURL: <?= $diag['env']['curl'] ? 'есть' : 'нет' ?></span>
+    <span class="chip <?= $diag['env']['allowUrlFopen'] ? 'ok' : 'warn' ?>">allow_url_fopen: <?= $diag['env']['allowUrlFopen'] ? 'вкл' : 'выкл' ?></span>
+    <span class="chip <?= $diag['env']['tokenSet'] ? 'ok' : 'bad' ?>">API-токен: <?= $diag['env']['tokenSet'] ? 'задан' : 'нет' ?></span>
+    <span class="chip <?= $diag['env']['clientIdSet'] ? 'ok' : 'warn' ?>">Client ID: <?= $diag['env']['clientIdSet'] ? 'задан' : 'нет' ?></span>
+    <span class="chip <?= $diag['env']['callerNumberSet'] ? 'ok' : 'warn' ?>">Номер АТС: <?= $diag['env']['callerNumberSet'] ? 'задан' : 'нет' ?></span>
+  </div>
+  <div class="<?= !empty($diag['best']) ? 'flash' : 'mut' ?>" style="margin-bottom:10px"><?= h((string) $diag['message']) ?></div>
+  <?php if (!empty($diag['rows'])): ?>
+  <table><thead><tr><th>Адрес</th><th>Метод</th><th>HTTP</th><th>Время</th><th>Ответ</th></tr></thead><tbody>
+    <?php foreach ($diag['rows'] as $r): ?>
+      <tr>
+        <td class="mut" style="font-size:11px"><?= h($r['base']) ?></td>
+        <td class="mut" style="font-size:11px"><?= h($r['path']) ?></td>
+        <td><span class="chip <?= $r['ok'] ? 'ok' : 'bad' ?>"><?= (int) $r['httpCode'] ?></span></td>
+        <td class="mut"><?= (int) $r['durationMs'] ?> мс</td>
+        <td class="mut" style="font-size:11px;max-width:340px;white-space:normal"><?= h($r['response']) ?></td>
+      </tr>
+    <?php endforeach; ?>
+  </tbody></table>
+  <?php endif; ?>
+</div>
+<?php endif; ?>
+
 <?php if ($result): ?>
 <div class="flash" style="margin-top:14px;border-color:rgba(125,211,252,.35);background:rgba(56,189,248,.08);color:#7dd3fc">
   Результат: <b><?= h((string) ($result['status'] ?? ($result['ok'] ?? false ? 'ok' : 'error'))) ?></b>
@@ -172,6 +211,15 @@ layout_header('Телефония', 'telephony');
       <h3 style="margin-bottom:10px">Проверка связи</h3>
       <p class="mut" style="margin-bottom:10px">Запрос баланса подтверждает корректность токена и Base URL.</p>
       <button class="btn ghost" style="width:100%">Проверить баланс</button>
+    </form>
+    <form method="post" class="card" style="margin-top:14px">
+      <input type="hidden" name="cmd" value="diagnose">
+      <h3 style="margin-bottom:10px">Диагностика подключения</h3>
+      <p class="mut" style="margin-bottom:10px">
+        Проверяет cURL на хостинге, токен и перебирает известные адреса Plusofon API.
+        Рабочая комбинация сохраняется в настройки автоматически.
+      </p>
+      <button class="btn" style="width:100%">Проверить и настроить</button>
     </form>
   </div>
 </div>
