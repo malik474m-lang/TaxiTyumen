@@ -4,6 +4,21 @@
 declare(strict_types=1);
 require_once __DIR__ . '/_bootstrap.php';
 
+// Страховка для хостингов с PHP < 8.0 (требование проекта — PHP 8.0+:
+// остальной код может вызывать новые функции, версию лучше поднять в панели хостинга)
+if (!function_exists('str_starts_with')) {
+    function str_starts_with(string $haystack, string $needle): bool
+    {
+        return $needle === '' || strncmp($haystack, $needle, strlen($needle)) === 0;
+    }
+}
+if (!function_exists('str_ends_with')) {
+    function str_ends_with(string $haystack, string $needle): bool
+    {
+        return $needle === '' || substr($haystack, -strlen($needle)) === $needle;
+    }
+}
+
 $route = trim((string) ($_GET['route'] ?? ''), '/');
 $routeLower = strtolower($route);
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
