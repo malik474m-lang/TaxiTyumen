@@ -101,20 +101,36 @@ public class ApiService
         await _http.PostAsync($"orders/{orderId}/complete", null);
     }
 
-    /// Простой: запуск/остановка. Возвращает успех и актуальный заказ с сервера.
-    public async Task<(bool Ok, OrderResponse? Order)> SetOrderWaitingAsync(Guid orderId, Guid driverId, bool start)
+    /// Простой: запуск/остановка.
+    /// Возвращает успех, текст ошибки сервера (если есть) и актуальный заказ.
+    public async Task<(bool Ok, string? Error, OrderResponse? Order)> SetOrderWaitingAsync(
+        Guid orderId, Guid driverId, bool start)
     {
         var action = start ? "waiting-start" : "waiting-stop";
         var resp = await _http.PostAsync($"orders/{orderId}/{action}?driverId={driverId}", null);
-        if (!resp.IsSuccessStatusCode) return (false, null);
+        var raw = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(raw);
+                var err = doc.RootElement.TryGetProperty("error", out var e)
+                    ? e.GetString() : null;
+                return (false, err ?? $"HTTP {(int)resp.StatusCode}", null);
+            }
+            catch
+            {
+                return (false, $"HTTP {(int)resp.StatusCode}", null);
+            }
+        }
         try
         {
-            var order = await resp.Content.ReadFromJsonAsync<OrderResponse>(_json);
-            return (true, order);
+            var order = System.Text.Json.JsonSerializer.Deserialize<OrderResponse>(raw, _json);
+            return (true, null, order);
         }
         catch
         {
-            return (true, null);
+            return (true, null, null);
         }
     }
 

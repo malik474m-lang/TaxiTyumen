@@ -807,11 +807,12 @@ public partial class MainDriverPage : ContentPage
         try
         {
             var start = !_activeOrder.WaitingActive;
-            var (ok, fresh) = await _api.SetOrderWaitingAsync(_activeOrder.Id, _auth.DriverId.Value, start);
+            var (ok, serverError, fresh) = await _api.SetOrderWaitingAsync(_activeOrder.Id, _auth.DriverId.Value, start);
             if (!ok)
             {
+                // Показываем точную причину отказа от сервера — быстрее найти проблему
                 await DisplayAlert("Простой",
-                    "Не удалось изменить простой. Он доступен после нажатия «Я на месте» и во время поездки.",
+                    serverError ?? "Не удалось изменить простой. Он доступен после нажатия «Я на месте» и во время поездки.",
                     "OK");
                 return;
             }
