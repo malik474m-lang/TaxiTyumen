@@ -42,6 +42,20 @@
                    IsVisible="False"/>
 
             <!-- Кнопки управления заказом поверх полноэкранной карты -->
+            <!-- SOS поверх полноэкранной карты — всегда доступен -->
+            <Button Text="SOS"
+                    BackgroundColor="#DC2626"
+                    TextColor="White"
+                    FontAttributes="Bold"
+                    FontSize="14"
+                    CornerRadius="24"
+                    HeightRequest="48"
+                    WidthRequest="72"
+                    Margin="12,12,72,0"
+                    HorizontalOptions="End"
+                    VerticalOptions="Start"
+                    Clicked="OnSosClicked"/>
+
             <Grid VerticalOptions="End" Margin="12"
                   ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
                 <Button Grid.Column="0" x:Name="FsStatusBtn"
@@ -260,6 +274,19 @@
                         <Grid x:Name="MapContainer" HeightRequest="340" IsVisible="False">
                             <WebView x:Name="RouteMap"
                                      BackgroundColor="#1E1E2E"/>
+
+                            <Button Text="SOS"
+                                    BackgroundColor="#CCDC2626"
+                                    TextColor="White"
+                                    FontAttributes="Bold"
+                                    FontSize="13"
+                                    CornerRadius="21"
+                                    HeightRequest="42"
+                                    WidthRequest="64"
+                                    Margin="60,8,0,0"
+                                    HorizontalOptions="Start"
+                                    VerticalOptions="Start"
+                                    Clicked="OnSosClicked"/>
 
                             <Button x:Name="MapExpandBtn"
                                     Text="⛶"
