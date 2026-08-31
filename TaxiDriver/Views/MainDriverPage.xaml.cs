@@ -807,7 +807,7 @@ public partial class MainDriverPage : ContentPage
         try
         {
             var start = !_activeOrder.WaitingActive;
-            var ok = await _api.SetOrderWaitingAsync(_activeOrder.Id, _auth.DriverId.Value, start);
+            var (ok, fresh) = await _api.SetOrderWaitingAsync(_activeOrder.Id, _auth.DriverId.Value, start);
             if (!ok)
             {
                 await DisplayAlert("Простой",
@@ -815,10 +815,20 @@ public partial class MainDriverPage : ContentPage
                     "OK");
                 return;
             }
-            _activeOrder.WaitingActive = start;
-            _activeOrder.WaitingStartedAt = start ? DateTimeOffset.UtcNow : null;
+            // Сервер — единственный источник истины: применяем его подсчёт времени
+            if (fresh != null)
+            {
+                _activeOrder.WaitingActive = fresh.WaitingActive;
+                _activeOrder.WaitingStartedAt = fresh.WaitingStartedAt;
+                _activeOrder.WaitingSeconds = fresh.WaitingSeconds;
+            }
+            else
+            {
+                _activeOrder.WaitingActive = start;
+                _activeOrder.WaitingStartedAt = start ? DateTimeOffset.UtcNow : null;
+            }
             UpdateWaitingUi(_activeOrder);
-            if (start) EnsureWaitingTimer();
+            if (_activeOrder.WaitingActive) EnsureWaitingTimer();
         }
         catch (Exception ex)
         {

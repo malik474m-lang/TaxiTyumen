@@ -101,11 +101,21 @@ public class ApiService
         await _http.PostAsync($"orders/{orderId}/complete", null);
     }
 
-    public async Task<bool> SetOrderWaitingAsync(Guid orderId, Guid driverId, bool start)
+    /// Простой: запуск/остановка. Возвращает успех и актуальный заказ с сервера.
+    public async Task<(bool Ok, OrderResponse? Order)> SetOrderWaitingAsync(Guid orderId, Guid driverId, bool start)
     {
         var action = start ? "waiting-start" : "waiting-stop";
         var resp = await _http.PostAsync($"orders/{orderId}/{action}?driverId={driverId}", null);
-        return resp.IsSuccessStatusCode;
+        if (!resp.IsSuccessStatusCode) return (false, null);
+        try
+        {
+            var order = await resp.Content.ReadFromJsonAsync<OrderResponse>(_json);
+            return (true, order);
+        }
+        catch
+        {
+            return (true, null);
+        }
     }
 
     public async Task CancelOrderAsync(Guid orderId, Guid driverId, string reason)
