@@ -19,7 +19,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
             $norm = Auth::normalizePhone($phone);
             // Имитируем заказный вызов: тот же URL/payload, что и в боевом звонке
             $settings = AutoCall::getSettings($db);
-            $message = self::formatMessage($db, (string)($settings['message_template']??''), ['driver_id'=>null,'tariff'=>'economy'], (int)($settings['free_waiting_minutes']??5));
+            $message = ZvonokService::formatMessage($db, (string)($settings['message_template']??''), ['driver_id'=>null,'tariff'=>'economy'], (int)($settings['free_waiting_minutes']??5));
             // надёжно подставим тестовую назначение, если переменные заполнил шаблон
             $message = str_ireplace(['{CarColor}','{CarBrand}','{CarModel}','{LicensePlate}','{FreeWaitingMinutes}'], ['Жёлтый','Kia','Rio','Т888ТЕ72','3'], $message);
             $payloadParams = [
@@ -32,7 +32,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
             if ($speaker !== '') $payloadParams['speaker'] = $speaker;
             $payload = http_build_query($payloadParams);
             $started = microtime(true);
-            [$code, $raw] = self::request('https://zvonok.com/manager/cabapi_external/api/v1/phones/call/', 'POST', $payload, 'application/x-www-form-urlencoded');
+            [$code, $raw] = ZvonokService::request('https://zvonok.com/manager/cabapi_external/api/v1/phones/call/', 'POST', $payload, 'application/x-www-form-urlencoded');
             $duration = (int) round((microtime(true) - $started) * 1000);
             ZvonokService::log($db, 'test', $norm, $code >= 200 && $code < 300 ? 'success' : 'failed', $code, $raw, $duration);
             $result = [
