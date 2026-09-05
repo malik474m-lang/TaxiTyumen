@@ -11,6 +11,40 @@ $s=AutoCall::getSettings($db);
 if($_SERVER['REQUEST_METHOD']==='POST'){
     try{
         $cmd=(string)($_POST['cmd']??'save');
+        if($cmd==='test_call'){
+            $phone=trim((string)($_POST['test_phone']??''));
+            if(!$phone) { throw new RuntimeException('Укажите номер для тестового звонка'); }
+            require_once dirname(__DIR__).'/src/ZvonokService.php';
+            // Проверка Auth::normalizePhone
+            $norm = Auth::normalizePhone($phone);
+            // Имитируем заказный вызов: тот же URL/payload, что и в боевом звонке
+            $settings = AutoCall::getSettings($db);
+            $message = self::formatMessage($db, (string)($settings['message_template']??''), ['driver_id'=>null,'tariff'=>'economy'], (int)($settings['free_waiting_minutes']??5));
+            // надёжно подставим тестовую назначение, если переменные заполнил шаблон
+            $message = str_ireplace(['{CarColor}','{CarBrand}','{CarModel}','{LicensePlate}','{FreeWaitingMinutes}'], ['Жёлтый','Kia','Rio','Т888ТЕ72','3'], $message);
+            $payloadParams = [
+                'public_key'    => $settings['zvonok_api_key'],
+                'phone'         => preg_replace('/\D/','', $norm),
+                'campaign_id'   => $settings['zvonok_campaign_id'],
+                'text'          => $message,
+            ];
+            $speaker = trim((string)($settings['zvonok_speaker'] ?? ''));
+            if ($speaker !== '') $payloadParams['speaker'] = $speaker;
+            $payload = http_build_query($payloadParams);
+            $started = microtime(true);
+            [$code, $raw] = self::request('https://zvonok.com/manager/cabapi_external/api/v1/phones/call/', 'POST', $payload, 'application/x-www-form-urlencoded');
+            $duration = (int) round((microtime(true) - $started) * 1000);
+            ZvonokService::log($db, 'test', $norm, $code >= 200 && $code < 300 ? 'success' : 'failed', $code, $raw, $duration);
+            $result = [
+                'ok' => $code >= 200 && $code < 300,
+                'balance' => null,
+                'message' => $code >= 200 && $code < 300 ? 'Тестовый звонок вышел (посмотрите ЛК Zvonok и свой телефон)' : 'Ошибка тестового звонка, HTTP '.$code,
+            ] + ['_diag' => [
+                'payload' => $payloadParams,
+                'http' => $code,
+                'response' => $raw,
+            ]];
+        }
         if($cmd==='check_balance'){
             $result=ZvonokService::checkBalance($db);
             $s=AutoCall::getSettings($db);
@@ -41,6 +75,13 @@ layout_header('Автодозвон','autocall');
 <p class="mut">Zvonok.com при прибытии + эскалация заказов без водителя</p>
 <?php if(!empty($_GET['ok'])):?><div class="flash" style="margin-top:14px">✓ <?=h((string)$_GET['ok'])?></div><?php endif;?>
 <?php if($error):?><div class="flash" style="margin-top:14px;border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);color:#fca5a5">Ошибка: <?=h($error)?></div><?php endif;?>
+<?php if(isset($result['_diag'])): ?>
+<div class="card" style="margin-top:14px"><h3 style="font-size:14px;margin-bottom:8px">Дно запроса (ответ API)</h3>
+<div class="mut" style="font-size:11px;white-space:pre-wrap">Payload: <?=h(json_encode($result['_diag']['payload'],JSON_UNESCAPED_UNICODE))?>
+
+HTTP <?=h((string)$result['_diag']['http'])?>
+Ответ: <?=h(mb_substr((string)$result['_diag']['response'],0,400))?></div></div>
+<?php endif; ?>
 <?php if($result):?><div class="flash" style="margin-top:14px;border-color:<?=$result['ok']?'rgba(52,211,153,.3)':'rgba(248,113,113,.4)'?>;color:<?=$result['ok']?'#6ee7b7':'#fca5a5'?>"><?=h($result['message'])?> · баланс <?=money((float)($result['balance']??0))?></div><?php endif;?>
 
 <form method="post" class="grid q2" style="margin-top:18px">
@@ -76,5 +117,13 @@ layout_header('Автодозвон','autocall');
 <button class="btn" type="submit" style="grid-column:1/-1">Сохранить все настройки</button>
 </form>
 <form method="post" style="margin-top:10px"><input type="hidden" name="cmd" value="check_balance"><button class="btn ghost">Проверить баланс Zvonok</button></form>
+
+<form method="post" style="margin-top:10px" class="card">
+  <input type="hidden" name="cmd" value="test_call">
+  <h3 style="margin-bottom:8px">Тест звонка</h3>
+  <p class="mut" style="margin-bottom:8px">Отправит звонок со шаблоном из текущих настроек на указанный номер — покажет точный ответ API.</p>
+  <label class="mut" style="display:block;margin-bottom:8px">Номер<input name="test_phone" placeholder="+79..."></label>
+  <button class="btn" style="width:100%">Позвонить тестово</button>
+</form>
 
 <?php layout_footer();

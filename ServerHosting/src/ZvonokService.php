@@ -136,7 +136,7 @@ final class ZvonokService
         return $stmt->fetchColumn() ?: null;
     }
 
-    private static function request(string $url, string $method, ?string $body = null, string $contentType = 'application/json'): array
+    public static function request(string $url, string $method, ?string $body = null, string $contentType = 'application/json'): array
     {
         $headers = "User-Agent: TaxiTyumen/1.0\r\n";
         if ($body !== null) {
@@ -161,7 +161,7 @@ final class ZvonokService
         return [$code, $raw !== false ? $raw : 'Ошибка соединения'];
     }
 
-    private static function log(\PDO $db, string $action, string $summary, string $status, ?int $code, string $response, int $duration): void
+    public static function log(\PDO $db, string $action, string $summary, string $status, ?int $code, string $response, int $duration): void
     {
         try {
             $db->prepare(
