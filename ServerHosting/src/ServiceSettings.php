@@ -19,6 +19,9 @@ final class ServiceSettings
         'center_longitude'  => 65.5272,
         'utc_offset'        => 5,
         'sms_sender_name'   => 'Такси Тюмень',
+        // SMS-оповещения пассажира (0/1)
+        'sms_on_assigned'   => 1,
+        'sms_on_arrived'    => 1,
     ];
 
     public static function ensureTable(\PDO $db): void
@@ -35,9 +38,28 @@ final class ServiceSettings
                 center_longitude DOUBLE NOT NULL,
                 utc_offset INT NOT NULL DEFAULT 5,
                 sms_sender_name VARCHAR(80) NOT NULL,
+                sms_on_assigned TINYINT(1) NOT NULL DEFAULT 1,
+                sms_on_arrived TINYINT(1) NOT NULL DEFAULT 1,
                 updated_at DATETIME NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
         );
+        // Миграция уже установленных баз
+        foreach ([
+            'sms_on_assigned' => "TINYINT(1) NOT NULL DEFAULT 1 AFTER sms_sender_name",
+            'sms_on_arrived'  => "TINYINT(1) NOT NULL DEFAULT 1 AFTER sms_on_assigned",
+        ] as $column => $definition) {
+            try {
+                $exists = $db->prepare(
+                    'SELECT COUNT(*) FROM information_schema.columns
+                     WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?'
+                );
+                $exists->execute(['service_settings', $column]);
+                if ((int) $exists->fetchColumn() === 0) {
+                    $db->exec("ALTER TABLE service_settings ADD COLUMN `$column` $definition");
+                }
+            } catch (\Throwable) {
+            }
+        }
     }
 
     public static function get(\PDO $db): array
@@ -51,8 +73,9 @@ final class ServiceSettings
             $db->prepare(
                 'INSERT INTO service_settings
                  (id,service_name,city_name,region_name,region_code,support_phone,
-                  center_latitude,center_longitude,utc_offset,sms_sender_name)
-                 VALUES (?,?,?,?,?,?,?,?,?,?)'
+                  center_latitude,center_longitude,utc_offset,sms_sender_name,
+                  sms_on_assigned,sms_on_arrived)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
             )->execute(array_merge([Db::uuid()], array_values(self::DEFAULTS)));
             $row = $db->query('SELECT * FROM service_settings LIMIT 1')->fetch();
         }
@@ -75,6 +98,12 @@ final class ServiceSettings
         $centerLng = (float) ($fields['centerLng'] ?? $current['center_longitude']);
         $utcOffset = max(-11, min(13, (int) ($fields['utcOffset'] ?? $current['utc_offset'])));
         $smsName = trim((string) ($fields['smsSenderName'] ?? $current['sms_sender_name'])) ?: $name;
+        $smsAssigned = array_key_exists('smsOnAssigned', $fields)
+            ? (!empty($fields['smsOnAssigned']) ? 1 : 0)
+            : (int) ($current['sms_on_assigned'] ?? 1);
+        $smsArrived = array_key_exists('smsOnArrived', $fields)
+            ? (!empty($fields['smsOnArrived']) ? 1 : 0)
+            : (int) ($current['sms_on_arrived'] ?? 1);
 
         if ($centerLat < -90 || $centerLat > 90 || $centerLng < -180 || $centerLng > 180) {
             throw new RuntimeException('Координаты центра вне допустимого диапазона');
@@ -83,12 +112,12 @@ final class ServiceSettings
         $db->prepare(
             'UPDATE service_settings SET service_name=?,city_name=?,region_name=?,region_code=?,
              support_phone=?,center_latitude=?,center_longitude=?,utc_offset=?,sms_sender_name=?,
-             updated_at=? WHERE id=?'
+             sms_on_assigned=?,sms_on_arrived=?,updated_at=? WHERE id=?'
         )->execute([
             mb_substr($name, 0, 80), mb_substr($city, 0, 80), mb_substr($region, 0, 120),
             mb_substr($regionCode, 0, 10), $phone !== '' ? mb_substr($phone, 0, 30) : null,
             $centerLat, $centerLng, $utcOffset, mb_substr($smsName, 0, 80),
-            Db::utcNow(), $current['id'],
+            $smsAssigned, $smsArrived, Db::utcNow(), $current['id'],
         ]);
 
         self::$cache = null;
@@ -105,6 +134,8 @@ final class ServiceSettings
     public static function toDto(array $s): array
     {
         return [
+            'smsOnAssigned'  => (bool) ($s['sms_on_assigned'] ?? true),
+            'smsOnArrived'   => (bool) ($s['sms_on_arrived'] ?? true),
             'serviceName'    => $s['service_name'],
             'city'           => $s['city_name'],
             'region'         => $s['region_name'],

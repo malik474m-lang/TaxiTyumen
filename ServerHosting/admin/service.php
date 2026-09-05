@@ -18,7 +18,11 @@ $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
-        ServiceSettings::update($db, $_POST);
+        // Чекбоксы: невыставленные в POST не приходят — передаём явно
+        $payload = $_POST;
+        $payload['smsOnAssigned'] = !empty($_POST['smsOnAssigned']);
+        $payload['smsOnArrived'] = !empty($_POST['smsOnArrived']);
+        ServiceSettings::update($db, $payload);
         Bus::publish('branding');
         header('Location: service.php?ok=' . urlencode('Бренд сервиса сохранён — применён во всех приложениях'));
         exit;
@@ -57,6 +61,20 @@ layout_header('Бренд сервиса', 'service');
     <label class="mut" style="margin-top:10px">Телефон поддержки<input name="supportPhone" value="<?= h((string) $s['support_phone']) ?>" maxlength="30"></label>
     <label class="mut" style="margin-top:10px">Подпись в SMS<input name="smsSenderName" value="<?= h($s['sms_sender_name']) ?>" maxlength="80"></label>
     <div class="mut" style="font-size:11px;margin-top:6px">Пример: «1234 — ваш код <?= h($s['sms_sender_name']) ?>»</div>
+
+    <h3 style="font-weight:900;font-size:15px;margin:18px 0 8px">SMS-оповещения пассажира</h3>
+    <label class="mut" style="display:flex;gap:8px;align-items:center;margin-top:8px">
+      <input type="checkbox" name="smsOnAssigned" value="1" <?= !empty($s['sms_on_assigned']) ? 'checked' : '' ?>>
+      Назначен автомобиль (марка, цвет, госномер, время подачи)
+    </label>
+    <label class="mut" style="display:flex;gap:8px;align-items:center;margin-top:8px">
+      <input type="checkbox" name="smsOnArrived" value="1" <?= !empty($s['sms_on_arrived']) ? 'checked' : '' ?>>
+      Автомобиль подан («Вас ожидает автомобиль…», бесплатное ожидание)
+    </label>
+    <div class="mut" style="font-size:11px;margin-top:6px">
+      Требуется SMS_API_ID (sms.ru) в config.local.php. Время бесплатного ожидания
+      берётся из тарифа заказа (раздел «Тарифы» → «Простой бесплатно, мин»).
+    </div>
   </div>
 
   <div class="card">

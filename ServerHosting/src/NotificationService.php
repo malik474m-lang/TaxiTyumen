@@ -133,26 +133,67 @@ final class NotificationService
     {
         if (!$order['client_id']) return;
         $driver = self::driverPayload($db, $order['driver_id']);
+        // Расчётное время подачи по расстоянию водитель → точка подачи
+        $eta = null;
+        if ($driver && isset($driver['latitude'], $driver['longitude'])) {
+            $km = Taxi::getDistanceKm(
+                (float) $driver['latitude'], (float) $driver['longitude'],
+                (float) $order['pickup_latitude'], (float) $order['pickup_longitude']
+            );
+            $eta = max(2, (int) ceil($km / 0.4)); // ~24 км/ч по городу
+        }
+
+        $text = $driver
+            ? sprintf(
+                '%s %s, номер %s%s',
+                $driver['carColor'], $driver['carModel'], $driver['licensePlate'],
+                $eta ? sprintf('. Подача ~%d мин', $eta) : ''
+            )
+            : 'Водитель принял ваш заказ';
+
         self::create(
             $db, $order['client_id'], 'OrderStatusChanged', 'Водитель назначен',
-            $driver
-                ? sprintf('%s, %s %s · %s', $driver['name'], $driver['carColor'], $driver['carModel'], $driver['licensePlate'])
-                : 'Водитель принял ваш заказ',
-            $order['id'], ['status' => 'DriverAssigned', 'driver' => $driver]
+            $text,
+            $order['id'], ['status' => 'DriverAssigned', 'driver' => $driver, 'etaMinutes' => $eta]
         );
+
+        if ($driver) {
+            self::smsToClient(
+                $db, $order,
+                sprintf(
+                    'Заказ принят. %s %s, гос. номер %s%s. Водитель: %s.',
+                    $driver['carColor'], $driver['carModel'], $driver['licensePlate'],
+                    $eta ? sprintf(', подача ~%d мин', $eta) : '',
+                    $driver['name']
+                ),
+                'sms_on_assigned'
+            );
+        }
     }
 
     public static function notifyClientDriverArrived(\PDO $db, array $order): void
     {
         if (!$order['client_id']) return;
         $driver = self::driverPayload($db, $order['driver_id']);
+        $freeMin = self::freeWaitMinutes($db, $order);
+        $text = $driver
+            ? sprintf(
+                'Вас ожидает автомобиль: %s %s %s, гос. номер %s. Бесплатное ожидание %d мин.',
+                $driver['carColor'], $driver['carBrand'] ?? '', $driver['carModel'],
+                $driver['licensePlate'], $freeMin
+            )
+            : 'Водитель ожидает вас в точке подачи.';
+        $text = preg_replace('/\s+/u', ' ', $text);
+
         self::create(
             $db, $order['client_id'], 'DriverArrivedNotification', 'Ваше такси прибыло',
-            $driver
-                ? sprintf('%s %s, номер %s. Бесплатное ожидание 5 минут.', $driver['carColor'], $driver['carModel'], $driver['licensePlate'])
-                : 'Водитель ожидает вас в точке подачи.',
-            $order['id'], ['status' => 'DriverArrived', 'driver' => $driver]
+            $text,
+            $order['id'], ['status' => 'DriverArrived', 'driver' => $driver, 'freeWaitingMinutes' => $freeMin]
         );
+
+        if ($driver) {
+            self::smsToClient($db, $order, $text, 'sms_on_arrived');
+        }
     }
 
     public static function notifyClientTripCompleted(\PDO $db, array $order): void
@@ -222,6 +263,48 @@ final class NotificationService
             'createdAt' => $order['created_at'],
             'status' => $order['status'],
         ];
+    }
+
+    /** Телефон пассажира: из профиля клиента либо из операторского заказа. */
+    private static function clientPhone(\PDO $db, array $order): ?string
+    {
+        $phone = trim((string) ($order['client_phone'] ?? ''));
+        if ($phone !== '') return $phone;
+        if (empty($order['client_id'])) return null;
+        $stmt = $db->prepare('SELECT phone FROM users WHERE id = ? LIMIT 1');
+        $stmt->execute([$order['client_id']]);
+        $found = $stmt->fetchColumn();
+        return $found ? (string) $found : null;
+    }
+
+    /**
+     * SMS пассажиру о статусе заказа. Управляется настройками сервиса
+     * (sms_on_assigned / sms_on_arrived) — админ включает нужные события.
+     */
+    private static function smsToClient(\PDO $db, array $order, string $text, string $settingKey): void
+    {
+        try {
+            $settings = ServiceSettings::get($db);
+            if ((int) ($settings[$settingKey] ?? 0) !== 1) return;
+            $phone = self::clientPhone($db, $order);
+            if (!$phone) return;
+            SmsService::send($db, $phone, $text);
+        } catch (\Throwable) {
+            // SMS не должна ломать основной сценарий заказа
+        }
+    }
+
+    /** Свободное ожидание по тарифу заказа (минуты). */
+    private static function freeWaitMinutes(\PDO $db, array $order): int
+    {
+        try {
+            $stmt = $db->prepare('SELECT free_waiting_minutes FROM tariffs WHERE type = ? LIMIT 1');
+            $stmt->execute([$order['tariff'] ?? 'economy']);
+            $v = $stmt->fetchColumn();
+            return $v === false ? 3 : (int) round((float) $v);
+        } catch (\Throwable) {
+            return 3;
+        }
     }
 
     private static function driverPayload(\PDO $db, ?string $driverId): ?array
