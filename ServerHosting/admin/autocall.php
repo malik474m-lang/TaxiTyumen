@@ -20,7 +20,13 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
             // Имитируем заказный вызов для ПЕРВОГО водителя — переменные шаблона заполнятся реально
             $settings = AutoCall::getSettings($db);
             $testOrder = ['driver_id'=>null,'tariff'=>'economy','order_number'=>'TEST00001','client_id'=>null,'client_phone'=>$norm];
-            $firstDriver = $db->query("SELECT id FROM drivers ORDER BY order_number IS NULL, created_at LIMIT 1")->fetchColumn();
+            $firstDriver = $db->query(
+                "SELECT d.id FROM drivers d
+                 JOIN users u ON u.id = d.user_id
+                 WHERE u.is_active = 1 AND u.is_blocked = 0
+                 ORDER BY d.is_verified DESC, u.created_at ASC
+                 LIMIT 1"
+            )->fetchColumn();
             if ($firstDriver) $testOrder['driver_id'] = $firstDriver;
             $message = ZvonokService::formatMessage($db, (string)($settings['message_template']??''), $testOrder, (int)($settings['free_waiting_minutes']??5));
             $payloadParams = [
