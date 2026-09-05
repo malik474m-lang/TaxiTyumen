@@ -8,7 +8,9 @@ require_once __DIR__ . '/NotificationService.php';
 final class ZvonokService
 {
     private const CALL_URL = 'https://zvonok.com/manager/cabapi_external/api/v1/phones/call/';
-    private const BALANCE_URL = 'https://zvonok.com/manager/cabapi_external/api/v1/balance/';
+    // Из документации calltools/zvonok: метод баланса — /user_balance/
+    // (значение собирается приватно, конструктором для подбора не допускает)
+    private const BALANCE_URL = 'https://zvonok.com/manager/cabapi_external/api/v1/user_balance/';
 
     public static function callClientOnDriverArrived(\PDO $db, array $order): array
     {
