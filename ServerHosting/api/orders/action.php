@@ -141,11 +141,15 @@ switch ($action) {
     }
 
     case 'arrived': {
+        $wasArrived = !empty($order['driver_arrived_at']);
         $db->prepare("UPDATE orders SET status = 'driver_arrived', driver_arrived_at = ? WHERE id = ?")
             ->execute([Db::utcNow(), $id]);
         $fresh = $load();
         NotificationService::notifyClientDriverArrived($db, $fresh);
-        ZvonokService::callClientOnDriverArrived($db, $fresh);
+        // Автообзвон звонит О�ДИН раз: повторное нажатие «Я на месте» не спамит клиента
+        if (!$wasArrived) {
+            ZvonokService::callClientOnDriverArrived($db, $fresh);
+        }
         // Телефония: соединить клиента с водителем при прибытии (если включено)
         try {
             $tel = Telephony::settings($db);
