@@ -34,6 +34,19 @@ final class ZvonokService
             return ['status' => 'failed', 'message' => 'Телефон клиента не найден'];
         }
 
+        // Анти-дубль: Zvonok отклоняет звонки с duplicate_in_process, если номер уже на обзвоне.
+        // Ограничиваем повторный вызов одного и того же номера в течение 2 минут.
+        $recent = $db->prepare(
+            "SELECT COUNT(*) FROM service_call_logs
+             WHERE service='zvonok' AND action='call' AND summary LIKE ? AND created_at > ?"
+        );
+        $recent->execute(['%' . $phone . '%', gmdate('Y-m-d H:i:s', time() - 120)]);
+        if ((int) $recent->fetchColumn() > 0) {
+            self::log($db, 'call', $order['order_number'] . ' / ' . $phone, 'skipped', null,
+                'Дубль для Zvonok: на этот номер уже звонили менее 2 минут назад', 0);
+            return ['status' => 'skipped', 'message' => $message];
+        }
+
         $payloadParams = [
             'public_key' => $settings['zvonok_api_key'],
             'phone' => preg_replace('/\D/', '', Auth::normalizePhone($phone)),
