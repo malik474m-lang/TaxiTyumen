@@ -118,12 +118,34 @@ HTTP <?=h((string)$result['_diag']['http'])?>
 </form>
 <form method="post" style="margin-top:10px"><input type="hidden" name="cmd" value="check_balance"><button class="btn ghost">Проверить баланс Zvonok</button></form>
 
-<form method="post" style="margin-top:10px" class="card">
+<form method="post" style="margin-top:10px" class="card" onsubmit="event.preventDefault();testCall(this);return false">
   <input type="hidden" name="cmd" value="test_call">
   <h3 style="margin-bottom:8px">Тест звонка</h3>
-  <p class="mut" style="margin-bottom:8px">Отправит звонок со шаблоном из текущих настроек на указанный номер — покажет точный ответ API.</p>
-  <label class="mut" style="display:block;margin-bottom:8px">Номер<input name="test_phone" placeholder="+79..."></label>
-  <button class="btn" style="width:100%">Позвонить тестово</button>
+  <p class="mut" style="margin-bottom:8px">Отправит звонок со шаблоном из текущих настроек — покажет точный ответ API, не затрагивая настройки.</p>
+  <label class="mut" style="display:block;margin-bottom:8px">Номер<input id="testPhone" name="test_phone" placeholder="+79..."></label>
+  <button type="button" onclick="testCall(this.closest('form'))" class="btn" style="width:100%">Позвонить тестово</button>
 </form>
+<script>
+// Тест звонка — AJAX, настройки НЕ сохраняются и не сбрасываются
+function testCall(form){
+  var btn=form.querySelector('.btn');btn.disabled=true;btn.textContent='Звоним…';
+  var fd=new FormData();fd.append('cmd','test_call');fd.append('test_phone',document.getElementById('testPhone').value);
+  var csrf = form.querySelector('input[name="_csrf"]');var csrfVal = csrf ? csrf.value : '';
+  if (csrfVal) fd.append('_csrf', csrfVal);
+  fetch('autocall.php',{method:'POST',body:fd,credentials:'same-origin'})
+    .then(function(r){return r.text()})
+    .then(function(html){
+      // Парсим только блоки результата/диагностики из ответа и вставляем-swagger
+      var tmp=document.createElement('div');tmp.innerHTML=html;
+      var diag=tmp.querySelectorAll('.flash,.card');
+      var target=document.getElementById('testResult');
+      target.innerHTML='';
+      diag.forEach(function(el){if(el.textContent.indexOf('Payload')>=0||el.classList.contains('flash'))target.appendChild(el)});
+      btn.disabled=false;btn.textContent='Позвонить тестово';
+    })
+    .catch(function(){btn.disabled=false;btn.textContent='Позвонить тестово';alert('Ошибка запроса')});
+}
+</script>
+<div id="testResult"></div>
 
 <?php layout_footer();
