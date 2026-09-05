@@ -8,8 +8,7 @@ require_once __DIR__ . '/NotificationService.php';
 final class ZvonokService
 {
     private const CALL_URL = 'https://zvonok.com/manager/cabapi_external/api/v1/phones/call/';
-    // Из документации calltools/zvonok: метод баланса — /user_balance/
-    // (значение собирается приватно, конструктором для подбора не допускает)
+    private const CALL_STATUS_URL = 'https://zvonok.com/manager/cabapi_external/api/v1/phones/call_by_id/';
     // Из официальной документации (https://api.zvonok.com, раздел «Баланс»):
     // GET /manager/cabapi_external/api/v1/users/balance/?public_key=...
     private const BALANCE_URL = 'https://zvonok.com/manager/cabapi_external/api/v1/users/balance/';
@@ -95,6 +94,113 @@ final class ZvonokService
             'durationMs' => $duration,
             'response' => mb_substr($raw, 0, 1000),
         ];
+    }
+
+    /**
+     * Фактический статус звонка после постановки в очередь Zvonok.
+     * HTTP 200 при создании означает только «принят»; dial_status показывает доставку.
+     */
+    public static function checkCallStatus(\PDO $db, string $callId): array
+    {
+        $settings = AutoCall::getSettings($db);
+        if (empty($settings['zvonok_api_key'])) {
+            return ['ok' => false, 'message' => 'Ключ Zvonok не настроен'];
+        }
+        $url = self::CALL_STATUS_URL
+            . '?public_key=' . urlencode((string) $settings['zvonok_api_key'])
+            . '&call_id=' . urlencode($callId)
+            . '&expand=1';
+        $started = microtime(true);
+        [$code, $raw] = self::request($url, 'GET');
+        $duration = (int) round((microtime(true) - $started) * 1000);
+        $json = json_decode($raw, true);
+
+        // V1 возвращает список даже при запросе одного call_id.
+        $call = null;
+        if (is_array($json)) {
+            if (isset($json[0]) && is_array($json[0])) $call = $json[0];
+            elseif (isset($json['data'][0]) && is_array($json['data'][0])) $call = $json['data'][0];
+            elseif (isset($json['call_id'])) $call = $json;
+        }
+        $ok = $code >= 200 && $code < 300 && is_array($call);
+        self::log($db, 'status', 'call_id ' . $callId, $ok ? 'success' : 'failed', $code, $raw, $duration);
+        if (!$ok) {
+            return [
+                'ok' => false,
+                'httpCode' => $code,
+                'message' => self::errorReason($raw) ?? 'Не удалось получить статус звонка',
+                'response' => mb_substr($raw, 0, 1000),
+            ];
+        }
+
+        $dial = isset($call['dial_status']) ? (int) $call['dial_status'] : null;
+        $attempts = isset($call['attempts']) && is_array($call['attempts'])
+            ? $call['attempts']
+            : [];
+        $attempt = $attempts ? end($attempts) : null;
+        return [
+            'ok' => true,
+            'callId' => (string) ($call['call_id'] ?? $callId),
+            'phone' => (string) ($call['phone'] ?? ''),
+            'status' => (string) ($call['status'] ?? ''),
+            'dialStatus' => $dial,
+            'dialStatusText' => self::dialStatusText($dial),
+            'duration' => (int) ($call['duration'] ?? 0),
+            'completed' => $call['completed'] ?? null,
+            'cost' => is_array($attempt) ? ($attempt['cost'] ?? null) : null,
+            'recordedAudio' => is_array($attempt) ? ($attempt['recorded_audio'] ?? null) : null,
+            'message' => self::dialStatusText($dial),
+        ];
+    }
+
+    /** Последний call_id, сохранённый в ответе API (боевой или тестовый звонок). */
+    public static function latestCallId(\PDO $db): ?string
+    {
+        try {
+            $rows = $db->query(
+                "SELECT response_body FROM service_call_logs
+                 WHERE service='zvonok' AND action IN ('call','test') AND status='success'
+                 ORDER BY created_at DESC LIMIT 20"
+            )->fetchAll();
+            foreach ($rows as $row) {
+                $json = json_decode((string) ($row['response_body'] ?? ''), true);
+                if (is_array($json) && !empty($json['call_id'])) return (string) $json['call_id'];
+                if (is_array($json) && !empty($json['data']['call_id'])) return (string) $json['data']['call_id'];
+            }
+        } catch (\Throwable) {
+        }
+        return null;
+    }
+
+    public static function dialStatusText(?int $code): string
+    {
+        return [
+            0 => 'Ожидает вызова',
+            1 => 'Ошибка вызова абонента',
+            2 => 'Абонент сбросил звонок',
+            3 => 'Не дозвонились (таймаут)',
+            4 => 'Абонент занят',
+            5 => 'Абонент ответил',
+            6 => 'Ответил автоответчик',
+            7 => 'Ответил автоответчик',
+            8 => 'Некорректная кнопка',
+            9 => 'Неизвестный статус',
+            10 => 'Ролик завершён без действия',
+            11 => 'Пользовательский стоп-лист',
+            12 => 'Глобальный стоп-лист',
+            13 => 'Ответил, но разговор слишком короткий',
+            14 => 'Номер совпадает с Caller ID',
+            15 => 'Номер удалён из обзвона',
+            18 => 'Внутренняя ошибка Zvonok',
+            23 => 'Попытка остановлена из-за отрицательного баланса',
+            24 => 'Не найден телефонный транк',
+            25 => 'Не найден исходящий номер',
+            26 => 'Направление заблокировано',
+            29 => 'Не найден провайдер для звонка',
+            30 => 'Истекло время жизни звонка',
+            31 => 'Попытки закончились',
+            35 => 'Дублирующий звонок',
+        ][$code ?? -1] ?? ('Статус Zvonok: ' . ($code ?? 'неизвестен'));
     }
 
     public static function formatMessage(\PDO $db, string $template, array $order, int $freeMinutes): string

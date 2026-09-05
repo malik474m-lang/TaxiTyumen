@@ -6,6 +6,7 @@ require_once __DIR__ . '/_init.php';
 admin_require($db, 'autocall');
 $error='';
 $result=null;
+$callStatus=null;
 $s=AutoCall::getSettings($db);
 
 if($_SERVER['REQUEST_METHOD']==='POST'){
@@ -50,13 +51,22 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
                     ? 'Тестовый звонок отправлен в очередь (Zvonok принял). Смотрите телефон и ЛК Zvonок → Статистика → Звонки'
                     : 'Ошибка тестового звонка, HTTP '.$code.($reason ? ': '.$reason : ''),
             ] + ['_diag' => [
-                'payload' => array_merge($payloadParams, ['public_key' => '***' . substr((string) $payloadParams['public_key'], -4)]),
+                'payload' => array_merge($payloadParams, [
+                    'public_key' => empty($payloadParams['public_key'])
+                        ? ''
+                        : '***' . substr((string) $payloadParams['public_key'], -4),
+                ]),
                 'http' => $code,
                 'response' => $raw,
             ]];
         } elseif ($cmd === 'check_balance') {
             $result=ZvonokService::checkBalance($db);
             $s=AutoCall::getSettings($db);
+        } elseif ($cmd === 'check_call_status') {
+            $callId = trim((string) ($_POST['call_id'] ?? ''));
+            if ($callId === '') $callId = (string) (ZvonokService::latestCallId($db) ?? '');
+            if ($callId === '') throw new RuntimeException('В журнале ещё нет принятого звонка');
+            $callStatus = ZvonokService::checkCallStatus($db, $callId);
         } else {
             $minutes=max(1,min(60,(int)($_POST['escalate_after_minutes']??3)));
             $radius=max(1,min(30,(float)($_POST['auto_assign_radius_km']??5)));
@@ -78,6 +88,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
 }
 
 $stuckCount=(int)$db->query("SELECT COUNT(*) FROM orders WHERE (status='searching' OR status='no_driver_found') AND driver_id IS NULL")->fetchColumn();
+$latestCallId=ZvonokService::latestCallId($db);
 layout_header('Автодозвон','autocall');
 ?>
 <h1>Автодозвон и распределение</h1>
@@ -91,7 +102,23 @@ layout_header('Автодозвон','autocall');
 HTTP <?=h((string)$result['_diag']['http'])?>
 Ответ: <?=h(mb_substr((string)$result['_diag']['response'],0,400))?></div></div>
 <?php endif; ?>
-<?php if($result):?><div class="flash" style="margin-top:14px;border-color:<?=$result['ok']?'rgba(52,211,153,.3)':'rgba(248,113,113,.4)'?>;color:<?=$result['ok']?'#6ee7b7':'#fca5a5'?>"><?=h($result['message'])?> · баланс <?=money((float)($result['balance']??0))?></div><?php endif;?>
+<?php if($result):?><div class="flash" style="margin-top:14px;border-color:<?=$result['ok']?'rgba(52,211,153,.3)':'rgba(248,113,113,.4)'?>;color:<?=$result['ok']?'#6ee7b7':'#fca5a5'?>"><?=h($result['message'])?><?php if(isset($result['balance']) && $result['balance'] !== null): ?> · баланс <?=money((float)$result['balance'])?><?php endif; ?></div><?php endif;?>
+
+<?php if($callStatus): ?>
+<div class="card" style="margin-top:14px;border-color:<?=$callStatus['ok']?'rgba(56,189,248,.4)':'rgba(248,113,113,.4)'?>">
+  <div class="flex between" style="gap:10px;flex-wrap:wrap">
+    <div><h3 style="font-weight:900">Фактический статус звонка</h3>
+      <div class="mut" style="margin-top:4px">Call ID: <?=h((string)($callStatus['callId']??''))?> · <?=h((string)($callStatus['phone']??''))?></div></div>
+    <span class="chip <?=$callStatus['ok']&&($callStatus['dialStatus']??null)===5?'ok':($callStatus['ok']?'warn':'bad')?>"><?=h((string)($callStatus['dialStatusText']??$callStatus['message']??'Ошибка'))?></span>
+  </div>
+  <?php if($callStatus['ok']): ?>
+    <div style="margin-top:10px">Статус: <b><?=h((string)$callStatus['status'])?></b>
+      · длительность: <b><?=(int)$callStatus['duration']?> сек.</b>
+      <?php if($callStatus['cost']!==null): ?> · стоимость: <b><?=h((string)$callStatus['cost'])?> ₽</b><?php endif; ?></div>
+    <?php if(!empty($callStatus['recordedAudio'])): ?><a class="btn ghost sm" style="margin-top:10px" href="<?=h((string)$callStatus['recordedAudio'])?>" target="_blank" rel="noopener">▶ Прослушать запись разговора</a><?php endif; ?>
+  <?php else: ?><div class="mut" style="margin-top:8px"><?=h((string)($callStatus['response']??$callStatus['message']??''))?></div><?php endif; ?>
+</div>
+<?php endif; ?>
 
 <form method="post" class="grid q2" style="margin-top:18px">
 <input type="hidden" name="cmd" value="save">
@@ -143,6 +170,11 @@ function setNaturalZvonokTemplate(){
 <button class="btn" type="submit" style="grid-column:1/-1">Сохранить все настройки</button>
 </form>
 <form method="post" style="margin-top:10px"><input type="hidden" name="cmd" value="check_balance"><button class="btn ghost">Проверить баланс Zvonok</button></form>
+<form method="post" style="margin-top:10px">
+  <input type="hidden" name="cmd" value="check_call_status">
+  <input type="hidden" name="call_id" value="<?=h((string)($latestCallId??''))?>">
+  <button class="btn ghost">Проверить последний звонок<?= $latestCallId ? ' · '.$latestCallId : '' ?></button>
+</form>
 
 <form method="post" style="margin-top:10px" class="card" onsubmit="event.preventDefault();testCall(this);return false">
   <input type="hidden" name="cmd" value="test_call">
