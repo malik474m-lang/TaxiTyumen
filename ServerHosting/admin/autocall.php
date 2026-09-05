@@ -50,7 +50,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
                     ? 'Тестовый звонок отправлен в очередь (Zvonok принял). Смотрите телефон и ЛК Zvonок → Статистика → Звонки'
                     : 'Ошибка тестового звонка, HTTP '.$code.($reason ? ': '.$reason : ''),
             ] + ['_diag' => [
-                'payload' => $payloadParams,
+                'payload' => array_merge($payloadParams, ['public_key' => '***' . substr((string) $payloadParams['public_key'], -4)]),
                 'http' => $code,
                 'response' => $raw,
             ]];
@@ -85,7 +85,7 @@ layout_header('Автодозвон','autocall');
 <?php if(!empty($_GET['ok'])):?><div class="flash" style="margin-top:14px">✓ <?=h((string)$_GET['ok'])?></div><?php endif;?>
 <?php if($error):?><div class="flash" style="margin-top:14px;border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);color:#fca5a5">Ошибка: <?=h($error)?></div><?php endif;?>
 <?php if(isset($result['_diag'])): ?>
-<div class="card" style="margin-top:14px"><h3 style="font-size:14px;margin-bottom:8px">Дно запроса (ответ API)</h3>
+<div class="card" style="margin-top:14px"><h3 style="font-size:14px;margin-bottom:8px">Диагностика запроса Zvonok</h3>
 <div class="mut" style="font-size:11px;white-space:pre-wrap">Payload: <?=h(json_encode($result['_diag']['payload'],JSON_UNESCAPED_UNICODE))?>
 
 HTTP <?=h((string)$result['_diag']['http'])?>
@@ -117,9 +117,26 @@ HTTP <?=h((string)$result['_diag']['http'])?>
     <?php endforeach; ?>
   </select>
 </label>
+<div class="mut" style="font-size:11px;margin-top:5px">
+  После выбора нажмите «Сохранить все настройки», затем сделайте тестовый звонок.
+  Обычно голос «Максим» отчётливее читает автомобильные данные.
+</div>
 <label class="mut" style="display:block;margin-top:10px">Бесплатное ожидание, мин<input type="number" name="free_waiting_minutes" min="0" max="60" value="<?=(int)($s['free_waiting_minutes']??5)?>"></label>
-<label class="mut" style="display:block;margin-top:10px">Шаблон звонка<textarea name="message_template" rows="5"><?=h((string)($s['message_template']??''))?></textarea></label>
-<div class="mut" style="font-size:11px;margin-top:6px">Переменные: {CarColor}, {CarBrand}, {CarModel}, {LicensePlate}, {FreeWaitingMinutes}, {OrderNumber}, {ClientName}</div>
+<label class="mut" style="display:block;margin-top:10px">Шаблон звонка<textarea id="zvonokMessageTemplate" name="message_template" rows="5"><?=h((string)($s['message_template']??''))?></textarea></label>
+<div class="mut" style="font-size:11px;margin-top:6px">
+  Переменные: {CarColor}, {CarBrand}, {CarModel}, {LicensePlate}, {LicensePlateRaw},
+  {FreeWaitingMinutes}, {FreeWaitingText}, {OrderNumber}, {ClientName}.
+  Для озвучки {LicensePlate} читается фонетически; {LicensePlateRaw} — без обработки.
+</div>
+<button type="button" class="btn ghost" style="width:100%;margin-top:8px" onclick="setNaturalZvonokTemplate()">
+  Установить естественный шаблон
+</button>
+<script>
+function setNaturalZvonokTemplate(){
+  var field=document.getElementById('zvonokMessageTemplate');
+  field.value='Ваше такси прибыло. Вас ожидает {CarColor} {CarBrand} {CarModel}. Государственный номер: {LicensePlate}. Бесплатное ожидание: {FreeWaitingText}.';
+}
+</script>
 <div style="margin-top:10px;padding:10px;background:#0f0f13;border-radius:10px"><span class="mut">Последний баланс:</span> <b style="color:#fde047"><?=money((float)($s['zvonok_balance']??0))?></b><span class="mut"> · <?=h(fmt_date($s['balance_checked_at']??null))?></span></div>
 </div>
 

@@ -100,31 +100,100 @@ final class ZvonokService
     public static function formatMessage(\PDO $db, string $template, array $order, int $freeMinutes): string
     {
         if ($template === '') {
-            $template = 'Ваше такси прибыло! {CarColor} {CarBrand} {CarModel}, номер {LicensePlate}. Бесплатное ожидание: {FreeWaitingMinutes} минут.';
+            $template = 'Ваше такси прибыло. Вас ожидает {CarColor} {CarBrand} {CarModel}. Государственный номер: {LicensePlate}. Бесплатное ожидание: {FreeWaitingMinutes} минут.';
         }
         $driver = null;
-        if ($order['driver_id']) {
+        if (!empty($order['driver_id'])) {
             $stmt = $db->prepare(
                 'SELECT d.*,u.first_name,u.last_name FROM drivers d JOIN users u ON u.id=d.user_id WHERE d.id=? LIMIT 1'
             );
             $stmt->execute([$order['driver_id']]);
             $driver = $stmt->fetch() ?: null;
         }
-        $clientName = $order['client_name'] ?: '';
-        if (!$clientName && $order['client_id']) {
+        $clientName = (string) ($order['client_name'] ?? '');
+        if (!$clientName && !empty($order['client_id'])) {
             $stmt = $db->prepare('SELECT first_name FROM users WHERE id=? LIMIT 1');
             $stmt->execute([$order['client_id']]);
             $clientName = (string) ($stmt->fetchColumn() ?: '');
         }
-        return strtr($template, [
-            '{CarColor}' => $driver['car_color'] ?? '',
-            '{CarBrand}' => $driver['car_brand'] ?? '',
-            '{CarModel}' => $driver['car_model'] ?? '',
-            '{LicensePlate}' => $driver['license_plate'] ?? '',
+
+        $plateRaw = (string) ($driver['license_plate'] ?? '');
+        $brandRaw = (string) ($driver['car_brand'] ?? '');
+        $minutesText = self::minutesText($freeMinutes);
+
+        $message = strtr($template, [
+            '{CarColor}' => (string) ($driver['car_color'] ?? ''),
+            '{CarBrand}' => self::speechCarBrand($brandRaw),
+            '{CarModel}' => (string) ($driver['car_model'] ?? ''),
+            '{LicensePlate}' => self::speechLicensePlate($plateRaw),
+            '{LicensePlateRaw}' => $plateRaw,
             '{FreeWaitingMinutes}' => (string) $freeMinutes,
-            '{OrderNumber}' => (string) $order['order_number'],
+            '{FreeWaitingText}' => $minutesText,
+            '{OrderNumber}' => (string) ($order['order_number'] ?? ''),
             '{ClientName}' => $clientName,
         ]);
+
+        // Старые шаблоны содержат «3 минут» — исправляем склонение автоматически.
+        $message = preg_replace(
+            '/\b' . preg_quote((string) $freeMinutes, '/') . '\s+минут(?:а|ы)?\b/ui',
+            $minutesText,
+            $message
+        ) ?? $message;
+        return trim(preg_replace('/\s+/u', ' ', $message) ?? $message);
+    }
+
+    /** Правильное склонение: 1 минута, 2 минуты, 5 минут. */
+    private static function minutesText(int $minutes): string
+    {
+        $minutes = max(0, $minutes);
+        $mod100 = $minutes % 100;
+        $mod10 = $minutes % 10;
+        if ($mod100 >= 11 && $mod100 <= 14) $word = 'минут';
+        elseif ($mod10 === 1) $word = 'минута';
+        elseif ($mod10 >= 2 && $mod10 <= 4) $word = 'минуты';
+        else $word = 'минут';
+        return $minutes . ' ' . $word;
+    }
+
+    /** Фонетическая запись российского госномера для синтезатора речи. */
+    private static function speechLicensePlate(string $plate): string
+    {
+        $plate = mb_strtoupper(preg_replace('/[^A-ZА-ЯЁ0-9]/u', '', $plate) ?? '', 'UTF-8');
+        if ($plate === '') return 'не указан';
+
+        $letters = [
+            'А'=>'а','В'=>'вэ','Е'=>'е','К'=>'ка','М'=>'эм','Н'=>'эн','О'=>'о',
+            'Р'=>'эр','С'=>'эс','Т'=>'тэ','У'=>'у','Х'=>'ха',
+            'A'=>'а','B'=>'вэ','E'=>'е','K'=>'ка','M'=>'эм','H'=>'эн','O'=>'о',
+            'P'=>'эр','C'=>'эс','T'=>'тэ','Y'=>'у','X'=>'ха',
+        ];
+        $digits = ['0'=>'ноль','1'=>'один','2'=>'два','3'=>'три','4'=>'четыре',
+            '5'=>'пять','6'=>'шесть','7'=>'семь','8'=>'восемь','9'=>'девять'];
+        $chars = preg_split('//u', $plate, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $spoken = [];
+        foreach ($chars as $char) $spoken[] = $digits[$char] ?? $letters[$char] ?? $char;
+
+        if (preg_match('/^[A-ZА-ЯЁ]\d{3}[A-ZА-ЯЁ]{2}(\d{2,3})$/u', $plate, $m)) {
+            $regionLength = strlen($m[1]);
+            $bodyLength = count($spoken) - $regionLength;
+            return implode(' ', array_slice($spoken, 0, $bodyLength))
+                . ', регион ' . implode(' ', array_slice($spoken, $bodyLength));
+        }
+        return implode(' ', $spoken);
+    }
+
+    /** Русское произношение распространённых автомобильных марок. */
+    private static function speechCarBrand(string $brand): string
+    {
+        $map = [
+            'kia'=>'Киа','hyundai'=>'Хёндэ','renault'=>'Рено','volkswagen'=>'Фольксваген',
+            'skoda'=>'Шкода','toyota'=>'Тойота','nissan'=>'Ниссан','chevrolet'=>'Шевроле',
+            'ford'=>'Форд','chery'=>'Чери','haval'=>'Хавейл','geely'=>'Джили','exeed'=>'Эксид',
+            'lada'=>'Лада','mazda'=>'Мазда','mitsubishi'=>'Митсубиси','mercedes'=>'Мерседес',
+            'bmw'=>'Бэ-эм-вэ','audi'=>'Ауди','lexus'=>'Лексус','subaru'=>'Субару',
+        ];
+        $key = mb_strtolower(trim($brand), 'UTF-8');
+        return $map[$key] ?? $brand;
     }
 
     private static function clientPhone(\PDO $db, array $order): ?string
