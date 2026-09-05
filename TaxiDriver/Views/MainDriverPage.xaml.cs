@@ -1143,6 +1143,25 @@ public partial class MainDriverPage : ContentPage
         catch { }
     }
         // ── Тревожная кнопка: подтверждение → отправка координат → оповещение всех ──
+    /// Выход из аккаунта: чистим сохранённую сессию и возвращаемся на вход
+    private async void OnLogoutClicked(object? sender, EventArgs e)
+    {
+        try
+        {
+            if (!await DisplayAlert("Выход", "Выйти из аккаунта водителя?", "Выйти", "Отмена"))
+                return;
+            SecureStorage.Remove("token");
+            SecureStorage.Remove("driver_id");
+            SecureStorage.Remove("user_name");
+            // Телефон оставляем в хранилище — следующий вход только с паролем
+            // Используем текущие сервисы (у них сбрасываем состояние)
+            try { _location.StopTracking(); } catch { }
+            Application.Current!.MainPage = new NavigationPage(
+                new LoginPage(_api, _signalR, _location));
+        }
+        catch { }
+    }
+
     private async void OnSosClicked(object? sender, EventArgs e)
     {
         var confirmed = await DisplayAlert(

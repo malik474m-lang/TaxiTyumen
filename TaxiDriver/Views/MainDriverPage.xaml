@@ -500,6 +500,15 @@
                             HeightRequest="34"
                             Margin="0,0,8,8"
                             Clicked="OnSosClicked"/>
+                    <Button x:Name="LogoutBtn"
+                            Text="Выйти"
+                            BackgroundColor="#252536"
+                            TextColor="#fca5a5"
+                            CornerRadius="16"
+                            HeightRequest="34"
+                            FontSize="12"
+                            Margin="0,0,8,8"
+                            Clicked="OnLogoutClicked"/>
                     <Button x:Name="FleetChatBtn"
                             Text="Чат автопарка"
                             BackgroundColor="#2196F3"
