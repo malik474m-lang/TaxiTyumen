@@ -282,6 +282,7 @@ CREATE TABLE IF NOT EXISTS auto_call_settings (
   provider                VARCHAR(30) NOT NULL DEFAULT 'signalr',
   zvonok_api_key          VARCHAR(255) NULL,
   zvonok_campaign_id      VARCHAR(100) NULL,
+  zvonok_speaker          VARCHAR(30) NOT NULL DEFAULT 'Tatyana',
   zvonok_balance          DOUBLE NOT NULL DEFAULT 0,
   balance_checked_at      DATETIME NULL,
   free_waiting_minutes    INT NOT NULL DEFAULT 5,

@@ -20,10 +20,11 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
             $provider=in_array(($_POST['provider']??''),['signalr','zvonok'],true)?(string)$_POST['provider']:'signalr';
             $apiKey=trim((string)($_POST['zvonok_api_key']??''));
             $campaign=trim((string)($_POST['zvonok_campaign_id']??''));
+            $speaker=trim((string)($_POST['zvonok_speaker']??'Tatyana'));
             $template=trim((string)($_POST['message_template']??''));
             if($template==='')$template='Ваше такси прибыло! {CarColor} {CarBrand} {CarModel}, номер {LicensePlate}. Бесплатное ожидание: {FreeWaitingMinutes} минут.';
-            $sql='UPDATE auto_call_settings SET enabled=?,escalate_after_minutes=?,auto_assign_enabled=?,auto_assign_radius_km=?,provider=?,zvonok_campaign_id=?,free_waiting_minutes=?,message_template=?,last_tick_at=NULL';
-            $params=[!empty($_POST['enabled'])?1:0,$minutes,!empty($_POST['auto_assign_enabled'])?1:0,$radius,$provider,$campaign?:null,max(0,min(60,(int)($_POST['free_waiting_minutes']??5))),mb_substr($template,0,1000)];
+            $sql='UPDATE auto_call_settings SET enabled=?,escalate_after_minutes=?,auto_assign_enabled=?,auto_assign_radius_km=?,provider=?,zvonok_campaign_id=?,zvonok_speaker=?,free_waiting_minutes=?,message_template=?,last_tick_at=NULL';
+            $params=[!empty($_POST['enabled'])?1:0,$minutes,!empty($_POST['auto_assign_enabled'])?1:0,$radius,$provider,$campaign?:null,$speaker,max(0,min(60,(int)($_POST['free_waiting_minutes']??5))),mb_substr($template,0,1000)];
             if($apiKey!==''){$sql.=',zvonok_api_key=?';$params[]=$apiKey;}
             $sql.=' WHERE id=?';$params[]=$s['id'];
             $db->prepare($sql)->execute($params);
@@ -58,6 +59,14 @@ layout_header('Автодозвон','autocall');
 <label class="mut" style="display:block;margin-top:12px">Провайдер<select name="provider"><option value="signalr" <?=($s['provider']??'signalr')==='signalr'?'selected':''?>>Только in-app уведомление</option><option value="zvonok" <?=($s['provider']??'')==='zvonok'?'selected':''?>>Zvonok + in-app</option></select></label>
 <label class="mut" style="display:block;margin-top:10px">Public API key<input type="password" name="zvonok_api_key" placeholder="<?=!empty($s['zvonok_api_key'])?'Ключ сохранён — оставьте пустым':'Вставьте ключ Zvonok'?>" autocomplete="new-password"></label>
 <label class="mut" style="display:block;margin-top:10px">Campaign ID<input name="zvonok_campaign_id" value="<?=h((string)($s['zvonok_campaign_id']??''))?>"></label>
+
+<label class="mut" style="display:block;margin-top:10px">Голос диктора
+  <select name="zvonok_speaker">
+    <?php $cur=$s['zvonok_speaker']??'Tatyana'; foreach(['Tatyana'=>'Татьяна (женский)','Maxim'=>'Максим (мужской)'] as $val=>$label): ?>
+    <option value="<?=$val?>" <?=$cur===$val?'selected':''?>><?=h($label)?></option>
+    <?php endforeach; ?>
+  </select>
+</label>
 <label class="mut" style="display:block;margin-top:10px">Бесплатное ожидание, мин<input type="number" name="free_waiting_minutes" min="0" max="60" value="<?=(int)($s['free_waiting_minutes']??5)?>"></label>
 <label class="mut" style="display:block;margin-top:10px">Шаблон звонка<textarea name="message_template" rows="5"><?=h((string)($s['message_template']??''))?></textarea></label>
 <div class="mut" style="font-size:11px;margin-top:6px">Переменные: {CarColor}, {CarBrand}, {CarModel}, {LicensePlate}, {FreeWaitingMinutes}, {OrderNumber}, {ClientName}</div>

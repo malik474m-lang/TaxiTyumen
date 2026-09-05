@@ -242,6 +242,7 @@ final class Seed
         self::addColumn($db, 'orders', 'waiting_started_at', "DATETIME NULL AFTER cancelled_at");
         self::addColumn($db, 'orders', 'waiting_seconds', "INT NOT NULL DEFAULT 0 AFTER waiting_started_at");
         self::addColumn($db, 'orders', 'waiting_cost', "DOUBLE NOT NULL DEFAULT 0 AFTER waiting_seconds");
+        self::addColumn($db, 'auto_call_settings', 'zvonok_speaker', "VARCHAR(30) NOT NULL DEFAULT 'Tatyana' AFTER zvonok_campaign_id");
 
         // Загружаемый логотип для серверного брендинга
         self::addColumn($db, 'branding_settings', 'logo_path', "VARCHAR(255) NULL AFTER logo_icon");

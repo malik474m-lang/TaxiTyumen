@@ -33,12 +33,18 @@ final class ZvonokService
             return ['status' => 'failed', 'message' => 'Телефон клиента не найден'];
         }
 
-        $payload = http_build_query([
+        $payloadParams = [
             'public_key' => $settings['zvonok_api_key'],
             'phone' => preg_replace('/\D/', '', Auth::normalizePhone($phone)),
             'campaign_id' => $settings['zvonok_campaign_id'],
             'text' => $message,
-        ]);
+        ];
+        // Голос диктора (Zvonok speaker: Tatyana, Maxim и др.)
+        $speaker = trim((string) ($settings['zvonok_speaker'] ?? ''));
+        if ($speaker !== '') {
+            $payloadParams['speaker'] = $speaker;
+        }
+        $payload = http_build_query($payloadParams);
         $started = microtime(true);
         [$code, $raw] = self::request(self::CALL_URL, 'POST', $payload, 'application/x-www-form-urlencoded');
         $duration = (int) round((microtime(true) - $started) * 1000);
