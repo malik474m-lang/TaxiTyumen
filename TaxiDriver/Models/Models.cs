@@ -45,6 +45,12 @@ public class OrderResponse
     public int WaitingSeconds { get; set; }
     public decimal WaitingCost { get; set; }
     public bool WaitingActive { get; set; }
+
+    // Результат оповещения пассажира после этапа «Я на месте».
+    public string? ClientNotificationStatus { get; set; }
+    public string? ClientNotificationMessage { get; set; }
+    public string? ClientNotificationCallId { get; set; }
+    public int? ClientNotificationHttpCode { get; set; }
 }
 
 public class UpdateLocationRequest

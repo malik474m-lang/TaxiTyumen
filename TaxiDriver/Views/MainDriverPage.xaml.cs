@@ -863,12 +863,54 @@ public partial class MainDriverPage : ContentPage
             }
             else
             {
-                await _api.UpdateStatusAsync(_activeOrder.Id.ToString(), status);
+                if (_auth.DriverId == null)
+                {
+                    await DisplayAlert("Ошибка", "Профиль водителя не найден. Войдите заново.", "OK");
+                    return;
+                }
+
+                var (ok, serverError, fresh) = await _api.UpdateStatusAsync(
+                    _activeOrder.Id, _auth.DriverId.Value, status);
+                if (!ok)
+                {
+                    // Не меняем кнопку локально: показываем точный отказ сервера.
+                    await DisplayAlert("Не удалось изменить этап",
+                        serverError ?? "Сервер не подтвердил изменение статуса заказа.", "OK");
+                    return;
+                }
+
+                // Сервер подтвердил действие — только теперь переключаем интерфейс.
+                if (fresh != null)
+                {
+                    _activeOrder = fresh;
+                    ShowActiveOrder(fresh);
+                }
                 _orderStatusStep++;
                 UpdateStatusButton();
 
                 if (_orderStatusStep > 0 && _orderStatusStep <= _statusLabels.Length)
                     StatusLabel.Text = _statusLabels[_orderStatusStep - 1];
+
+                // После «Я на месте» водитель видит явное подтверждение:
+                // именно этот серверный переход запускает in-app/SMS/Zvonok.
+                if (string.Equals(status, "DriverArrived", StringComparison.OrdinalIgnoreCase))
+                {
+                    var notificationStatus = fresh?.ClientNotificationStatus ?? "unknown";
+                    var notificationText = notificationStatus switch
+                    {
+                        "sent" => "Сервер подтвердил прибытие. Звонок пассажиру поставлен в очередь Zvonok."
+                            + (string.IsNullOrWhiteSpace(fresh?.ClientNotificationCallId)
+                                ? ""
+                                : $" Call ID: {fresh.ClientNotificationCallId}"),
+                        "already_sent" => "Сервер подтвердил прибытие. Оповещение пассажиру уже запускалось ранее.",
+                        "skipped" => "Сервер подтвердил прибытие, но звонок не отправлен: "
+                            + (fresh?.ClientNotificationMessage ?? "автодозвон отключён или сработала защита от дубля"),
+                        "failed" => "Сервер подтвердил прибытие, но Zvonok отклонил звонок: "
+                            + (fresh?.ClientNotificationMessage ?? "неизвестная ошибка"),
+                        _ => "Сервер подтвердил прибытие. In-app/SMS-оповещение пассажиру создано."
+                    };
+                    await DisplayAlert("На месте", notificationText, "OK");
+                }
             }
         }
         catch (Exception ex)

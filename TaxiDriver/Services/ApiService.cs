@@ -91,9 +91,41 @@ public class ApiService
         await _http.PostAsJsonAsync($"orders/{orderId}/reject?driverId={driverId}", reason);
     }
 
-    public async Task UpdateStatusAsync(string orderId, string status)
+    /// Меняет этап заказа и возвращает подтверждённое состояние с сервера.
+    /// UI не должен переключаться локально, пока сервер не ответил 2xx.
+    public async Task<(bool Ok, string? Error, OrderResponse? Order)> UpdateStatusAsync(
+        Guid orderId, Guid driverId, string status)
     {
-        await _http.PutAsJsonAsync("orders/" + orderId + "/status", status);
+        // POST + явный driverId: одинаково работает через PHP compatibility router
+        // и исключает потерю профиля водителя при строковом JSON-теле статуса.
+        var response = await _http.PostAsJsonAsync(
+            $"orders/{orderId}/status?driverId={driverId}", status);
+        var raw = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(raw);
+                var error = doc.RootElement.TryGetProperty("error", out var value)
+                    ? value.GetString()
+                    : null;
+                return (false, error ?? $"HTTP {(int)response.StatusCode}", null);
+            }
+            catch
+            {
+                return (false, $"HTTP {(int)response.StatusCode}", null);
+            }
+        }
+
+        try
+        {
+            return (true, null, JsonSerializer.Deserialize<OrderResponse>(raw, _json));
+        }
+        catch
+        {
+            return (true, null, null);
+        }
     }
 
     public async Task CompleteOrderAsync(Guid orderId)

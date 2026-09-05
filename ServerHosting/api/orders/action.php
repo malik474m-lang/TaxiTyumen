@@ -146,10 +146,11 @@ switch ($action) {
             ->execute([Db::utcNow(), $id]);
         $fresh = $load();
         NotificationService::notifyClientDriverArrived($db, $fresh);
-        // Автообзвон звонит О�ДИН раз: повторное нажатие «Я на месте» не спамит клиента
-        if (!$wasArrived) {
-            ZvonokService::callClientOnDriverArrived($db, $fresh);
-        }
+        // Автообзвон звонит ОДИН раз: повторное нажатие «Я на месте» не спамит клиента.
+        // Результат возвращаем приложению водителя для явного подтверждения доставки в Zvonok.
+        $callResult = $wasArrived
+            ? ['status' => 'already_sent', 'message' => 'Оповещение уже запускалось ранее']
+            : ZvonokService::callClientOnDriverArrived($db, $fresh);
         // Телефония: соединить клиента с водителем при прибытии (если включено)
         try {
             $tel = Telephony::settings($db);
@@ -175,7 +176,26 @@ switch ($action) {
         } catch (Throwable) {
         }
         NotificationService::notifyOperatorsOrderUpdate($db, $fresh);
-        $result();
+
+        // Для мобильного клиента: заказ + результат постановки звонка в очередь.
+        $response = Serialize::order($db, $load());
+        $callJson = [];
+        if (!empty($callResult['response'])) {
+            $decodedCall = json_decode((string) $callResult['response'], true);
+            if (is_array($decodedCall)) $callJson = $decodedCall;
+        }
+        $response['clientNotificationStatus'] = (string) ($callResult['status'] ?? 'unknown');
+        $response['clientNotificationMessage'] = (string) (
+            ($callResult['status'] ?? '') === 'sent'
+                ? 'Звонок поставлен в очередь Zvonok'
+                : ($callResult['message'] ?? 'Статус звонка неизвестен')
+        );
+        $response['clientNotificationCallId'] = isset($callJson['call_id'])
+            ? (string) $callJson['call_id']
+            : null;
+        $response['clientNotificationHttpCode'] = $callResult['httpCode'] ?? null;
+        Bus::publish('orders');
+        Response::json($response);
     }
 
     case 'start': {
