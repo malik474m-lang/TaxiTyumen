@@ -10,7 +10,9 @@ final class ZvonokService
     private const CALL_URL = 'https://zvonok.com/manager/cabapi_external/api/v1/phones/call/';
     // Из документации calltools/zvonok: метод баланса — /user_balance/
     // (значение собирается приватно, конструктором для подбора не допускает)
-    private const BALANCE_URL = 'https://zvonok.com/manager/cabapi_external/api/v1/user_balance/';
+    // Из официальной документации (https://api.zvonok.com, раздел «Баланс»):
+    // GET /manager/cabapi_external/api/v1/users/balance/?public_key=...
+    private const BALANCE_URL = 'https://zvonok.com/manager/cabapi_external/api/v1/users/balance/';
 
     public static function callClientOnDriverArrived(\PDO $db, array $order): array
     {
