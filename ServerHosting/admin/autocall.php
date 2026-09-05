@@ -139,14 +139,44 @@ HTTP <?=h((string)$result['_diag']['http'])?>
 
 <label class="mut" style="display:block;margin-top:10px">Голос диктора
   <select name="zvonok_speaker">
-    <?php $cur=$s['zvonok_speaker']??'Tatyana'; foreach(['Tatyana'=>'Татьяна (женский)','Maxim'=>'Максим (мужской)'] as $val=>$label): ?>
-    <option value="<?=$val?>" <?=$cur===$val?'selected':''?>><?=h($label)?></option>
+    <?php
+      $cur=(string)($s['zvonok_speaker']??'Tatyana');
+      $speakers=[
+        ''=>'Из настроек кампании Zvonok',
+        // Бесплатные синтезированные голоса из официальной таблицы all-speakers.
+        'alena'=>'Алёна — женский · бесплатно',
+        'ermil'=>'Эрмиль — мужской · бесплатно',
+        'filipp'=>'Филипп — мужской · бесплатно',
+        'jane'=>'Джэйн — женский · бесплатно',
+        'madirus'=>'Мадирус — мужской · бесплатно',
+        'marina'=>'Марина — женский · бесплатно',
+        'Maxim'=>'Максим — мужской · бесплатно',
+        'oksana'=>'Оксана — женский · бесплатно',
+        'omazh'=>'Омаж — женский · бесплатно',
+        'Tatyana'=>'Татьяна — женский · бесплатно',
+        'zahar'=>'Захар — мужской · бесплатно',
+        // Дополнительные русские голоса тарифицируются Zvonok отдельно.
+        'alex'=>'Александра — женский · платный',
+        'anna'=>'Полина — женский · премиум',
+        'borya'=>'Борис — мужской · платный',
+        'dima'=>'Дмитрий — мужской · премиум',
+        'marfa'=>'Марфа — женский · платный',
+        'nata'=>'Наталья — женский · платный',
+        'sergey'=>'Сергей — мужской · платный',
+        'taras'=>'Тарас — мужской · платный',
+      ];
+      if($cur!=='' && !isset($speakers[$cur])) $speakers[$cur]='Другой голос из ЛК: '.$cur;
+      foreach($speakers as $val=>$label):
+    ?>
+    <option value="<?=h($val)?>" <?=$cur===$val?'selected':''?>><?=h($label)?></option>
     <?php endforeach; ?>
   </select>
 </label>
 <div class="mut" style="font-size:11px;margin-top:5px">
-  После выбора нажмите «Сохранить все настройки», затем сделайте тестовый звонок.
-  Обычно голос «Максим» отчётливее читает автомобильные данные.
+  Коды взяты из официального списка Zvonok. После выбора нажмите
+  «Сохранить все настройки», затем сделайте тестовый звонок.
+  Если выбрать «Из настроек кампании», параметр speaker не отправляется.
+  <a href="https://zvonok.com/manager/audioclips/all-speakers/" target="_blank" rel="noopener">Открыть полный список и прослушать голоса ↗</a>
 </div>
 <label class="mut" style="display:block;margin-top:10px">Бесплатное ожидание, мин<input type="number" name="free_waiting_minutes" min="0" max="60" value="<?=(int)($s['free_waiting_minutes']??5)?>"></label>
 <label class="mut" style="display:block;margin-top:10px">Шаблон звонка<textarea id="zvonokMessageTemplate" name="message_template" rows="5"><?=h((string)($s['message_template']??''))?></textarea></label>
