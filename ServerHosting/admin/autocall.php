@@ -47,11 +47,10 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
                 'http' => $code,
                 'response' => $raw,
             ]];
-        }
-        if($cmd==='check_balance'){
+        } elseif ($cmd === 'check_balance') {
             $result=ZvonokService::checkBalance($db);
             $s=AutoCall::getSettings($db);
-        }else{
+        } else {
             $minutes=max(1,min(60,(int)($_POST['escalate_after_minutes']??3)));
             $radius=max(1,min(30,(float)($_POST['auto_assign_radius_km']??5)));
             $provider=in_array(($_POST['provider']??''),['signalr','zvonok'],true)?(string)$_POST['provider']:'signalr';
