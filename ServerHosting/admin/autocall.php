@@ -17,11 +17,12 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
             require_once dirname(__DIR__).'/src/ZvonokService.php';
             // Проверка Auth::normalizePhone
             $norm = Auth::normalizePhone($phone);
-            // Имитируем заказный вызов: тот же URL/payload, что и в боевом звонке
+            // Имитируем заказный вызов для ПЕРВОГО водителя — переменные шаблона заполнятся реально
             $settings = AutoCall::getSettings($db);
-            $message = ZvonokService::formatMessage($db, (string)($settings['message_template']??''), ['driver_id'=>null,'tariff'=>'economy'], (int)($settings['free_waiting_minutes']??5));
-            // надёжно подставим тестовую назначение, если переменные заполнил шаблон
-            $message = str_ireplace(['{CarColor}','{CarBrand}','{CarModel}','{LicensePlate}','{FreeWaitingMinutes}'], ['Жёлтый','Kia','Rio','Т888ТЕ72','3'], $message);
+            $testOrder = ['driver_id'=>null,'tariff'=>'economy','order_number'=>'TEST00001','client_id'=>null,'client_phone'=>$norm];
+            $firstDriver = $db->query("SELECT id FROM drivers ORDER BY order_number IS NULL, created_at LIMIT 1")->fetchColumn();
+            if ($firstDriver) $testOrder['driver_id'] = $firstDriver;
+            $message = ZvonokService::formatMessage($db, (string)($settings['message_template']??''), $testOrder, (int)($settings['free_waiting_minutes']??5));
             $payloadParams = [
                 'public_key'    => $settings['zvonok_api_key'],
                 'phone'         => preg_replace('/\D/','', $norm),
