@@ -136,7 +136,26 @@ final class ZvonokService
         return $stmt->fetchColumn() ?: null;
     }
 
-    public static function request(string $url, string $method, ?string $body = null, string $contentType = 'application/json'): array
+    public static function request(string $url, string $method, ?string $body = null, string $contentType = 'application/json'): array    {
+        return self::requestRaw($url, $method, $body, $contentType);
+    }
+
+    /** Двоичный разбор ответа Zvonok: отделяем ~ реальную ошибку {data} */
+    public static function errorReason(string $raw): ?string
+    {
+        $j = json_decode($raw, true);
+        if (is_array($j)) {
+            if (($j['status'] ?? '') === 'error' && isset($j['data'])) {
+                return is_string($j['data']) ? $j['data'] : json_encode($j['data'], JSON_UNESCAPED_UNICODE);
+            }
+            if (isset($j['error'])) {
+                return is_string($j['error']) ? $j['error'] : json_encode($j['error'], JSON_UNESCAPED_UNICODE);
+            }
+        }
+        return null;
+    }
+
+    public static function requestRaw(string $url, string $method, ?string $body = null, string $contentType = 'application/json'): array
     {
         $headers = "User-Agent: TaxiTyumen/1.0\r\n";
         if ($body !== null) {

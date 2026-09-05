@@ -35,10 +35,13 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
             [$code, $raw] = ZvonokService::request('https://zvonok.com/manager/cabapi_external/api/v1/phones/call/', 'POST', $payload, 'application/x-www-form-urlencoded');
             $duration = (int) round((microtime(true) - $started) * 1000);
             ZvonokService::log($db, 'test', $norm, $code >= 200 && $code < 300 ? 'success' : 'failed', $code, $raw, $duration);
+            $reason = $code >= 200 && $code < 300 ? null : ZvonokService::errorReason($raw);
             $result = [
                 'ok' => $code >= 200 && $code < 300,
                 'balance' => null,
-                'message' => $code >= 200 && $code < 300 ? 'Тестовый звонок вышел (посмотрите ЛК Zvonok и свой телефон)' : 'Ошибка тестового звонка, HTTP '.$code,
+                'message' => $code >= 200 && $code < 300
+                    ? 'Тестовый звонок отправлен в очередь (Zvonok принял). Смотрите телефон и ЛК Zvonок → Статистика → Звонки'
+                    : 'Ошибка тестового звонка, HTTP '.$code.($reason ? ': '.$reason : ''),
             ] + ['_diag' => [
                 'payload' => $payloadParams,
                 'http' => $code,
