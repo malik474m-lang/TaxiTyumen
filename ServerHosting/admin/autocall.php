@@ -126,12 +126,15 @@ HTTP <?=h((string)$result['_diag']['http'])?>
   <button type="button" onclick="testCall(this.closest('form'))" class="btn" style="width:100%">Позвонить тестово</button>
 </form>
 <script>
+var CSRF_TOKEN = <?= json_encode(admin_csrf_token(), JSON_UNESCAPED_SLASHES) ?>;
+
 // Тест звонка — AJAX, настройки НЕ сохраняются и не сбрасываются
 function testCall(form){
   var btn=form.querySelector('.btn');btn.disabled=true;btn.textContent='Звоним…';
-  var fd=new FormData();fd.append('cmd','test_call');fd.append('test_phone',document.getElementById('testPhone').value);
-  var csrf = form.querySelector('input[name="_csrf"]');var csrfVal = csrf ? csrf.value : '';
-  if (csrfVal) fd.append('_csrf', csrfVal);
+  var fd=new FormData();
+  fd.append('cmd','test_call');
+  fd.append('test_phone',document.getElementById('testPhone').value);
+  fd.append('_csrf', CSRF_TOKEN);
   fetch('autocall.php',{method:'POST',body:fd,credentials:'same-origin'})
     .then(function(r){return r.text()})
     .then(function(html){
