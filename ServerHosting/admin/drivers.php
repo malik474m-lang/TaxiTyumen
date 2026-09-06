@@ -266,6 +266,7 @@ layout_header('Водители', 'drivers');
   <div class="flex">
     <a class="btn <?= $view === 'active' ? '' : 'ghost' ?> sm" href="drivers.php">Активные</a>
     <a class="btn <?= $view === 'archive' ? '' : 'ghost' ?> sm" href="drivers.php?view=archive">Архив<?= $archivedCount ? ' · ' . $archivedCount : '' ?></a>
+    <a class="btn ghost sm" href="fleet-map.php">Карта автопарка</a>
     <?php if ($view === 'active'): ?><span class="chip info">На линии: <?= count(array_filter($rows, fn($d) => $d['status'] !== 'offline')) ?></span><?php endif; ?>
   </div>
 </div>
