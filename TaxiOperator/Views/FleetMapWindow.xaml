@@ -1,7 +1,6 @@
 <Window x:Class="TaxiOperator.Views.FleetMapWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         Title="Карта автопарка"
         Height="760" Width="1180"
         WindowStartupLocation="CenterOwner"
@@ -31,7 +30,7 @@
 
         <Border Grid.Row="1" Grid.Column="0" Background="#0F0F13" CornerRadius="8">
             <Grid>
-                <wv2:WebView2 x:Name="MapView"/>
+                <Grid x:Name="MapHost"/>
                 <TextBlock x:Name="MapFallbackText"
                            Text="Карта недоступна. Установите Microsoft Edge WebView2 Runtime."
                            Foreground="#fca5a5" TextWrapping="Wrap" TextAlignment="Center"

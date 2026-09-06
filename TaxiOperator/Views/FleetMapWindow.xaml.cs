@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Web.WebView2.Wpf;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
@@ -14,6 +15,7 @@ namespace TaxiOperator.Views;
 public partial class FleetMapWindow : Window
 {
     private readonly ApiService _api;
+    private readonly WebView2 _mapView = new();
     private readonly DispatcherTimer _timer;
     private bool _mapReady;
     private Guid? _followDriverId;
@@ -22,6 +24,8 @@ public partial class FleetMapWindow : Window
     {
         InitializeComponent();
         _api = api;
+        // WebView2 добавляем программно — парсер XamlC на этой стороне .NET не взбивает префикс префикса xmlns:wv2
+        MapHost.Children.Add(_mapView);
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _timer.Tick += async (_, _) => await RefreshAsync();
@@ -34,8 +38,8 @@ public partial class FleetMapWindow : Window
     {
         try
         {
-            await MapView.EnsureCoreWebView2Async();
-            MapView.NavigationCompleted += async (_, _) =>
+            await __mapView.EnsureCoreWebView2Async();
+            __mapView.NavigationCompleted += async (_, _) =>
             {
                 _mapReady = true;
                 await RefreshAsync();
@@ -44,7 +48,7 @@ public partial class FleetMapWindow : Window
             var city = await MapConfig.GetCityAsync();
             if (!string.IsNullOrWhiteSpace(city)) Title = $"Карта автопарка · {city}";
 
-            MapView.NavigateToString(BuildMapHtml(
+            __mapView.NavigateToString(BuildMapHtml(
                 await MapConfig.GetApiKeyAsync(),
                 await MapConfig.GetCenterAsync()));
             _timer.Start();
@@ -52,7 +56,7 @@ public partial class FleetMapWindow : Window
         catch (Exception ex)
         {
             // Нет WebView2 Runtime — оставляем рабочим список машин справа.
-            MapView.Visibility = Visibility.Collapsed;
+            __mapView.Visibility = Visibility.Collapsed;
             MapFallbackText.Visibility = Visibility.Visible;
             MapFallbackText.Text = "Карта недоступна: " + ex.Message
                 + "\nУстановите Microsoft Edge WebView2 Runtime. Список водителей ниже продолжает работать.";
@@ -82,7 +86,7 @@ public partial class FleetMapWindow : Window
 
             StatusText.Text = $"В сети: {drivers.Count} · обновлено {DateTime.Now:HH:mm:ss}";
 
-            if (_mapReady && MapView.Visibility == Visibility.Visible && MapView.CoreWebView2 != null)
+            if (_mapReady && __mapView.Visibility == Visibility.Visible && __mapView.CoreWebView2 != null)
             {
                 var payload = JsonSerializer.Serialize(drivers.Select(d => new
                 {
@@ -102,7 +106,7 @@ public partial class FleetMapWindow : Window
                 var follow = FollowCheck.IsChecked == true && _followDriverId != null
                     ? $"'{_followDriverId}'"
                     : "null";
-                await MapView.ExecuteScriptAsync($"window.syncDrivers && window.syncDrivers({payload}, {follow});");
+                await __mapView.ExecuteScriptAsync($"window.syncDrivers && window.syncDrivers({payload}, {follow});");
             }
         }
         catch (Exception ex)
@@ -117,11 +121,11 @@ public partial class FleetMapWindow : Window
     {
         if (DriversList.SelectedItem is not DriverRow row) return;
         _followDriverId = row.Id;
-        if (!_mapReady || MapView.CoreWebView2 == null) return;
+        if (!_mapReady || __mapView.CoreWebView2 == null) return;
 
         var lat = row.Latitude.ToString("F6", CultureInfo.InvariantCulture);
         var lng = row.Longitude.ToString("F6", CultureInfo.InvariantCulture);
-        await MapView.ExecuteScriptAsync($"window.focusDriver && window.focusDriver('{row.Id}',{lat},{lng});");
+        await __mapView.ExecuteScriptAsync($"window.focusDriver && window.focusDriver('{row.Id}',{lat},{lng});");
     }
 
     /// Страница карты: метки создаются один раз и далее только перемещаются.
