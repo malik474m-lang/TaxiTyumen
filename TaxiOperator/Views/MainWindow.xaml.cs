@@ -250,6 +250,21 @@ public partial class MainWindow : Window
         }
     }
 
+    private FleetMapWindow? _fleetMapWindow;
+
+    /// Карта автопарка: одно окно на сессию, повторный клик — переключение фокуса.
+    private void OnFleetMapClick(object sender, RoutedEventArgs e)
+    {
+        if (_fleetMapWindow is { IsLoaded: true })
+        {
+            _fleetMapWindow.Activate();
+            return;
+        }
+        _fleetMapWindow = new FleetMapWindow(_api) { Owner = this };
+        _fleetMapWindow.Closed += (_, _) => _fleetMapWindow = null;
+        _fleetMapWindow.Show();
+    }
+
     private async void OnRefreshClick(object sender, RoutedEventArgs e)
     {
         await RefreshAsync();
