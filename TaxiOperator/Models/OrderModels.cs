@@ -87,6 +87,10 @@ public class OnlineDriver
     public double Latitude { get; set; }
     public double Longitude { get; set; }
     public double Rating { get; set; }
+    /// Скорость в м/с из GPS водителя (диспетчеру показываем км/ч).
+    public double? Speed { get; set; }
+    /// Текущий заказ водителя — видно, кто занят.
+    public Guid? CurrentOrderId { get; set; }
 }
 
 public class BalanceInfo

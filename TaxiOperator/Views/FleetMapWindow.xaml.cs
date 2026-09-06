@@ -40,7 +40,13 @@ public partial class FleetMapWindow : Window
                 _mapReady = true;
                 await RefreshAsync();
             };
-            MapView.NavigateToString(BuildMapHtml(await MapConfig.GetApiKeyAsync()));
+
+            var city = await MapConfig.GetCityAsync();
+            if (!string.IsNullOrWhiteSpace(city)) Title = $"Карта автопарка · {city}";
+
+            MapView.NavigateToString(BuildMapHtml(
+                await MapConfig.GetApiKeyAsync(),
+                await MapConfig.GetCenterAsync()));
             _timer.Start();
         }
         catch (Exception ex)
@@ -88,7 +94,9 @@ public partial class FleetMapWindow : Window
                     plate = d.LicensePlate,
                     status = d.Status,
                     lat = d.Latitude,
-                    lng = d.Longitude
+                    lng = d.Longitude,
+                    speed = d.Speed.HasValue ? Math.Round(d.Speed.Value * 3.6) : (double?)null,
+                    onOrder = d.CurrentOrderId.HasValue
                 }));
 
                 var follow = FollowCheck.IsChecked == true && _followDriverId != null
@@ -117,7 +125,7 @@ public partial class FleetMapWindow : Window
     }
 
     /// Страница карты: метки создаются один раз и далее только перемещаются.
-    private static string BuildMapHtml(string apiKey)
+    private static string BuildMapHtml(string apiKey, double[] center)
     {
         var key = string.IsNullOrWhiteSpace(apiKey) ? "" : "&apikey=" + Uri.EscapeDataString(apiKey);
         var sb = new StringBuilder();
@@ -143,7 +151,9 @@ window.syncDrivers = function(list, followId){
   (list||[]).forEach(function(d){
     seen[d.id] = true;
     var pos = [d.lat, d.lng];
-    var balloon = '<b>'+esc(d.name)+'</b><br>'+esc(d.car)+' · <b>'+esc(d.plate)+'</b>';
+    var balloon = '<b>'+esc(d.name)+'</b><br>'+esc(d.car)+' · <b>'+esc(d.plate)+'</b>'+
+    (d.speed!=null?'<br>Скорость: '+esc(d.speed)+' км/ч':'')+
+    (d.onOrder?'<br>Выполняет заказ':'<br>Свободен');
     if(marks[d.id]){
       marks[d.id].geometry.setCoordinates(pos);
       marks[d.id].properties.set({iconCaption: d.plate, balloonContent: balloon});
@@ -167,7 +177,7 @@ window.focusDriver = function(id, lat, lng){
 };
 if(window.ymaps){
   ymaps.ready(function(){
-    map = new ymaps.Map('map', {center:[57.1522,65.5272], zoom:12,
+    map = new ymaps.Map('map', {center:[__LAT__, __LNG__], zoom:12,
       controls:['zoomControl','typeSelector','fullscreenControl']},
       {suppressMapOpenBlock:true});
   });
@@ -175,7 +185,10 @@ if(window.ymaps){
   document.getElementById('map').innerHTML = '<div class=""err"">Не удалось загрузить Яндекс Карты</div>';
 }
 </script></body></html>");
-        return sb.ToString();
+        // Центр карты берётся из настроек сервиса (админка → «Бренд сервиса» → город).
+        return sb.ToString()
+            .Replace("__LAT__", center[0].ToString("F6", CultureInfo.InvariantCulture))
+            .Replace("__LNG__", center[1].ToString("F6", CultureInfo.InvariantCulture));
     }
 
     /// Строка списка водителей.
@@ -190,7 +203,10 @@ if(window.ymaps){
             CarLine = string.IsNullOrWhiteSpace(d.CarDisplay)
                 ? $"{d.CarColor} {d.CarBrand} {d.CarModel} · {d.LicensePlate}".Trim()
                 : $"{d.CarDisplay} · {d.LicensePlate}";
-            StatusLine = StatusText(d.Status);
+            var line = StatusText(d.Status);
+            if (d.Speed.HasValue && d.Speed.Value > 0)
+                line += $" · {Math.Round(d.Speed.Value * 3.6)} км/ч";
+            StatusLine = line;
         }
 
         public Guid Id { get; }

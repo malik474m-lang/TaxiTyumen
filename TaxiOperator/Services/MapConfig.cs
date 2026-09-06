@@ -8,16 +8,43 @@ namespace TaxiOperator.Services;
 /// чтобы не хранить его в дистрибутиве пульта.
 public static class MapConfig
 {
-    private static string? _apiKey;
-
     private sealed class MapConfigDto
     {
         [JsonPropertyName("apiKey")] public string? ApiKey { get; set; }
+        /// Центр карты из админки «Бренд сервиса» (город, координаты).
+        [JsonPropertyName("center")] public double[]? Center { get; set; }
+        [JsonPropertyName("city")] public string? City { get; set; }
     }
 
+    private static string? _apiKey;
+    private static double[]? _center;
+    private static string? _city;
+
+    /// Ключ Яндекс Карт (кэшируется на время работы пульта).
     public static async Task<string> GetApiKeyAsync()
     {
-        if (_apiKey != null) return _apiKey;
+        await EnsureLoadedAsync();
+        return _apiKey ?? "";
+    }
+
+    /// Центр карты из настроек сервиса; по умолчанию — Тюмень.
+    public static async Task<double[]> GetCenterAsync()
+    {
+        await EnsureLoadedAsync();
+        return _center is { Length: 2 } ? _center : new[] { 57.1522, 65.5272 };
+    }
+
+    public static async Task<string> GetCityAsync()
+    {
+        await EnsureLoadedAsync();
+        return _city ?? "";
+    }
+
+    private static bool _loaded;
+
+    private static async Task EnsureLoadedAsync()
+    {
+        if (_loaded) return;
         try
         {
             using var http = new HttpClient
@@ -27,11 +54,16 @@ public static class MapConfig
             };
             var cfg = await http.GetFromJsonAsync<MapConfigDto>("map-config.php");
             _apiKey = cfg?.ApiKey ?? "";
+            _center = cfg?.Center;
+            _city = cfg?.City;
         }
         catch
         {
             _apiKey = "";
         }
-        return _apiKey;
+        finally
+        {
+            _loaded = true;
+        }
     }
 }
