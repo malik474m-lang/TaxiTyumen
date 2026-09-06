@@ -55,22 +55,24 @@ public static class MapHtml
 <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU{{key}}"></script>
 </head><body><div id="map"></div>
 <script>
+var map, me, route, routePoints;
+
 function start(){
   try{
-    var map = new ymaps.Map('map', {
+    map = new ymaps.Map('map', {
       center: [{{N(driverLat)}}, {{N(driverLng)}}],
-      zoom: 14, controls: ['zoomControl','geolocationControl']
+      zoom: 15, controls: ['zoomControl','geolocationControl']
     }, { suppressMapOpenBlock: true });
 
-    var me = new ymaps.Placemark([{{N(driverLat)}}, {{N(driverLng)}}],
+    me = new ymaps.Placemark([{{N(driverLat)}}, {{N(driverLng)}}],
       { iconCaption: 'Вы' },
       { preset: 'islands#yellowAutoCircleIcon' });
     map.geoObjects.add(me);
 
-    var pts = [{{routePoints}}];
-    if (pts.length > 1) {
-      var route = new ymaps.multiRouter.MultiRoute({
-        referencePoints: pts,
+    routePoints = [{{routePoints}}];
+    if (routePoints.length > 1) {
+      route = new ymaps.multiRouter.MultiRoute({
+        referencePoints: routePoints,
         params: { routingMode: 'auto' }
       }, {
         boundsAutoApply: true,
@@ -81,6 +83,25 @@ function start(){
       });
       map.geoObjects.add(route);
     }
+
+    // Живое обновление позиции водителя из приложения без перезагрузки карты
+    window.mapReady = true;
+    window.updateDriver = function(lat, lng, follow){
+      try{
+        if (!window.mapReady || !me) return 'no-map';
+        var point = [Number(lat), Number(lng)];
+        me.geometry.setCoordinates(point);
+        if (route && routePoints && routePoints.length > 1) {
+          routePoints[0] = point;
+          route.model.setReferencePoints(routePoints);
+        }
+        if (follow) map.panTo(point, {flying: false, duration: 200});
+        return 'ok';
+      }catch(e){ return 'err:' + e.message; }
+    };
+    window.mapCenter = function(lat, lng){
+      try{ if (map) map.setCenter([Number(lat), Number(lng)], 15, {duration: 200}); }catch(e){}
+    };
   }catch(e){
     document.getElementById('map').innerHTML =
       '<div class="err">Карта недоступна: ' + e.message + '</div>';

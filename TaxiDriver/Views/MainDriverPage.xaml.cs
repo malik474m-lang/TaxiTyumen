@@ -1056,7 +1056,36 @@ public partial class MainDriverPage : ContentPage
         {
             if (_isOnline)
                 StatusLabel.Text = "В сети  " + lat.ToString("F4") + ", " + lng.ToString("F4");
+
+            PushDriverPositionToMaps(lat, lng);
         });
+    }
+
+    // ── Живая карта: двигаем маркер и маршрут без перезагрузки страницы ────
+    private DateTime _lastMapPush = DateTime.MinValue;
+
+    private void PushDriverPositionToMaps(double lat, double lng)
+    {
+        try
+        {
+            // Обновляем не чаще раза в 2 секунды: GPS тикает каждые 5 с,
+            // а частые перерисовки маршрута нагружают WebView.
+            if ((DateTime.UtcNow - _lastMapPush).TotalSeconds < 2) return;
+            _lastMapPush = DateTime.UtcNow;
+
+            var latText = lat.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+            var lngText = lng.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+            var script = $"window.updateDriver && window.updateDriver({latText},{lngText},{(_mapFullscreen ? "true" : "false")});";
+
+            if (MapContainer.IsVisible)
+                RouteMap.Eval(script);
+            if (_mapFullscreen)
+                FullscreenMap.Eval(script);
+        }
+        catch
+        {
+            // WebView ещё грузится — обновление применится на следующем тике GPS
+        }
     }
 
     // ==========================
