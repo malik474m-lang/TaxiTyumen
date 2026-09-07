@@ -48,10 +48,10 @@ public class OrderResponse
 
     // Счётчик включился автоматически после бесплатного ожидания
     public bool WaitingAutoStarted { get; set; }
-    // Разбивка стоимости: поездка по тарифу, простой, итог
+    // Разбивка стоимости: поездка по тарифу, простой, итог.
+    // WaitingCost объявлен выше в блоке простоя.
     public decimal TariffPrice { get; set; }
     public decimal TotalPrice { get; set; }
-    public decimal WaitingCost { get; set; }
     // Остаток бесплатного ожидания в секундах (0 — уже истекло)
     public int FreeWaitingLeftSeconds { get; set; }
 
