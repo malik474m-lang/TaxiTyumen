@@ -148,6 +148,10 @@ final class Serialize
             'waitingSeconds' => (int) ($o['waiting_seconds'] ?? 0),
             'waitingCost' => (float) ($o['waiting_cost'] ?? 0),
             'waitingActive' => !empty($o['waiting_started_at']),
+            // Счётчик включился автоматически после бесплатного ожидания
+            'waitingAutoStarted' => !empty($o['waiting_auto_started']),
+            // Сколько секунд бесплатного ожидания осталось после «Я на месте»
+            'freeWaitingLeftSeconds' => self::freeWaitingLeft($o),
             'createdAt' => $o['created_at'],
             'acceptedAt' => $o['accepted_at'],
             'driverArrivedAt' => $o['driver_arrived_at'],
@@ -186,6 +190,29 @@ final class Serialize
             'role' => ucfirst($u['role']),
             'driverId' => $driverId,
         ];
+    }
+
+    /** Остаток бесплатного ожидания в секундах (0 — уже истекло или неприменимо). */
+    private static function freeWaitingLeft(array $o): int
+    {
+        if (($o['status'] ?? '') !== 'driver_arrived' || empty($o['driver_arrived_at'])) {
+            return 0;
+        }
+        if (!empty($o['waiting_started_at']) || (int) ($o['waiting_seconds'] ?? 0) > 0) {
+            return 0;
+        }
+        try {
+            $stmt = Db::pdo()->prepare('SELECT free_waiting_minutes FROM tariffs WHERE type = ? LIMIT 1');
+            $stmt->execute([$o['tariff'] ?? 'economy']);
+            $freeMinutes = (float) ($stmt->fetchColumn() ?: 0);
+        } catch (\Throwable) {
+            return 0;
+        }
+        $arrivedTs = strtotime((string) $o['driver_arrived_at'] . ' UTC');
+        if ($arrivedTs === false) {
+            return 0;
+        }
+        return max(0, (int) round($arrivedTs + $freeMinutes * 60 - time()));
     }
 
     public static function driver(array $d): array

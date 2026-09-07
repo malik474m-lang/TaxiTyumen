@@ -133,6 +133,7 @@ CREATE TABLE IF NOT EXISTS orders (
   waiting_started_at   DATETIME NULL,
   waiting_seconds      INT NOT NULL DEFAULT 0,
   waiting_cost         DOUBLE NOT NULL DEFAULT 0,
+  waiting_auto_started TINYINT(1) NOT NULL DEFAULT 0,
   INDEX (status), INDEX (client_id), INDEX (driver_id), INDEX (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

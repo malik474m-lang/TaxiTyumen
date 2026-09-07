@@ -46,6 +46,11 @@ public class OrderResponse
     public decimal WaitingCost { get; set; }
     public bool WaitingActive { get; set; }
 
+    // Счётчик включился автоматически после бесплатного ожидания
+    public bool WaitingAutoStarted { get; set; }
+    // Остаток бесплатного ожидания в секундах (0 — уже истекло)
+    public int FreeWaitingLeftSeconds { get; set; }
+
     // Результат оповещения пассажира после этапа «Я на месте».
     public string? ClientNotificationStatus { get; set; }
     public string? ClientNotificationMessage { get; set; }

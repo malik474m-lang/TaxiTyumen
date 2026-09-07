@@ -7,6 +7,7 @@ require_once dirname(__DIR__) . '/_bootstrap.php';
 Simulate::advance($db);
 DriverTimeout::tick($db);
 AutoCall::tick($db);
+WaitingTimer::tick($db);   // автостарт платного простоя после бесплатных минут
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $body = Response::requirePostJson();

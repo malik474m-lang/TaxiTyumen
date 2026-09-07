@@ -22,6 +22,9 @@ $result = function () use ($db, $load) {
     Response::json(Serialize::order($db, $load()));
 };
 
+// Перед действием синхронизируем автостарт простоя, чтобы водитель и сервер
+// видели одинаковое состояние счётчика.
+WaitingTimer::tick($db);
 $order = $load();
 if (!$order) {
     Response::error('Заказ не найден', 404);
@@ -298,16 +301,17 @@ switch ($action) {
         }
         $actualDistance = $actualDistance > 0 ? round($actualDistance, 2) : null;
         // Простой: закрываем открытый интервал и считаем поминутно по тарифу
-        $waitingSeconds = (int) ($order['waiting_seconds'] ?? 0);
-        if (!empty($order['waiting_started_at'])) {
-            $waitingSeconds += max(0, time() - strtotime($order['waiting_started_at'] . ' UTC'));
-        }
         $tf = $db->prepare('SELECT free_waiting_minutes, paid_waiting_per_minute, commission_percent FROM tariffs WHERE type = ? LIMIT 1');
         $tf->execute([$order['tariff']]);
         $tariffRow = $tf->fetch() ?: ['free_waiting_minutes' => 0, 'paid_waiting_per_minute' => 0, 'commission_percent' => 15];
         $freeMin = max(0, (int) $tariffRow['free_waiting_minutes']);
         $perMin = max(0, (float) $tariffRow['paid_waiting_per_minute']);
-        $billMin = max(0, (int) ceil($waitingSeconds / 60) - $freeMin);
+
+        // Полное время простоя — в чек и историю; платное — с учётом способа старта.
+        // При автостарте отсчёт уже начался после бесплатных минут, повторно их не вычитаем.
+        $waitingSeconds = WaitingTimer::totalSeconds($order);
+        $billableSeconds = WaitingTimer::billableSeconds($order, $freeMin);
+        $billMin = (int) ceil($billableSeconds / 60);
         $waitingCost = round($billMin * $perMin, 2);
         $finalPrice = round($finalPrice + $waitingCost, 2);
         $db->prepare("UPDATE orders SET status='completed',completed_at=?,final_price=?,actual_distance=?,waiting_started_at=NULL,waiting_seconds=?,waiting_cost=? WHERE id=?")

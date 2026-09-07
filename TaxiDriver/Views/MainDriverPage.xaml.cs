@@ -707,7 +707,7 @@ public partial class MainDriverPage : ContentPage
         ActiveTariffLabel.Text = order.TariffName;
 
         UpdateWaitingUi(order);
-        if (order.WaitingActive) EnsureWaitingTimer();
+        if (order.WaitingActive || order.FreeWaitingLeftSeconds > 0) EnsureWaitingTimer();
 
         UpdateStatusButton();
         _ = ShowRouteMapAsync(order);
@@ -775,13 +775,28 @@ public partial class MainDriverPage : ContentPage
         var timer = total > 0 || order.WaitingActive
             ? $"{total / 60:00}:{total % 60:00}"
             : "";
-        WaitingLabel.Text = timer;
+
+        // До истечения бесплатного ожидания показываем обратный отсчёт,
+        // затем сервер включает платный счётчик автоматически.
+        var freeLeft = order.FreeWaitingLeftSeconds;
+        if (!order.WaitingActive && total == 0 && freeLeft > 0)
+        {
+            WaitingLabel.Text = $"Бесплатно ещё {freeLeft / 60:00}:{freeLeft % 60:00}";
+        }
+        else
+        {
+            WaitingLabel.Text = order.WaitingActive && order.WaitingAutoStarted
+                ? timer + " (авто)"
+                : timer;
+        }
 
         // Кнопка и таймер простоя поверх карты
         MapWaitingBtn.Text = order.WaitingActive ? "Стоп" : "Простой";
         MapWaitingBtn.BackgroundColor = Color.FromArgb(order.WaitingActive ? "#0EA5E9" : "#475569");
-        MapWaitingLabel.Text = order.WaitingActive ? "Простой " + timer : timer;
-        MapWaitingLabel.IsVisible = order.WaitingActive || total > 0;
+        MapWaitingLabel.Text = order.WaitingActive
+            ? (order.WaitingAutoStarted ? "Платный простой " : "Простой ") + timer
+            : (freeLeft > 0 && total == 0 ? $"Бесплатно {freeLeft / 60:00}:{freeLeft % 60:00}" : timer);
+        MapWaitingLabel.IsVisible = order.WaitingActive || total > 0 || freeLeft > 0;
         if (_mapFullscreen) SyncFullscreenButtons();
     }
 
@@ -791,8 +806,15 @@ public partial class MainDriverPage : ContentPage
         _waitingTimerStarted = true;
         Dispatcher.StartTimer(TimeSpan.FromSeconds(1), () =>
         {
-            if (_activeOrder != null && _activeOrder.WaitingActive)
+            // Тикаем и при активном простое, и во время обратного отсчёта
+            // бесплатного ожидания — после нуля сервер включит счётчик сам.
+            if (_activeOrder != null &&
+                (_activeOrder.WaitingActive || _activeOrder.FreeWaitingLeftSeconds > 0))
             {
+                if (!_activeOrder.WaitingActive && _activeOrder.FreeWaitingLeftSeconds > 0)
+                {
+                    _activeOrder.FreeWaitingLeftSeconds--;
+                }
                 UpdateWaitingUi(_activeOrder);
                 return true;
             }
