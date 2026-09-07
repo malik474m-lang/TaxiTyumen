@@ -1,4 +1,4 @@
-﻿using System.Net.Http;
+using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
 using TaxiOperator.Models;
@@ -101,7 +101,7 @@ public class ApiService
     public async Task<List<PriceEstimate>> GetPriceEstimateAsync(
         double fromLat, double fromLng, double toLat, double toLng,
         List<IntermediatePointRequest>? stops = null, bool roundTrip = false,
-        bool isPreorder = false)
+        bool isPreorder = false, List<string>? options = null)
     {
         var payload = new
         {
@@ -111,7 +111,8 @@ public class ApiService
             toLng,
             intermediatePoints = stops ?? new List<IntermediatePointRequest>(),
             roundTrip,
-            isPreorder
+            isPreorder,
+            options = options ?? new List<string>()
         };
         var response = await _http.PostAsJsonAsync("pricing/estimate-all", payload, _jsonOptions);
         if (!response.IsSuccessStatusCode) return new List<PriceEstimate>();

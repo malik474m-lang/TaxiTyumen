@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using TaxiClient.Models;
 using TaxiClient.Services;
 
@@ -649,6 +649,20 @@ function clearRoute() {
         catch { }
     }
 
+    /// Выбранные опции заказа (коды синхронизированы с Options::LIST на сервере).
+    private List<string> SelectedOptionCodes()
+    {
+        var codes = new List<string>();
+        if (ChildSeatCheck.IsChecked) codes.Add("child_seat");
+        if (PetCheck.IsChecked) codes.Add("pet");
+        if (LuggageCheck.IsChecked) codes.Add("extra_luggage");
+        if (NonSmokingCheck.IsChecked) codes.Add("non_smoking");
+        return codes;
+    }
+
+    private void OnOptionChanged(object? sender, CheckedChangedEventArgs e)
+        => _ = SafeLoadPricesAsync();
+
     private async Task SafeLoadPricesAsync()
     {
         try
@@ -665,7 +679,8 @@ function clearRoute() {
                 return;
             }
 
-            _prices = await _api.GetAllPricesAsync(_pickupLat, _pickupLng, _destLat, _destLng);
+            _prices = await _api.GetAllPricesAsync(_pickupLat, _pickupLng, _destLat, _destLng,
+                SelectedOptionCodes());
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
@@ -784,7 +799,8 @@ function clearRoute() {
                 Tariff = _selectedTariff,
                 Comment = comment.Trim(),
                 PassengerCount = passengers,
-                PaymentMethod = _paymentMethod
+                PaymentMethod = _paymentMethod,
+                Options = SelectedOptionCodes()
             });
 
             if (order != null)

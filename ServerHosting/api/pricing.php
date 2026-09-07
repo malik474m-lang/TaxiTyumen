@@ -47,6 +47,15 @@ $roundTrip = !empty($body['roundTrip'] ?? $body['RoundTrip'] ?? false);
 $isPreorder = !empty($body['isPreorder'] ?? $body['IsPreorder'] ?? false)
     || trim((string) ($body['scheduledAt'] ?? $body['ScheduledAt'] ?? '')) !== '';
 
+// Опции заказа (кресло, животное и т.д.): оценка сразу показывает их надбавку,
+// чтобы цена в пульте и приложении совпадала с итоговой при создании заказа.
+$optionCodes = array_values(array_filter(
+    is_array($body['options'] ?? $body['Options'] ?? null) ? ($body['options'] ?? $body['Options']) : [],
+    'is_string'
+));
+$optionsTotal = Options::total($optionCodes);
+$zs = Zones::settings($db);
+
 $routePoints = array_merge([[$fromLat, $fromLng]], $stopPoints, [[$toLat, $toLng]]);
 // Возврат выполняется напрямую к точке подачи, без повторного объезда остановок.
 if ($roundTrip) {
@@ -68,7 +77,6 @@ foreach ($activeTariffs as $t) {
     $stopsSurcharge = 0;
     if ($zonePrice !== null && count($stopPoints) > 0) {
         $stopPath = array_merge([[$fromLat, $fromLng]], $stopPoints);
-        $zs = Zones::settings($db);
         $charge = Taxi::stopsSurcharge(
             $t,
             $stopPath,
@@ -82,9 +90,18 @@ foreach ($activeTariffs as $t) {
         $finalPrice = $zonePrice['applyMultipliers']
             ? round($zonePrice['price'] * (float) $p['multiplier'])
             : $zonePrice['price'];
+        // «Туда и обратно» по фикс-цене зоны: обратный путь едет по той же зоне,
+        // поэтому фикс удваивается (без этого галочка не меняла цену в пульте).
+        if ($roundTrip) {
+            $finalPrice *= 2;
+        }
         $isFixed = true;
         $finalPrice += $stopsSurcharge;
     }
+
+    // Опции поверх зонной цены — только если это разрешено настройкой зон.
+    $optionsAdd = ($zonePrice !== null && !(int) ($zs['add_options'] ?? 1)) ? 0.0 : $optionsTotal;
+    $finalPrice += $optionsAdd;
 
     // Наценка за предварительный заказ прибавляется поверх тарифа или зоны.
     $preorderSurcharge = $isPreorder ? max(0.0, (float) ($t['preorder_surcharge'] ?? 0)) : 0.0;
@@ -108,6 +125,8 @@ foreach ($activeTariffs as $t) {
         'preorderSurcharge' => $preorderSurcharge,
         'isPreorder' => $isPreorder,
         'stopsSurcharge' => $stopsSurcharge,
+        'optionsTotal' => $optionsAdd,
+        'options' => Options::resolve($optionCodes),
     ];
 }
 usort($estimates, fn($a, $b) => $a['price'] <=> $b['price']);

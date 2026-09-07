@@ -84,12 +84,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $estimatedPrice = (float) ($t->fetchColumn() ?: 99);
     }
 
-    // Опции заказа
+    // Опции заказа. Поверх зональной фикс-цены добавляем, только если это
+    // разрешено настройкой «Добавлять опции» в разделе «Зоны и цены».
     $optionCodes = array_values(array_filter(
         is_array($body['options'] ?? null) ? $body['options'] : [],
         'is_string'
     ));
-    $estimatedPrice += Options::total($optionCodes);
+    $optionsTotal = Options::total($optionCodes);
+    if ($pricingMode === 'zone' && !(int) (Zones::settings($db)['add_options'] ?? 1)) {
+        $optionsTotal = 0.0;
+    }
+    $estimatedPrice += $optionsTotal;
 
     $orderId = Db::uuid();
     $db->prepare(

@@ -113,6 +113,11 @@ if ($destinationAddress && $destLat != 0.0) {
             $pricingMode = 'zone';
             $fromZoneId = $zonePrice['fromZone']['id'];
             $toZoneId = $zonePrice['toZone']['id'];
+            // «Туда и обратно» по фикс-цене зоны: обратный путь едет по той же зоне,
+            // поэтому фикс удваивается (соответствует оценке в api/pricing.php).
+            if ($roundTrip) {
+                $estimatedPrice *= 2;
+            }
 
             // Промежуточные адреса (путь А→Б) оплачиваются по километражу тарифа
             // и прибавляются к фиксированной цене зоны.
@@ -149,7 +154,13 @@ $optionCodes = array_values(array_filter(
     is_array($body['options'] ?? null) ? $body['options'] : [],
     'is_string'
 ));
-$estimatedPrice += Options::total($optionCodes);
+// Надбавка за опции. Поверх зональной фикс-цены добавляем, только если это
+// разрешено настройкой «Добавлять опции» в разделе «Зоны и цены».
+$optionsTotal = Options::total($optionCodes);
+if ($pricingMode === 'zone' && !(int) (Zones::settings($db)['add_options'] ?? 1)) {
+    $optionsTotal = 0.0;
+}
+$estimatedPrice += $optionsTotal;
 
 // Наценка за предварительный заказ берётся из тарифа и прибавляется к цене.
 $preorderSurcharge = 0.0;

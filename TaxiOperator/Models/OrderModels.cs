@@ -1,4 +1,4 @@
-﻿namespace TaxiOperator.Models;
+namespace TaxiOperator.Models;
 
 public class OrderResponse
 {
@@ -6,6 +6,8 @@ public class OrderResponse
     public bool IsPreorder { get; set; }
     public decimal PreorderSurcharge { get; set; }
     public decimal StopsSurcharge { get; set; }
+    /// Суммарная надбавка за выбранные опции (уже включена в Price).
+    public decimal OptionsTotal { get; set; }
     public decimal TariffPrice { get; set; }
     public decimal TotalPrice { get; set; }
     public decimal WaitingCost { get; set; }
@@ -76,6 +78,9 @@ public class CreateOperatorOrderRequest
 
     /// Предварительный заказ: дата и время подачи (null — заказ сейчас).
     public DateTime? ScheduledAt { get; set; }
+
+    /// Опции заказа: child_seat, pet, meeting_sign, extra_luggage, non_smoking.
+    public List<string> Options { get; set; } = new();
 }
 
 public class IntermediatePointRequest

@@ -1,4 +1,4 @@
-﻿<Window x:Class="TaxiOperator.Views.MainWindow"
+<Window x:Class="TaxiOperator.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Такси Тюмень  Пульт оператора"
@@ -156,6 +156,25 @@
                     <CheckBox x:Name="RoundTripCheck" Content="Туда и обратно (возврат на адрес подачи)"
                               Foreground="LightGray" Margin="0,0,0,10"
                               Checked="OnRoundTripChanged" Unchecked="OnRoundTripChanged"/>
+
+                    <TextBlock Text="Опции:" Foreground="LightGray" Margin="0,0,0,3"/>
+                    <StackPanel Margin="0,0,0,10">
+                        <CheckBox x:Name="OptChildSeat" Content="Детское кресло (+50 ₽)" Tag="child_seat"
+                                  Foreground="LightGray" Margin="0,0,0,4"
+                                  Checked="OnOptionChanged" Unchecked="OnOptionChanged"/>
+                        <CheckBox x:Name="OptPet" Content="Перевозка животного (+70 ₽)" Tag="pet"
+                                  Foreground="LightGray" Margin="0,0,0,4"
+                                  Checked="OnOptionChanged" Unchecked="OnOptionChanged"/>
+                        <CheckBox x:Name="OptMeetingSign" Content="Встреча с табличкой (+100 ₽)" Tag="meeting_sign"
+                                  Foreground="LightGray" Margin="0,0,0,4"
+                                  Checked="OnOptionChanged" Unchecked="OnOptionChanged"/>
+                        <CheckBox x:Name="OptExtraLuggage" Content="Крупный багаж (+30 ₽)" Tag="extra_luggage"
+                                  Foreground="LightGray" Margin="0,0,0,4"
+                                  Checked="OnOptionChanged" Unchecked="OnOptionChanged"/>
+                        <CheckBox x:Name="OptNonSmoking" Content="Некурящий салон" Tag="non_smoking"
+                                  Foreground="LightGray"
+                                  Checked="OnOptionChanged" Unchecked="OnOptionChanged"/>
+                    </StackPanel>
 
                     <CheckBox x:Name="PreorderCheck" Content="Предварительный заказ"
                               Foreground="LightGray" Margin="0,0,0,6"

@@ -1,4 +1,4 @@
-﻿namespace TaxiClient.Models;
+namespace TaxiClient.Models;
 
 public class LoginRequest
 {
@@ -92,6 +92,9 @@ public class CreateOrderRequest
     public string? Comment { get; set; }
     public int PassengerCount { get; set; } = 1;
     public string PaymentMethod { get; set; } = "Cash";
+
+    /// Опции заказа: child_seat, pet, meeting_sign, extra_luggage, non_smoking.
+    public List<string> Options { get; set; } = new();
 }
 
 public class PriceEstimate

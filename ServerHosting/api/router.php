@@ -217,6 +217,9 @@ if ($routeLower==='pricing/estimate'||$routeLower==='pricing/estimate-all') {
         'roundTrip'=>$body['roundTrip'] ?? $body['RoundTrip'] ?? false,
         'isPreorder'=>$body['isPreorder'] ?? $body['IsPreorder'] ?? false,
         'scheduledAt'=>$body['scheduledAt'] ?? $body['ScheduledAt'] ?? '',
+        // Опции: телом (WPF, JSON) или строкой в query (MAUI: ?options=child_seat,pet)
+        'options'=>$body['options'] ?? $body['Options']
+            ?? (isset($_GET['options']) ? array_values(array_filter(explode(',', (string)$_GET['options']))) : []),
     ]);
     $GLOBALS['pricing_compat_mode']=$routeLower==='pricing/estimate'?'single':'all';
     $GLOBALS['pricing_compat_tariff']=$_GET['tariff']??0;

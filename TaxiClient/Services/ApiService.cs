@@ -70,11 +70,15 @@ public class ApiService
     }
 
     public async Task<List<PriceEstimate>> GetAllPricesAsync(
-        double fromLat, double fromLng, double toLat, double toLng)
+        double fromLat, double fromLng, double toLat, double toLng,
+        IEnumerable<string>? options = null)
     {
         var url = string.Format(CultureInfo.InvariantCulture,
             "pricing/estimate-all?fromLat={0}&fromLng={1}&toLat={2}&toLng={3}",
             fromLat, fromLng, toLat, toLng);
+        var optionCodes = (options ?? Enumerable.Empty<string>()).ToList();
+        if (optionCodes.Count > 0)
+            url += "&options=" + Uri.EscapeDataString(string.Join(",", optionCodes));
 
         var resp = await _http.GetAsync(url);
         if (!resp.IsSuccessStatusCode) return new();

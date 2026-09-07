@@ -145,14 +145,31 @@ layout_header('Зоны и цены', 'zones');
 <div class="grid q2" style="margin-top:14px">
   <div class="card">
     <h3 style="margin-bottom:10px"><?= $editZone ? 'Редактирование зоны' : 'Новая зона' ?></h3>
-    <p class="mut" style="margin-bottom:10px">Кликайте по карте, чтобы поставить точки границы. Минимум 3 точки.</p>
-    <div id="map" style="height:340px;border-radius:12px;overflow:hidden;background:#0f0f13">
+    <p class="mut" style="margin-bottom:10px">Кликайте по карте, чтобы поставить точки границы. Минимум 3 точки.
+      Карту можно развернуть на весь экран — так точки ставить удобнее.</p>
+    <style>
+      body.map-lock{overflow:hidden}
+      #mapWrap.map-full{position:fixed;inset:0;z-index:10050;background:#0a0a0c}
+      #mapWrap.map-full #map{height:100% !important;border-radius:0}
+      #mapWrap .map-float{position:absolute;z-index:6;display:flex;gap:8px;align-items:center}
+      #mapFsHint{background:rgba(10,10,12,.82);border:1px solid var(--line);border-radius:10px;
+        padding:8px 12px;font-size:12px;color:#d4d4d8;backdrop-filter:blur(8px)}
+    </style>
+    <div id="mapWrap" style="position:relative">
+      <div id="map" style="height:340px;border-radius:12px;overflow:hidden;background:#0f0f13">
       <?php if (YANDEX_MAPS_API_KEY === ''): ?>
       <div style="height:100%;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">
         <div><div style="font-size:32px">🗺️</div><b>API-ключ Яндекс Карт не настроен</b>
         <div class="mut" style="margin-top:7px;max-width:360px">Добавьте <code>YANDEX_MAPS_API_KEY</code> в <code>config.local.php</code> и ограничьте ключ доменом <?= h($_SERVER['HTTP_HOST'] ?? '') ?>.</div></div>
       </div>
       <?php endif; ?>
+      </div>
+      <div class="map-float" style="top:10px;right:10px">
+        <button type="button" class="btn sm" id="mapExpandBtn" onclick="toggleMapFullscreen()">⤢ Развернуть</button>
+      </div>
+      <div class="map-float" id="mapFsHint" style="top:10px;left:10px;display:none">
+        Клик по карте — новая точка · Точки можно перетаскивать · Esc — свернуть
+      </div>
     </div>
     <form method="post" style="margin-top:12px">
       <input type="hidden" name="cmd" value="save_zone">
@@ -312,6 +329,32 @@ function clearPoints() {
   points = [];
   redraw();
 }
+
+// Развернуть карту на весь экран для удобной расстановки точек зоны.
+function toggleMapFullscreen(force) {
+  var wrap = document.getElementById('mapWrap');
+  var btn = document.getElementById('mapExpandBtn');
+  var hint = document.getElementById('mapFsHint');
+  var on = (typeof force === 'boolean') ? force : !wrap.classList.contains('map-full');
+  wrap.classList.toggle('map-full', on);
+  document.body.classList.toggle('map-lock', on);
+  hint.style.display = on ? 'flex' : 'none';
+  btn.textContent = on ? '✕ Свернуть' : '⤢ Развернуть';
+  // Яндекс.Карты кэшируют размер контейнера — пересчитываем после смены раскладки.
+  if (map && map.container) {
+    setTimeout(function () {
+      map.container.fitToContainer();
+      if (points.length >= 2) {
+        var bounds = (typeof ymaps !== 'undefined') ? ymaps.util.bounds.fromPoints(points) : null;
+        if (bounds) map.setBounds(bounds, {checkZoomRange: true, zoomMargin: 60});
+      }
+    }, 80);
+  }
+}
+
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') toggleMapFullscreen(false);
+});
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, function (char) {

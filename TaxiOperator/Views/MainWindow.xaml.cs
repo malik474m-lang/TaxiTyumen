@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Threading;
@@ -14,10 +14,15 @@ public partial class MainWindow : Window
     private ObservableCollection<OrderViewModel> _orders = new();
     private OrderResponse? _selectedOrder;
     private readonly DadataService _dadata = new();
-    private double _pickupLat = 57.1522;
-    private double _pickupLng = 65.5272;
+    private double _pickupLat = 0;
+    private double _pickupLng = 0;
     private double _destLat = 0;
     private double _destLng = 0;
+    // Текст адреса, к которому привязаны координаты: если диспетчер правит адрес
+    // вручную после выбора подсказки, координаты устарели — их нужно сбросить,
+    // иначе цена перестаёт реагировать на изменение адреса.
+    private string _pickupConfirmedText = "";
+    private string _destConfirmedText = "";
     private bool _suppressPickupChange = false;
     private bool _suppressDestChange = false;
     private readonly List<IntermediatePointRequest> _stops = new();
@@ -479,6 +484,23 @@ public partial class MainWindow : Window
         _ = UpdatePriceAsync();
     }
 
+    /// Галочки опций заказа (значения синхронизированы с Options::LIST на сервере).
+    private System.Windows.Controls.CheckBox[] OptionCheckBoxes() => new[]
+    {
+        OptChildSeat, OptPet, OptMeetingSign, OptExtraLuggage, OptNonSmoking
+    };
+
+    private List<string> SelectedOptionCodes() => OptionCheckBoxes()
+        .Where(c => c.IsChecked == true)
+        .Select(c => (string)c.Tag)
+        .ToList();
+
+    private void OnOptionChanged(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        _ = UpdatePriceAsync();
+    }
+
     private void OnClearStopsClick(object sender, RoutedEventArgs e)
     {
         _stops.Clear();
@@ -512,7 +534,7 @@ public partial class MainWindow : Window
             var estimates = await _api.GetPriceEstimateAsync(
                 _pickupLat, _pickupLng, _destLat, _destLng,
                 _stops.ToList(), RoundTripCheck.IsChecked == true,
-                scheduledAt != null);
+                scheduledAt != null, SelectedOptionCodes());
             if (estimates.Count == 0)
             {
                 PriceText.Text = "—";
@@ -530,6 +552,8 @@ public partial class MainWindow : Window
             if (RoundTripCheck.IsChecked == true) stopsNote += " · туда и обратно";
             if (estimate.PreorderSurcharge > 0)
                 stopsNote += $" · предзаказ +{estimate.PreorderSurcharge:F0} ₽";
+            if (estimate.OptionsTotal > 0)
+                stopsNote += $" · опции +{estimate.OptionsTotal:F0} ₽";
 
             PriceText.Text = $"{estimate.Price:F0} ₽";
             DistanceText.Text = $"{estimate.DistanceKm:F1} км · ~{estimate.DurationMinutes} мин{stopsNote}";
@@ -654,7 +678,8 @@ public partial class MainWindow : Window
                 PassengerCount = PassengersCombo.SelectedIndex + 1,
                 IntermediatePoints = _stops.ToList(),
                 RoundTrip = RoundTripCheck.IsChecked == true,
-                ScheduledAt = GetScheduledAt()
+                ScheduledAt = GetScheduledAt(),
+                Options = SelectedOptionCodes()
             };
 
             var order = await _api.CreateOrderAsync(request);
@@ -716,6 +741,14 @@ public partial class MainWindow : Window
         if (_suppressPickupChange) return;
 
         var text = PickupAddressBox.Text;
+
+        // Адрес изменили вручную — старые координаты больше не соответствуют тексту.
+        if (_pickupLat != 0 && text.Trim() != _pickupConfirmedText)
+        {
+            _pickupLat = 0;
+            _pickupLng = 0;
+            _ = UpdatePriceAsync();
+        }
         if (string.IsNullOrWhiteSpace(text) || text.Length < 3)
         {
             PickupSuggestionsList.Visibility = Visibility.Collapsed;
@@ -748,6 +781,7 @@ public partial class MainWindow : Window
         PickupAddressBox.Text = selected.DisplayName;
         _pickupLat = selected.Latitude;
         _pickupLng = selected.Longitude;
+        _pickupConfirmedText = selected.DisplayName.Trim();
         _suppressPickupChange = false;
         PickupSuggestionsList.Visibility = Visibility.Collapsed;
         _ = UpdatePriceAsync();
@@ -759,6 +793,14 @@ public partial class MainWindow : Window
         if (_suppressDestChange) return;
 
         var text = DestinationBox.Text;
+
+        // Адрес изменили вручную — старые координаты больше не соответствуют тексту.
+        if (_destLat != 0 && text.Trim() != _destConfirmedText)
+        {
+            _destLat = 0;
+            _destLng = 0;
+            _ = UpdatePriceAsync();
+        }
         if (string.IsNullOrWhiteSpace(text) || text.Length < 3)
         {
             DestSuggestionsList.Visibility = Visibility.Collapsed;
@@ -791,6 +833,7 @@ public partial class MainWindow : Window
         DestinationBox.Text = selected.DisplayName;
         _destLat = selected.Latitude;
         _destLng = selected.Longitude;
+        _destConfirmedText = selected.DisplayName.Trim();
         _suppressDestChange = false;
         DestSuggestionsList.Visibility = Visibility.Collapsed;
         _ = UpdatePriceAsync();
@@ -1127,10 +1170,13 @@ public partial class MainWindow : Window
         PriceText.Text = "";
         DistanceText.Text = "";
 
-        _pickupLat = 57.1522;
-        _pickupLng = 65.5272;
+        _pickupLat = 0;
+        _pickupLng = 0;
         _destLat = 0;
         _destLng = 0;
+        _pickupConfirmedText = "";
+        _destConfirmedText = "";
+        foreach (var box in OptionCheckBoxes()) box.IsChecked = false;
         EntranceBox.Text = "";
         DestEntranceBox.Text = "";
         ClientHintText.Text = "";
