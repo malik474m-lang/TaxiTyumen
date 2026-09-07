@@ -100,7 +100,8 @@ public class ApiService
     /// подача → промежуточные точки → назначение (+ обратный путь).
     public async Task<List<PriceEstimate>> GetPriceEstimateAsync(
         double fromLat, double fromLng, double toLat, double toLng,
-        List<IntermediatePointRequest>? stops = null, bool roundTrip = false)
+        List<IntermediatePointRequest>? stops = null, bool roundTrip = false,
+        bool isPreorder = false)
     {
         var payload = new
         {
@@ -109,7 +110,8 @@ public class ApiService
             toLat,
             toLng,
             intermediatePoints = stops ?? new List<IntermediatePointRequest>(),
-            roundTrip
+            roundTrip,
+            isPreorder
         };
         var response = await _http.PostAsJsonAsync("pricing/estimate-all", payload, _jsonOptions);
         if (!response.IsSuccessStatusCode) return new List<PriceEstimate>();

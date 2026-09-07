@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS tariffs (
   night_multiplier      DOUBLE       NOT NULL DEFAULT 1,
   peak_multiplier       DOUBLE       NOT NULL DEFAULT 1,
   commission_percent    DOUBLE       NOT NULL DEFAULT 15,
+  preorder_surcharge    DOUBLE       NOT NULL DEFAULT 0,
   is_active             TINYINT(1)  NOT NULL DEFAULT 1,
   updated_at            DATETIME    NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -135,6 +136,8 @@ CREATE TABLE IF NOT EXISTS orders (
   waiting_seconds      INT NOT NULL DEFAULT 0,
   waiting_cost         DOUBLE NOT NULL DEFAULT 0,
   waiting_auto_started TINYINT(1) NOT NULL DEFAULT 0,
+  scheduled_at         DATETIME NULL,
+  preorder_surcharge   DOUBLE NOT NULL DEFAULT 0,
   INDEX (status), INDEX (client_id), INDEX (driver_id), INDEX (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

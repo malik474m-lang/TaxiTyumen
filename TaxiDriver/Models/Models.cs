@@ -41,6 +41,11 @@ public class OrderResponse
     public int PassengerCount { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 
+    // Предварительный заказ: время подачи и наценка
+    public DateTimeOffset? ScheduledAt { get; set; }
+    public bool IsPreorder { get; set; }
+    public decimal PreorderSurcharge { get; set; }
+
     /// Промежуточные адреса маршрута в порядке следования.
     public List<IntermediatePointDto> IntermediatePoints { get; set; } = new();
 

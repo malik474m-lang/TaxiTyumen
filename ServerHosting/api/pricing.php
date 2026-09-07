@@ -43,6 +43,9 @@ foreach ((array) ($body['intermediatePoints'] ?? $body['IntermediatePoints'] ?? 
 }
 
 $roundTrip = !empty($body['roundTrip'] ?? $body['RoundTrip'] ?? false);
+// Предзаказ: к цене каждого тарифа добавляется его наценка.
+$isPreorder = !empty($body['isPreorder'] ?? $body['IsPreorder'] ?? false)
+    || trim((string) ($body['scheduledAt'] ?? $body['ScheduledAt'] ?? '')) !== '';
 
 $routePoints = array_merge([[$fromLat, $fromLng]], $stopPoints, [[$toLat, $toLng]]);
 // Возврат выполняется напрямую к точке подачи, без повторного объезда остановок.
@@ -66,6 +69,11 @@ foreach ($activeTariffs as $t) {
             : $zonePrice['price'];
         $isFixed = true;
     }
+
+    // Наценка за предварительный заказ прибавляется поверх тарифа или зоны.
+    $preorderSurcharge = $isPreorder ? max(0.0, (float) ($t['preorder_surcharge'] ?? 0)) : 0.0;
+    $finalPrice += $preorderSurcharge;
+
     $estimates[] = [
         'tariffType' => $t['type'],
         'tariffName' => $t['name'],
@@ -81,6 +89,8 @@ foreach ($activeTariffs as $t) {
         'isPeakRate' => $p['isPeakRate'],
         'multiplier' => $p['multiplier'],
         'minimumFare' => (float) $t['minimum_fare'],
+        'preorderSurcharge' => $preorderSurcharge,
+        'isPreorder' => $isPreorder,
     ];
 }
 usort($estimates, fn($a, $b) => $a['price'] <=> $b['price']);

@@ -2,6 +2,9 @@
 
 public class OrderResponse
 {
+    public DateTimeOffset? ScheduledAt { get; set; }
+    public bool IsPreorder { get; set; }
+    public decimal PreorderSurcharge { get; set; }
     public decimal TariffPrice { get; set; }
     public decimal TotalPrice { get; set; }
     public decimal WaitingCost { get; set; }
@@ -69,6 +72,9 @@ public class CreateOperatorOrderRequest
 
     /// Поездка «туда и обратно»: возврат клиента на адрес подачи.
     public bool RoundTrip { get; set; }
+
+    /// Предварительный заказ: дата и время подачи (null — заказ сейчас).
+    public DateTime? ScheduledAt { get; set; }
 }
 
 public class IntermediatePointRequest
@@ -98,6 +104,7 @@ public class CancelOrderRequest
 
 public class PriceEstimate
 {
+    public decimal PreorderSurcharge { get; set; }
     public decimal Price { get; set; }
     public double DistanceKm { get; set; }
     public int DurationMinutes { get; set; }

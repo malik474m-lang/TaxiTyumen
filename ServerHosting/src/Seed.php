@@ -244,6 +244,11 @@ final class Seed
         self::addColumn($db, 'orders', 'waiting_cost', "DOUBLE NOT NULL DEFAULT 0 AFTER waiting_seconds");
         self::addColumn($db, 'orders', 'waiting_auto_started', "TINYINT(1) NOT NULL DEFAULT 0 AFTER waiting_cost");
         self::addColumn($db, 'orders', 'destination_entrance', "VARCHAR(20) NULL AFTER destination_address");
+
+        // Предварительные заказы: время подачи и наценка
+        self::addColumn($db, 'orders', 'scheduled_at', "DATETIME NULL AFTER waiting_auto_started");
+        self::addColumn($db, 'orders', 'preorder_surcharge', "DOUBLE NOT NULL DEFAULT 0 AFTER scheduled_at");
+        self::addColumn($db, 'tariffs', 'preorder_surcharge', "DOUBLE NOT NULL DEFAULT 0 AFTER commission_percent");
         self::addColumn($db, 'auto_call_settings', 'zvonok_speaker', "VARCHAR(30) NOT NULL DEFAULT 'Tatyana' AFTER zvonok_campaign_id");
 
         // Загружаемый логотип для серверного брендинга

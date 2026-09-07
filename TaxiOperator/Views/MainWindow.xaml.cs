@@ -50,6 +50,7 @@ public partial class MainWindow : Window
             await PollNotificationsAsync();
         };
         _refreshTimer.Start();
+        InitPreorderControls();
 
         if (_api.CurrentUser != null)
             OperatorNameText.Text = $"{_api.CurrentUser.FirstName} {_api.CurrentUser.LastName}";
@@ -282,7 +283,10 @@ public partial class MainWindow : Window
         var o = vm.Order;
 
         DetailNumber.Text = o.OrderNumber;
-        DetailStatus.Text = o.StatusText;
+        DetailStatus.Text = o.IsPreorder && o.ScheduledAt.HasValue
+            ? $"{o.StatusText}\nПредзаказ на {o.ScheduledAt.Value.ToLocalTime():dd.MM.yyyy HH:mm}"
+              + (o.PreorderSurcharge > 0 ? $" (наценка {o.PreorderSurcharge:F0} ₽)" : "")
+            : o.StatusText;
         DetailClient.Text = o.ClientName ?? "";
         DetailPhone.Text = o.ClientPhone ?? "";
         DetailPickup.Text = o.PickupAddress
@@ -397,6 +401,77 @@ public partial class MainWindow : Window
         _ = UpdatePriceAsync();
     }
 
+    // ── Предварительный заказ ──────────────────────────────────────────────
+    private void InitPreorderControls()
+    {
+        for (var h = 0; h < 24; h++) PreorderHourCombo.Items.Add(h.ToString("00"));
+        for (var m = 0; m < 60; m += 5) PreorderMinuteCombo.Items.Add(m.ToString("00"));
+
+        // По умолчанию — ближайшее время через час, округлённое до 5 минут.
+        var suggested = DateTime.Now.AddHours(1);
+        PreorderDatePicker.SelectedDate = suggested.Date;
+        PreorderHourCombo.SelectedIndex = suggested.Hour;
+        PreorderMinuteCombo.SelectedIndex = Math.Min(11, suggested.Minute / 5);
+    }
+
+    /// Выбранные дата и время подачи или null, если предзаказ выключен.
+    private DateTime? GetScheduledAt()
+    {
+        if (PreorderCheck.IsChecked != true) return null;
+        var date = PreorderDatePicker.SelectedDate ?? DateTime.Today;
+        var hour = Math.Max(0, PreorderHourCombo.SelectedIndex);
+        var minute = Math.Max(0, PreorderMinuteCombo.SelectedIndex) * 5;
+        return date.Date.AddHours(hour).AddMinutes(minute);
+    }
+
+    private void OnPreorderChanged(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        PreorderPanel.Visibility = PreorderCheck.IsChecked == true
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        UpdatePreorderHint();
+        _ = UpdatePriceAsync();
+    }
+
+    private void OnPreorderDateTimeChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        UpdatePreorderHint();
+        _ = UpdatePriceAsync();
+    }
+
+    private void OnPreorderTimeChanged(object sender,
+        System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        UpdatePreorderHint();
+        _ = UpdatePriceAsync();
+    }
+
+    private void UpdatePreorderHint()
+    {
+        var scheduled = GetScheduledAt();
+        if (scheduled == null)
+        {
+            PreorderHintText.Text = "";
+            return;
+        }
+
+        var diff = scheduled.Value - DateTime.Now;
+        if (diff.TotalMinutes < 5)
+        {
+            PreorderHintText.Text = "Время должно быть минимум через 5 минут";
+            PreorderHintText.Foreground = System.Windows.Media.Brushes.IndianRed;
+            return;
+        }
+
+        PreorderHintText.Foreground = System.Windows.Media.Brushes.LightSkyBlue;
+        PreorderHintText.Text = diff.TotalHours >= 1
+            ? $"Подача через {(int)diff.TotalHours} ч {diff.Minutes} мин · {scheduled:dd.MM HH:mm}"
+            : $"Подача через {(int)diff.TotalMinutes} мин · {scheduled:dd.MM HH:mm}";
+    }
+
     private void OnRoundTripChanged(object sender, RoutedEventArgs e)
     {
         if (!IsLoaded) return;
@@ -432,9 +507,11 @@ public partial class MainWindow : Window
                 return;
             }
 
+            var scheduledAt = GetScheduledAt();
             var estimates = await _api.GetPriceEstimateAsync(
                 _pickupLat, _pickupLng, _destLat, _destLng,
-                _stops.ToList(), RoundTripCheck.IsChecked == true);
+                _stops.ToList(), RoundTripCheck.IsChecked == true,
+                scheduledAt != null);
             if (estimates.Count == 0)
             {
                 PriceText.Text = "—";
@@ -448,6 +525,8 @@ public partial class MainWindow : Window
             // Маршрут уже посчитан через все точки, поэтому просто показываем их количество.
             var stopsNote = _stops.Count > 0 ? $" · через {_stops.Count} точк(и)" : "";
             if (RoundTripCheck.IsChecked == true) stopsNote += " · туда и обратно";
+            if (estimate.PreorderSurcharge > 0)
+                stopsNote += $" · предзаказ +{estimate.PreorderSurcharge:F0} ₽";
 
             PriceText.Text = $"{estimate.Price:F0} ₽";
             DistanceText.Text = $"{estimate.DistanceKm:F1} км · ~{estimate.DurationMinutes} мин{stopsNote}";
@@ -465,6 +544,15 @@ public partial class MainWindow : Window
             string.IsNullOrWhiteSpace(PickupAddressBox.Text))
         {
             MessageBox.Show("Заполните телефон и адрес подачи!",
+                "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        // Предзаказ: время должно быть в будущем.
+        var scheduledCheck = GetScheduledAt();
+        if (scheduledCheck != null && scheduledCheck.Value <= DateTime.Now.AddMinutes(5))
+        {
+            MessageBox.Show("Время предварительного заказа должно быть минимум через 5 минут.",
                 "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -562,7 +650,8 @@ public partial class MainWindow : Window
                     : CommentBox.Text.Trim(),
                 PassengerCount = PassengersCombo.SelectedIndex + 1,
                 IntermediatePoints = _stops.ToList(),
-                RoundTrip = RoundTripCheck.IsChecked == true
+                RoundTrip = RoundTripCheck.IsChecked == true,
+                ScheduledAt = GetScheduledAt()
             };
 
             var order = await _api.CreateOrderAsync(request);
@@ -1044,6 +1133,9 @@ public partial class MainWindow : Window
         ClientHintText.Text = "";
         StopAddressBox.Text = "";
         RoundTripCheck.IsChecked = false;
+        PreorderCheck.IsChecked = false;
+        PreorderPanel.Visibility = Visibility.Collapsed;
+        PreorderHintText.Text = "";
         _stops.Clear();
         RefreshStopsList();
     }
@@ -1057,7 +1149,9 @@ public class OrderViewModel
     public OrderViewModel(OrderResponse order) => Order = order;
 
     public string OrderNumber => Order.OrderNumber;
-    public string StatusText => Order.StatusText;
+    public string StatusText => Order.IsPreorder && Order.ScheduledAt.HasValue
+        ? $"{Order.StatusText} · на {Order.ScheduledAt.Value.ToLocalTime():dd.MM HH:mm}"
+        : Order.StatusText;
 
     public string ClientDisplay => Order.Source == "OperatorApp"
         ? $"{Order.ClientName} ({Order.ClientPhone})"

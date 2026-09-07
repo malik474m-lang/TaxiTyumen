@@ -57,6 +57,24 @@ foreach ((array) $rawStops as $point) {
 // Поездка «туда и обратно»: машина возвращает клиента в точку подачи.
 $roundTrip = !empty($body['roundTrip'] ?? $body['RoundTrip'] ?? false);
 
+// Предварительный заказ: время подачи в будущем (UTC в базе).
+$scheduledAt = null;
+$scheduledRaw = trim((string) ($body['scheduledAt'] ?? $body['ScheduledAt'] ?? ''));
+if ($scheduledRaw !== '') {
+    $ts = strtotime($scheduledRaw);
+    if ($ts === false) {
+        Response::error('Некорректные дата и время предварительного заказа');
+    }
+    // Принимаем время не раньше, чем через 5 минут, и не дальше 30 суток.
+    if ($ts < time() + 300) {
+        Response::error('Время предварительного заказа должно быть минимум через 5 минут');
+    }
+    if ($ts > time() + 30 * 24 * 3600) {
+        Response::error('Предварительный заказ можно создать не более чем на 30 дней вперёд');
+    }
+    $scheduledAt = gmdate('Y-m-d H:i:s', $ts);
+}
+
 $tariff = Taxi::normalizeTariff($body['tariff'] ?? 'economy');
 $pricingMode = 'tariff';
 $fromZoneId = null;
@@ -115,6 +133,15 @@ $optionCodes = array_values(array_filter(
 ));
 $estimatedPrice += Options::total($optionCodes);
 
+// Наценка за предварительный заказ берётся из тарифа и прибавляется к цене.
+$preorderSurcharge = 0.0;
+if ($scheduledAt !== null) {
+    $ps = $db->prepare('SELECT preorder_surcharge FROM tariffs WHERE type = ? LIMIT 1');
+    $ps->execute([$tariff]);
+    $preorderSurcharge = max(0.0, (float) ($ps->fetchColumn() ?: 0));
+    $estimatedPrice += $preorderSurcharge;
+}
+
 $orderId = Db::uuid();
 $db->prepare(
     'INSERT INTO orders (id, order_number, operator_id, source, client_id, client_phone, client_name,
@@ -122,8 +149,8 @@ $db->prepare(
      destination_address, destination_entrance, destination_latitude, destination_longitude,
      tariff, estimated_price, estimated_distance, estimated_duration, route_geometry,
      pricing_mode, from_zone_id, to_zone_id,
-     comment, passenger_count, status)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+     comment, passenger_count, scheduled_at, preorder_surcharge, status)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
 )->execute([
     $orderId, Taxi::generateOrderNumber(),
     (string) ($body['operatorId'] ?? $claims['uid']), 'operator_app', $clientId, $clientPhone, $clientName,
@@ -134,6 +161,7 @@ $db->prepare(
     $pricingMode, $fromZoneId, $toZoneId,
     $body['comment'] ?? null,
     (int) ($body['passengerCount'] ?? 1) ?: 1,
+    $scheduledAt, $preorderSurcharge,
     'searching',
 ]);
 
@@ -151,7 +179,10 @@ $db->prepare("INSERT INTO transactions(id,order_id,amount,method,status) VALUES 
 $stmt = $db->prepare('SELECT * FROM orders WHERE id = ?');
 $stmt->execute([$orderId]);
 $createdOrder = $stmt->fetch();
-NotificationService::notifyNearbyDriversNewOrder($db, $createdOrder);
+// Предзаказ не рассылаем сразу: водители увидят его ближе ко времени подачи.
+if ($scheduledAt === null) {
+    NotificationService::notifyNearbyDriversNewOrder($db, $createdOrder);
+}
 NotificationService::notifyOperatorsOrderUpdate($db, $createdOrder);
 Bus::publish('orders');
 Response::json(Serialize::order($db, $createdOrder), 201);

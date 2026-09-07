@@ -10,7 +10,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $db->prepare(
         'UPDATE tariffs SET name=?, description=?, base_fare=?, price_per_km=?, price_per_minute=?,
          minimum_fare=?, night_multiplier=?, peak_multiplier=?, commission_percent=?,
-         free_waiting_minutes=?, paid_waiting_per_minute=?, is_active=?, updated_at=? WHERE id=?'
+         free_waiting_minutes=?, paid_waiting_per_minute=?, preorder_surcharge=?,
+         is_active=?, updated_at=? WHERE id=?'
     )->execute([
         mb_substr((string) ($_POST['name'] ?? ''), 0, 40),
         mb_substr((string) ($_POST['description'] ?? ''), 0, 200),
@@ -23,6 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         (float) ($_POST['commission_percent'] ?? 15),
         (float) ($_POST['free_waiting_minutes'] ?? 0),
         (float) ($_POST['paid_waiting_per_minute'] ?? 0),
+        (float) ($_POST['preorder_surcharge'] ?? 0),
         !empty($_POST['is_active']) ? 1 : 0,
         Db::utcNow(),
         $id,
@@ -63,6 +65,7 @@ layout_header('Тарифы', 'tariffs');
           ['peak_multiplier', 'Час пик ×', $t['peak_multiplier']],
           ['commission_percent', 'Комиссия, %', $t['commission_percent']],
           ['free_waiting_minutes', 'Простой бесплатно, мин', $t['free_waiting_minutes'] ?? 0],
+          ['preorder_surcharge', 'Наценка за предзаказ, ₽', $t['preorder_surcharge'] ?? 0],
           ['paid_waiting_per_minute', 'Простой, ₽/мин', $t['paid_waiting_per_minute']],
       ] as [$field, $label, $value]): ?>
       <tr>

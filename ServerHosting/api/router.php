@@ -215,6 +215,8 @@ if ($routeLower==='pricing/estimate'||$routeLower==='pricing/estimate-all') {
         'toLng'=>(float)($_GET['toLng'] ?? $body['toLng'] ?? 0),
         'intermediatePoints'=>$body['intermediatePoints'] ?? $body['IntermediatePoints'] ?? [],
         'roundTrip'=>$body['roundTrip'] ?? $body['RoundTrip'] ?? false,
+        'isPreorder'=>$body['isPreorder'] ?? $body['IsPreorder'] ?? false,
+        'scheduledAt'=>$body['scheduledAt'] ?? $body['ScheduledAt'] ?? '',
     ]);
     $GLOBALS['pricing_compat_mode']=$routeLower==='pricing/estimate'?'single':'all';
     $GLOBALS['pricing_compat_tariff']=$_GET['tariff']??0;

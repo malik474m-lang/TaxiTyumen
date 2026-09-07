@@ -146,6 +146,10 @@ final class Serialize
             ] : null,
             'escalatedAt' => $o['escalated_at'],
             'waitingStartedAt' => $o['waiting_started_at'] ?? null,
+            // Предварительный заказ: время подачи и наценка
+            'scheduledAt' => $o['scheduled_at'] ?? null,
+            'isPreorder' => !empty($o['scheduled_at']),
+            'preorderSurcharge' => (float) ($o['preorder_surcharge'] ?? 0),
             // Разбивка стоимости: поездка по тарифу, простой и итог
             'tariffPrice' => round((float) ($o['final_price'] ?? $o['estimated_price']) - (float) ($o['waiting_cost'] ?? 0), 2),
             'totalPrice' => round((float) ($o['final_price'] ?? ((float) $o['estimated_price'] + (float) ($o['waiting_cost'] ?? 0))), 2),

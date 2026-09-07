@@ -700,7 +700,10 @@ public partial class MainDriverPage : ContentPage
         SortOldBtn.IsVisible = false;
         SortExpensiveBtn.IsVisible = false;
 
-        ActiveOrderNumber.Text = order.OrderNumber;
+        // Предзаказ помечаем временем подачи прямо в заголовке карточки.
+        ActiveOrderNumber.Text = order.IsPreorder && order.ScheduledAt.HasValue
+            ? $"{order.OrderNumber} · подача {order.ScheduledAt.Value.ToLocalTime():dd.MM HH:mm}"
+            : order.OrderNumber;
         ActivePickupLabel.Text = order.PickupAddress
             + (string.IsNullOrWhiteSpace(order.PickupEntrance) ? "" : ", подъезд " + order.PickupEntrance);
         // Промежуточные адреса — в строгом порядке следования

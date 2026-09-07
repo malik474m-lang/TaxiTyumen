@@ -157,6 +157,25 @@
                               Foreground="LightGray" Margin="0,0,0,10"
                               Checked="OnRoundTripChanged" Unchecked="OnRoundTripChanged"/>
 
+                    <CheckBox x:Name="PreorderCheck" Content="Предварительный заказ"
+                              Foreground="LightGray" Margin="0,0,0,6"
+                              Checked="OnPreorderChanged" Unchecked="OnPreorderChanged"/>
+                    <StackPanel x:Name="PreorderPanel" Visibility="Collapsed" Margin="0,0,0,10">
+                        <StackPanel Orientation="Horizontal">
+                            <DatePicker x:Name="PreorderDatePicker" Width="130"
+                                        Background="#2D2D3F" Foreground="Black"
+                                        SelectedDateChanged="OnPreorderDateTimeChanged"/>
+                            <ComboBox x:Name="PreorderHourCombo" Width="60" Margin="6,0,0,0"
+                                      Padding="6,4" SelectionChanged="OnPreorderTimeChanged"/>
+                            <TextBlock Text=":" Foreground="LightGray" VerticalAlignment="Center"
+                                       Margin="4,0,4,0"/>
+                            <ComboBox x:Name="PreorderMinuteCombo" Width="60"
+                                      Padding="6,4" SelectionChanged="OnPreorderTimeChanged"/>
+                        </StackPanel>
+                        <TextBlock x:Name="PreorderHintText" Text="" Foreground="#7dd3fc"
+                                   FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+
                     <TextBlock Text="Тариф:" Foreground="LightGray" Margin="0,0,0,3"/>
                     <ComboBox x:Name="TariffCombo" SelectedIndex="0"
                               Padding="8,6" Margin="0,0,0,10"

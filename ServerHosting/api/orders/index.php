@@ -161,9 +161,16 @@ switch ($view) {
             $db->prepare('UPDATE drivers SET latitude = ?, longitude = ?, last_location_update = ? WHERE id = ?')
                 ->execute([$lat, $lng, Db::utcNow(), $driverId]);
         }
+        // Предварительные заказы попадают в ленту за 30 минут до подачи,
+        // чтобы не занимать водителей задолго до времени клиента.
         $rows = $db->query(
-            "SELECT * FROM orders WHERE (status = 'searching' OR status = 'no_driver_found')
-             AND driver_id IS NULL ORDER BY created_at LIMIT 50"
+            "SELECT * FROM orders
+             WHERE (status = 'searching' OR status = 'no_driver_found')
+               AND driver_id IS NULL
+               AND (scheduled_at IS NULL
+                    OR scheduled_at <= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 30 MINUTE))
+             ORDER BY scheduled_at IS NULL DESC, scheduled_at, created_at
+             LIMIT 50"
         )->fetchAll();
         $out = $serializeMany($rows);
         if ($driverId !== '' && $lat != 0.0) {
