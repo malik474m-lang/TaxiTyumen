@@ -326,6 +326,8 @@ CREATE TABLE IF NOT EXISTS zone_settings (
   apply_multipliers  TINYINT(1) NOT NULL DEFAULT 0,
   add_options        TINYINT(1) NOT NULL DEFAULT 1,
   fallback_to_tariff TINYINT(1) NOT NULL DEFAULT 1,
+  stop_min_price     DOUBLE NOT NULL DEFAULT 0,
+  stop_price_mode    ENUM('max','plus') NOT NULL DEFAULT 'max',
   updated_at         DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

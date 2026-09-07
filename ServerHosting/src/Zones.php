@@ -55,19 +55,27 @@ final class Zones
             $db->prepare('INSERT INTO zone_settings (id) VALUES (?)')->execute([Db::uuid()]);
             $row = $db->query('SELECT * FROM zone_settings LIMIT 1')->fetch();
         }
-        return $row ?: ['enabled' => 0, 'apply_multipliers' => 0, 'add_options' => 1, 'fallback_to_tariff' => 1];
+        return $row ?: [
+            'enabled' => 0, 'apply_multipliers' => 0, 'add_options' => 1,
+            'fallback_to_tariff' => 1, 'stop_min_price' => 0, 'stop_price_mode' => 'max',
+        ];
     }
 
     public static function updateSettings(\PDO $db, array $fields): array
     {
         $s = self::settings($db);
+        $mode = in_array(($fields['stopPriceMode'] ?? 'max'), ['max', 'plus'], true)
+            ? (string) $fields['stopPriceMode'] : 'max';
         $db->prepare(
-            'UPDATE zone_settings SET enabled=?, apply_multipliers=?, add_options=?, fallback_to_tariff=?, updated_at=? WHERE id=?'
+            'UPDATE zone_settings SET enabled=?, apply_multipliers=?, add_options=?,
+             fallback_to_tariff=?, stop_min_price=?, stop_price_mode=?, updated_at=? WHERE id=?'
         )->execute([
             !empty($fields['enabled']) ? 1 : 0,
             !empty($fields['applyMultipliers']) ? 1 : 0,
             !empty($fields['addOptions']) ? 1 : 0,
             !empty($fields['fallbackToTariff']) ? 1 : 0,
+            max(0.0, (float) ($fields['stopMinPrice'] ?? 0)),
+            $mode,
             Db::utcNow(),
             $s['id'],
         ]);

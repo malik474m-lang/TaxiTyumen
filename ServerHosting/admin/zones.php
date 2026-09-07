@@ -17,6 +17,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'applyMultipliers' => !empty($_POST['apply_multipliers']),
                 'addOptions' => !empty($_POST['add_options']),
                 'fallbackToTariff' => !empty($_POST['fallback_to_tariff']),
+                'stopMinPrice' => (float) ($_POST['stop_min_price'] ?? 0),
+                'stopPriceMode' => ($_POST['stop_price_mode'] ?? 'max') === 'plus' ? 'plus' : 'max',
             ]);
             Bus::publish('zones');
             header('Location: zones.php?ok=' . urlencode('Настройки зональной тарификации сохранены'));
@@ -114,6 +116,27 @@ layout_header('Зоны и цены', 'zones');
     <label class="flex between" style="padding:11px;background:#0f0f13;border-radius:11px">
       <span>Если зона не найдена<div class="mut">Считать по обычному тарифу</div></span>
       <input type="checkbox" name="fallback_to_tariff" value="1" <?= $settings['fallback_to_tariff'] ? 'checked' : '' ?> style="width:18px;height:18px">
+    </label>
+  </div>
+
+  <h3 style="font-weight:900;font-size:14px;margin:16px 0 8px">Промежуточные адреса</h3>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
+    <label class="mut" style="display:block;padding:11px;background:#0f0f13;border-radius:11px">
+      Минимальная цена за адрес, ₽
+      <input type="number" name="stop_min_price" min="0" step="10"
+             value="<?= (float) ($settings['stop_min_price'] ?? 0) ?>" style="width:100px;text-align:right">
+      <div class="mut" style="font-size:11px;margin-top:4px">0 — чистый расчёт по километражу</div>
+    </label>
+    <label class="mut" style="display:block;padding:11px;background:#0f0f13;border-radius:11px">
+      Режим расчёта
+      <select name="stop_price_mode">
+        <option value="max" <?= ($settings['stop_price_mode'] ?? 'max') === 'max' ? 'selected' : '' ?>>Минимум ИЛИ километраж</option>
+        <option value="plus" <?= ($settings['stop_price_mode'] ?? 'max') === 'plus' ? 'selected' : '' ?>>Минимум ПЛЮС километраж</option>
+      </select>
+      <div class="mut" style="font-size:11px;margin-top:4px">
+        «ИЛИ» — берётся большее из двух; «ПЛЮС» — километраж добавляется к минимуму.
+        Минимум начисляется за каждый промежуточный адрес.
+      </div>
     </label>
   </div>
   <button class="btn" style="margin-top:12px">Сохранить настройки</button>

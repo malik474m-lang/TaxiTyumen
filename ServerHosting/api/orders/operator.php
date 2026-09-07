@@ -121,7 +121,13 @@ if ($destinationAddress && $destLat != 0.0) {
                 foreach ($stops as $stop) {
                     $stopPath[] = [$stop['lat'], $stop['lng']];
                 }
-                $stopsCharge = Taxi::stopsSurcharge($tariffRow, $stopPath);
+                $zs = Zones::settings($db);
+                $stopsCharge = Taxi::stopsSurcharge(
+                    $tariffRow,
+                    $stopPath,
+                    (float) ($zs['stop_min_price'] ?? 0),
+                    (string) ($zs['stop_price_mode'] ?? 'max')
+                );
                 $estimatedPrice += $stopsCharge['surcharge'];
             }
         }

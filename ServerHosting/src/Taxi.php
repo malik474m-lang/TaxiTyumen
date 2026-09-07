@@ -210,23 +210,55 @@ final class Taxi
      * @param array $tariff строка тарифа с полем price_per_km
      * @param array<int,array{0:float,1:float}> $points [[lat,lng], ...] — подача и промежуточные точки
      */
-    public static function stopsSurcharge(array $tariff, array $points): array
-    {
+    /**
+     * Наценка за промежуточные адреса при зонном ценообразовании.
+     *
+     * Поддерживает минимальную цену и два режима:
+     *  - mode 'max':  surcharge = max(min_price, km × per_km) — берётся большее;
+     *  - mode 'plus': surcharge = min_price + km × per_km — километраж
+     *    добавляется к минимуму всегда.
+     *
+     * Когда stopMinPrice = 0, оба режима дают чистый расчёт по километражу.
+     *
+     * @param array $tariff строка тарифа с price_per_km
+     * @param array<int,array{0:float,1:float}> $points [[lat,lng], ...] — подача и промежуточные точки
+     * @param float $stopMinPrice минимальная цена за один промежуточный адрес
+     * @param string $stopPriceMode 'max' или 'plus'
+     */
+    public static function stopsSurcharge(
+        array $tariff,
+        array $points,
+        float $stopMinPrice = 0.0,
+        string $stopPriceMode = 'max'
+    ): array {
         $points = array_values(array_filter(
             $points,
             fn($p) => is_array($p) && count($p) >= 2
                 && (float) $p[0] != 0.0 && (float) $p[1] != 0.0
         ));
-        if (count($points) < 2) {
-            return ['distanceKm' => 0.0, 'surcharge' => 0];
+
+        // Количество остановок = количество точек минус точка подачи.
+        $stopCount = max(0, count($points) - 1);
+        if ($stopCount < 1) {
+            return ['distanceKm' => 0.0, 'surcharge' => 0, 'stopCount' => 0];
         }
 
         $route = self::getRouteThrough($points);
         $perKm = max(0.0, (float) ($tariff['price_per_km'] ?? 0));
+        $kmPrice = (float) $route['distanceKm'] * $perKm;
+        $minPrice = max(0.0, $stopMinPrice);
+
+        if ($stopPriceMode === 'plus') {
+            $surcharge = $minPrice * $stopCount + $kmPrice;
+        } else {
+            // 'max': минимум или километраж — что больше (минимум за каждый адрес).
+            $surcharge = max($minPrice * $stopCount, $kmPrice);
+        }
 
         return [
             'distanceKm' => (float) $route['distanceKm'],
-            'surcharge' => (int) round((float) $route['distanceKm'] * $perKm),
+            'surcharge' => (int) round($surcharge),
+            'stopCount' => $stopCount,
         ];
     }
 

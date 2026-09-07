@@ -68,7 +68,13 @@ foreach ($activeTariffs as $t) {
     $stopsSurcharge = 0;
     if ($zonePrice !== null && count($stopPoints) > 0) {
         $stopPath = array_merge([[$fromLat, $fromLng]], $stopPoints);
-        $charge = Taxi::stopsSurcharge($t, $stopPath);
+        $zs = Zones::settings($db);
+        $charge = Taxi::stopsSurcharge(
+            $t,
+            $stopPath,
+            (float) ($zs['stop_min_price'] ?? 0),
+            (string) ($zs['stop_price_mode'] ?? 'max')
+        );
         $stopsSurcharge = $charge['surcharge'];
     }
 

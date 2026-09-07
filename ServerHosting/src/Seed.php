@@ -249,6 +249,8 @@ final class Seed
         self::addColumn($db, 'orders', 'scheduled_at', "DATETIME NULL AFTER waiting_auto_started");
         self::addColumn($db, 'orders', 'preorder_surcharge', "DOUBLE NOT NULL DEFAULT 0 AFTER scheduled_at");
         self::addColumn($db, 'tariffs', 'preorder_surcharge', "DOUBLE NOT NULL DEFAULT 0 AFTER commission_percent");
+        self::addColumn($db, 'zone_settings', 'stop_min_price', "DOUBLE NOT NULL DEFAULT 0 AFTER fallback_to_tariff");
+        self::addColumn($db, 'zone_settings', 'stop_price_mode', "ENUM('max','plus') NOT NULL DEFAULT 'max' AFTER stop_min_price");
         self::addColumn($db, 'auto_call_settings', 'zvonok_speaker', "VARCHAR(30) NOT NULL DEFAULT 'Tatyana' AFTER zvonok_campaign_id");
 
         // Загружаемый логотип для серверного брендинга
