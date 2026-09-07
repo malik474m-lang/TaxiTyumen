@@ -724,7 +724,8 @@ public partial class MainDriverPage : ContentPage
         ActiveTariffLabel.Text = order.TariffName;
 
         UpdateWaitingUi(order);
-        if (order.WaitingActive || order.FreeWaitingLeftSeconds > 0) EnsureWaitingTimer();
+        var waitStatus = NormStatus(order.Status);
+        if (waitStatus is "driverarrived" or "inprogress") EnsureWaitingTimer();
 
         UpdateStatusButton();
         _ = ShowRouteMapAsync(order);
@@ -769,93 +770,144 @@ public partial class MainDriverPage : ContentPage
     private static string NormStatus(string? status)
         => (status ?? string.Empty).Replace("_", string.Empty).ToLowerInvariant();
 
-    // Простой: кнопка видна после прибытия и в поездке; таймер живой (1 с)
+    /// Простой по вашему сценарию:
+    ///  • «На месте» — идёт бесплатное ожидание, кнопка «Простой» неактивна;
+    ///  • бесплатное закончилось — счётчик продолжает считать платное время,
+    ///    кнопка «Простой» остаётся неактивной (ожидание уже идёт);
+    ///  • «Начало» — счётчик останавливается, кнопка «Простой» становится активной;
+    ///  • промежуточная остановка — водитель жмёт «Простой», счётчик идёт снова;
+    ///  • следующее «Начало» снова останавливает счётчик.
     private void UpdateWaitingUi(OrderResponse order)
     {
         var st = NormStatus(order.Status);
         var canWait = st is "driverarrived" or "inprogress";
         WaitingBtn.IsVisible = canWait;
+        MapWaitingBtn.IsVisible = canWait;
         if (!canWait)
         {
             WaitingLabel.Text = "";
+            MapWaitingLabel.IsVisible = false;
             return;
         }
-        // Накопленное платное время простоя (включая текущий незакрытый интервал)
+
+        // Накопленное платное время простоя, включая текущий незакрытый интервал.
         var total = order.WaitingSeconds;
         if (order.WaitingActive && order.WaitingStartedAt.HasValue)
         {
             total += Math.Max(0,
                 (int)(DateTimeOffset.UtcNow - order.WaitingStartedAt.Value).TotalSeconds);
         }
-        var timer = $"{total / 60:00}:{total % 60:00}";
+        var paidTimer = $"{total / 60:00}:{total % 60:00}";
         var freeLeft = order.FreeWaitingLeftSeconds;
 
-        // Кнопка простоя: во время простоя превращается в «Начало движения»,
-        // потому что именно движение завершает ожидание.
-        if (order.WaitingActive)
-        {
-            WaitingBtn.Text = "Начало движения";
-            WaitingBtn.BackgroundColor = Color.FromArgb("#4CAF50");
-        }
-        else
-        {
-            WaitingBtn.Text = "Простой";
-            WaitingBtn.BackgroundColor = Color.FromArgb("#333");
-        }
+        // Кнопка «Простой» нужна только когда счётчик стоит.
+        // Пока ожидание идёт — она неактивна, остановка выполняется кнопкой «Начало».
+        WaitingBtn.Text = "Простой";
+        WaitingBtn.IsEnabled = !order.WaitingActive;
+        WaitingBtn.BackgroundColor = order.WaitingActive
+            ? Color.FromArgb("#2A3A44")
+            : Color.FromArgb("#0EA5E9");
 
-        // Подпись всегда информативна: обратный отсчёт, идущий счётчик или итог.
+        MapWaitingBtn.Text = "Простой";
+        MapWaitingBtn.IsEnabled = !order.WaitingActive;
+        MapWaitingBtn.BackgroundColor = order.WaitingActive
+            ? Color.FromArgb("#2A3A44")
+            : Color.FromArgb("#0EA5E9");
+
+        // Счётчик виден всегда: сначала бесплатное ожидание, затем платное.
         string waitingText;
+        Color waitingColor;
         if (order.WaitingActive)
         {
-            waitingText = (order.WaitingAutoStarted ? "Платный простой " : "Простой ") + timer;
+            waitingText = $"Платное ожидание {paidTimer}";
+            waitingColor = Color.FromArgb("#F87171");
+        }
+        else if (freeLeft > 0 && st == "driverarrived")
+        {
+            waitingText = $"Бесплатное ожидание {freeLeft / 60:00}:{freeLeft % 60:00}";
+            waitingColor = Color.FromArgb("#4ADE80");
         }
         else if (total > 0)
         {
-            waitingText = "Простой всего " + timer;
-        }
-        else if (freeLeft > 0)
-        {
-            waitingText = $"Бесплатно ещё {freeLeft / 60:00}:{freeLeft % 60:00}";
+            waitingText = $"Ожидание остановлено · {paidTimer}";
+            waitingColor = Color.FromArgb("#9CA3AF");
         }
         else
         {
             waitingText = "";
+            waitingColor = Color.FromArgb("#9CA3AF");
         }
 
         WaitingLabel.Text = waitingText;
-        WaitingLabel.TextColor = order.WaitingActive
-            ? Color.FromArgb("#0EA5E9")
-            : Color.FromArgb("#9CA3AF");
-
-        // Дублируем состояние на карте
-        MapWaitingBtn.Text = order.WaitingActive ? "Движение" : "Простой";
-        MapWaitingBtn.BackgroundColor = Color.FromArgb(order.WaitingActive ? "#4CAF50" : "#475569");
+        WaitingLabel.TextColor = waitingColor;
         MapWaitingLabel.Text = waitingText;
         MapWaitingLabel.IsVisible = waitingText.Length > 0;
         if (_mapFullscreen) SyncFullscreenButtons();
     }
 
+    private int _waitingSyncCounter;
+
+    /// Секундный таймер ожидания. Работает всё время, пока водитель на месте
+    /// или в поездке: сначала показывает бесплатное ожидание, затем платное.
     private void EnsureWaitingTimer()
     {
         if (_waitingTimerStarted) return;
         _waitingTimerStarted = true;
         Dispatcher.StartTimer(TimeSpan.FromSeconds(1), () =>
         {
-            // Тикаем и при активном простое, и во время обратного отсчёта
-            // бесплатного ожидания — после нуля сервер включит счётчик сам.
-            if (_activeOrder != null &&
-                (_activeOrder.WaitingActive || _activeOrder.FreeWaitingLeftSeconds > 0))
+            var order = _activeOrder;
+            if (order == null)
             {
-                if (!_activeOrder.WaitingActive && _activeOrder.FreeWaitingLeftSeconds > 0)
-                {
-                    _activeOrder.FreeWaitingLeftSeconds--;
-                }
-                UpdateWaitingUi(_activeOrder);
-                return true;
+                _waitingTimerStarted = false;
+                return false;
             }
-            _waitingTimerStarted = false;
-            return false;
+
+            var status = NormStatus(order.Status);
+            if (status is not ("driverarrived" or "inprogress"))
+            {
+                _waitingTimerStarted = false;
+                return false;
+            }
+
+            // Локально уменьшаем остаток бесплатного времени для плавного отсчёта.
+            if (!order.WaitingActive && order.FreeWaitingLeftSeconds > 0)
+            {
+                order.FreeWaitingLeftSeconds--;
+            }
+
+            // Раз в 5 секунд сверяемся с сервером: именно он включает платный
+            // счётчик после бесплатных минут, поэтому экран не должен «застревать».
+            if (++_waitingSyncCounter >= 5)
+            {
+                _waitingSyncCounter = 0;
+                _ = SyncWaitingStateAsync();
+            }
+
+            UpdateWaitingUi(order);
+            return true;
         });
+    }
+
+    /// Подтягивает актуальное состояние ожидания с сервера.
+    private async Task SyncWaitingStateAsync()
+    {
+        try
+        {
+            if (_activeOrder == null || _auth.DriverId == null) return;
+            var fresh = await _api.GetCurrentOrderAsync(_auth.DriverId.Value);
+            if (fresh == null || fresh.Id != _activeOrder.Id) return;
+
+            _activeOrder.WaitingActive = fresh.WaitingActive;
+            _activeOrder.WaitingStartedAt = fresh.WaitingStartedAt;
+            _activeOrder.WaitingSeconds = fresh.WaitingSeconds;
+            _activeOrder.WaitingAutoStarted = fresh.WaitingAutoStarted;
+            _activeOrder.FreeWaitingLeftSeconds = fresh.FreeWaitingLeftSeconds;
+            UpdateWaitingUi(_activeOrder);
+        }
+        catch
+        {
+            // Сеть недоступна — продолжаем локальный отсчёт до следующей синхронизации.
+        }
     }
 
     private async void OnToggleWaiting(object? sender, EventArgs e)
@@ -863,8 +915,10 @@ public partial class MainDriverPage : ContentPage
         if (_activeOrder == null || _auth.DriverId == null) return;
         try
         {
-            var start = !_activeOrder.WaitingActive;
-            var (ok, serverError, fresh) = await _api.SetOrderWaitingAsync(_activeOrder.Id, _auth.DriverId.Value, start);
+            // Кнопка только запускает ожидание. Останавливает его кнопка «Начало».
+            if (_activeOrder.WaitingActive) return;
+            var (ok, serverError, fresh) = await _api.SetOrderWaitingAsync(
+                _activeOrder.Id, _auth.DriverId.Value, true);
             if (!ok)
             {
                 // Показываем точную причину отказа от сервера — быстрее найти проблему
@@ -882,8 +936,8 @@ public partial class MainDriverPage : ContentPage
             }
             else
             {
-                _activeOrder.WaitingActive = start;
-                _activeOrder.WaitingStartedAt = start ? DateTimeOffset.UtcNow : null;
+                _activeOrder.WaitingActive = true;
+                _activeOrder.WaitingStartedAt = DateTimeOffset.UtcNow;
             }
             UpdateWaitingUi(_activeOrder);
             if (_activeOrder.WaitingActive) EnsureWaitingTimer();
@@ -1028,6 +1082,8 @@ public partial class MainDriverPage : ContentPage
             FsStatusBtn.BackgroundColor = MapStatusBtn.BackgroundColor;
             FsWaitingBtn.Text = MapWaitingBtn.Text;
             FsWaitingBtn.BackgroundColor = MapWaitingBtn.BackgroundColor;
+            FsWaitingBtn.IsEnabled = MapWaitingBtn.IsEnabled;
+            FsWaitingBtn.IsVisible = MapWaitingBtn.IsVisible;
             FullscreenWaitingLabel.Text = MapWaitingLabel.Text;
             FullscreenWaitingLabel.IsVisible = MapWaitingLabel.IsVisible;
         }

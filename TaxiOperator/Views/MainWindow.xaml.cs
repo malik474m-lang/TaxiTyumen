@@ -297,7 +297,16 @@ public partial class MainWindow : Window
                 : $"{o.Driver.CarColor} {o.Driver.CarBrand} {o.Driver.CarModel} ({o.Driver.LicensePlate})")
             : "";
         DetailTariff.Text = o.TariffName;
-        DetailPrice.Text = $"{o.EstimatedPrice:F0} ";
+        // Разбивка: тариф + простой = итог. Пока заказ не завершён, показываем оценку.
+        if (o.WaitingCost > 0)
+        {
+            DetailPrice.Text = $"{o.TotalPrice:F0} ₽  (тариф {o.TariffPrice:F0} ₽ + простой {o.WaitingCost:F0} ₽)";
+        }
+        else
+        {
+            var basePrice = o.FinalPrice ?? o.EstimatedPrice;
+            DetailPrice.Text = $"{basePrice:F0} ₽";
+        }
         DetailDistTime.Text = o.EstimatedDistance.HasValue
             ? $"{o.EstimatedDistance:F1} км  {o.EstimatedDuration} мин"
             : "";

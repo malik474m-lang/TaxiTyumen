@@ -144,6 +144,23 @@ public class ApiService
         }
     }
 
+    /// Текущий заказ водителя — источник правды для счётчика ожидания.
+    public async Task<OrderResponse?> GetCurrentOrderAsync(Guid driverId)
+    {
+        try
+        {
+            var response = await _http.GetAsync($"orders/current/{driverId}");
+            if (!response.IsSuccessStatusCode) return null;
+            var raw = await response.Content.ReadAsStringAsync();
+            if (string.IsNullOrWhiteSpace(raw) || raw == "null") return null;
+            return JsonSerializer.Deserialize<OrderResponse>(raw, _json);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     /// Простой: запуск/остановка.
     /// Возвращает успех, текст ошибки сервера (если есть) и актуальный заказ.
     public async Task<(bool Ok, string? Error, OrderResponse? Order)> SetOrderWaitingAsync(

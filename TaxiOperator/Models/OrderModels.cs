@@ -2,6 +2,10 @@
 
 public class OrderResponse
 {
+    public decimal TariffPrice { get; set; }
+    public decimal TotalPrice { get; set; }
+    public decimal WaitingCost { get; set; }
+    public int WaitingSeconds { get; set; }
     public string? DestinationEntrance { get; set; }
     public Guid Id { get; set; }
     public string OrderNumber { get; set; } = string.Empty;

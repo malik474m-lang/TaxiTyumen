@@ -74,10 +74,9 @@ if ($destinationAddress && $destLat != 0.0) {
         $routePoints[] = [$stop['lat'], $stop['lng']];
     }
     $routePoints[] = [$destLat, $destLng];
+    // Обратный путь — прямо на адрес подачи: промежуточные точки уже отработаны,
+    // пассажиров там больше нет, повторно заезжать не нужно.
     if ($roundTrip) {
-        foreach (array_reverse($stops) as $stop) {
-            $routePoints[] = [$stop['lat'], $stop['lng']];
-        }
         $routePoints[] = [$pickupLat, $pickupLng];
     }
 

@@ -881,6 +881,18 @@ function clearRoute() {
                     _ => updated.StatusText
                 };
 
+                // Клиент видит, что идёт платное ожидание и сколько уже набежало.
+                if (updated.WaitingActive)
+                {
+                    var waitMinutes = Math.Max(1, updated.WaitingSeconds / 60);
+                    ActiveStatusLabel.Text += $"\nПлатное ожидание: {waitMinutes} мин · {updated.WaitingCost:F0} ₽";
+                }
+                else if (updated.Status == "DriverArrived" && updated.FreeWaitingLeftSeconds > 0)
+                {
+                    var left = updated.FreeWaitingLeftSeconds;
+                    ActiveStatusLabel.Text += $"\nБесплатное ожидание: {left / 60:00}:{left % 60:00}";
+                }
+
                 if (updated.Driver != null)
                 {
                     ShowDriverInfo(updated.Driver);
@@ -898,6 +910,15 @@ function clearRoute() {
 
                     if (updated.Status == "Completed")
                     {
+                        // Итоговый чек с разбивкой: поездка по тарифу + простой.
+                        var waitLine = updated.WaitingCost > 0
+                            ? $"\nОжидание: {updated.WaitingCost:F0} ₽ ({Math.Max(1, updated.WaitingSeconds / 60)} мин)"
+                            : "";
+                        await DisplayAlert("Поездка завершена",
+                            $"По тарифу: {updated.TariffPrice:F0} ₽{waitLine}\n" +
+                            $"Итого: {updated.TotalPrice:F0} ₽",
+                            "OK");
+
                         // Показываем баннер оплаты если перевод
                         if (updated.Payment != null &&
                             updated.Payment.Method == "Card" &&

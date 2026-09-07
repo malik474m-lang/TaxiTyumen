@@ -174,6 +174,10 @@ if ($routeLower==='orders' && $method==='POST') $dispatch($api.'/orders/index.ph
 if ($routeLower==='orders/active') $dispatch($api.'/orders/index.php',[],['view'=>'active']);
 if ($routeLower==='orders/available') $dispatch($api.'/orders/index.php',[],array_merge($_GET,['view'=>'available']));
 if ($routeLower==='orders/operator') $dispatch($api.'/orders/operator.php');
+// Текущий заказ водителя: приложение синхронизирует счётчик ожидания
+if (preg_match('#^orders/current/([0-9a-f-]+)$#i', $route, $m)) {
+    $dispatch($api.'/orders/index.php', [], ['view'=>'driverCurrent','driverId'=>$m[1]]);
+}
 if (preg_match('#^orders/history/([0-9a-f-]+)$#i',$route,$m)) {
     $stmt=$db->prepare('SELECT role FROM users WHERE id=?');$stmt->execute([$m[1]]);$role=$stmt->fetchColumn();
     if($role==='driver'){$d=$db->prepare('SELECT id FROM drivers WHERE user_id=?');$d->execute([$m[1]]);$dispatch($api.'/orders/index.php',[],['view'=>'history','driverId'=>$d->fetchColumn()]);}

@@ -42,9 +42,18 @@ public class OrderResponse
     public double? DestinationLongitude { get; set; }
 
     public decimal EstimatedPrice { get; set; }
+    public decimal? FinalPrice { get; set; }
     public double? EstimatedDistance { get; set; }
     public int? EstimatedDuration { get; set; }
     public string TariffName { get; set; } = string.Empty;
+
+    // Разбивка стоимости: поездка по тарифу, простой и итог
+    public decimal TariffPrice { get; set; }
+    public decimal WaitingCost { get; set; }
+    public decimal TotalPrice { get; set; }
+    public int WaitingSeconds { get; set; }
+    public bool WaitingActive { get; set; }
+    public int FreeWaitingLeftSeconds { get; set; }
     public string? Comment { get; set; }
 
     public PaymentInfoDto? Payment { get; set; }

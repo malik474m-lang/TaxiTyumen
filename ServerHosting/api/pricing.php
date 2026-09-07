@@ -45,8 +45,9 @@ foreach ((array) ($body['intermediatePoints'] ?? $body['IntermediatePoints'] ?? 
 $roundTrip = !empty($body['roundTrip'] ?? $body['RoundTrip'] ?? false);
 
 $routePoints = array_merge([[$fromLat, $fromLng]], $stopPoints, [[$toLat, $toLng]]);
+// Возврат выполняется напрямую к точке подачи, без повторного объезда остановок.
 if ($roundTrip) {
-    $routePoints = array_merge($routePoints, array_reverse($stopPoints), [[$fromLat, $fromLng]]);
+    $routePoints[] = [$fromLat, $fromLng];
 }
 
 $route = Taxi::getRouteThrough($routePoints);
