@@ -23,6 +23,14 @@ if [ -f "$ROOT/ServerHosting/uploads/branding/.htaccess" ]; then
   cp "$ROOT/ServerHosting/uploads/branding/.htaccess" "$ROOT/uploads/branding/.htaccess"
 fi
 
+# Корневая витрина сайта (закрывает 403 в корне домена)
+cp -f "$ROOT/ServerHosting/index.html" "$ROOT/index.html"
+echo "  index.html ← ServerHosting/index.html"
+
+# Постоянное хранилище фото анкет водителей (не удаляем при следующих деплоях)
+mkdir -p "$ROOT/uploads/applications"
+chmod 0755 "$ROOT/uploads/applications" 2>/dev/null || true
+
 # Базовый config.php можно обновлять из Git; реальные секреты — только config.local.php
 if [ ! -f "$ROOT/config.php" ]; then
   cp "$ROOT/ServerHosting/config.php" "$ROOT/config.php"

@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>НАШЕ Такси — Тюмень</title>
+<meta name="description" content="Заказ такси по Тюмени. Работа водителем такси — подключение за один день.">
+<style>
+:root{ --brand:#facc15; --ink:#0a0a0c; }
+*{box-sizing:border-box;margin:0}
+html{scroll-behavior:smooth}
+body{background:radial-gradient(1100px 620px at 50% -16%,color-mix(in srgb,var(--brand) 13%,transparent),transparent 62%),#0a0a0c;
+  color:#f4f4f5;font:15px/1.55 "Segoe UI",system-ui,-apple-system,sans-serif;min-height:100vh}
+a{color:inherit}
+.wrap{max-width:1100px;margin:0 auto;padding:0 20px}
+header{position:sticky;top:0;z-index:20;background:rgba(10,10,12,.82);backdrop-filter:blur(14px);border-bottom:1px solid rgba(255,255,255,.07)}
+header .wrap{display:flex;align-items:center;gap:14px;height:62px}
+.logo{width:38px;height:38px;border-radius:12px;background:var(--brand);display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none}
+.logo img{width:100%;height:100%;object-fit:cover}
+.logo svg{width:22px;height:22px;stroke:var(--ink)}
+.brand-name{font-weight:800;font-size:17px;letter-spacing:-.01em}
+.brand-sub{font-size:11px;color:#a1a1aa;font-weight:600;text-transform:uppercase;letter-spacing:.12em}
+nav{margin-left:auto;display:flex;gap:6px;align-items:center}
+nav a{padding:8px 14px;border-radius:10px;font-weight:600;font-size:14px;text-decoration:none;color:#d4d4d8;transition:.2s}
+nav a:hover{color:#fff;background:rgba(255,255,255,.06)}
+nav a.cta{background:var(--brand);color:var(--ink);font-weight:700}
+nav a.cta:hover{filter:brightness(1.07);background:var(--brand)}
+.hero{padding:88px 0 64px;text-align:center}
+.hero .tag{display:inline-flex;gap:8px;align-items:center;padding:7px 16px;border-radius:99px;border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.04);font-size:12.5px;font-weight:700;color:#a1a1aa;text-transform:uppercase;letter-spacing:.1em}
+.hero .tag .dot{width:8px;height:8px;border-radius:99px;background:#34d399;box-shadow:0 0 10px #34d399}
+h1{margin:26px auto 0;max-width:760px;font-size:clamp(34px,6vw,58px);line-height:1.04;font-weight:900;letter-spacing:-.035em}
+h1 em{font-style:normal;color:var(--brand)}
+.sub{color:#a1a1aa;max-width:560px;margin:20px auto 0;font-size:16.5px}
+.hero-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:34px}
+.btn{display:inline-flex;gap:10px;align-items:center;padding:15px 26px;border-radius:16px;font-weight:800;font-size:15.5px;
+  text-decoration:none;border:1px solid rgba(255,255,255,.14);transition:.2s;cursor:pointer;background:none;color:#f4f4f5;font-family:inherit}
+.btn.prime{background:var(--brand);color:var(--ink);border-color:transparent}
+.btn.prime:hover{filter:brightness(1.07);transform:translateY(-1px)}
+.btn.ghost:hover{background:rgba(255,255,255,.06)}
+.btn svg{width:19px;height:19px}
+.feats{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:30px}
+.feat{display:inline-flex;gap:7px;align-items:center;padding:8px 14px;border-radius:99px;background:rgba(255,255,255,.045);
+  border:1px solid rgba(255,255,255,.08);font-size:13px;font-weight:600;color:#d4d4d8}
+.feat svg{width:14px;height:14px;stroke:var(--brand)}
+section{padding:56px 0}
+.sec-h{font-size:clamp(24px,4vw,34px);font-weight:900;letter-spacing:-.025em;text-align:center}
+.sec-sub{color:#a1a1aa;text-align:center;margin-top:10px}
+.tariffs{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:36px}
+.t-card{background:#121216;border:1px solid rgba(255,255,255,.09);border-radius:20px;padding:22px;transition:.2s;position:relative;overflow:hidden}
+.t-card:hover{border-color:color-mix(in srgb,var(--brand) 55%,transparent);transform:translateY(-3px)}
+.t-name{font-weight:800;font-size:17px;display:flex;align-items:center;gap:10px}
+.t-ico{width:34px;height:34px;border-radius:10px;background:color-mix(in srgb,var(--brand) 16%,transparent);display:flex;align-items:center;justify-content:center;flex:none}
+.t-ico svg{width:18px;height:18px;stroke:var(--brand)}
+.t-desc{color:#a1a1aa;font-size:13px;margin-top:6px;min-height:38px}
+.t-price{margin-top:14px;font-size:26px;font-weight:900;color:var(--brand)}
+.t-price small{font-size:13px;color:#a1a1aa;font-weight:600}
+.t-rows{margin-top:12px;font-size:13px;color:#d4d4d8;display:grid;gap:6px}
+.t-rows div{display:flex;justify-content:space-between;border-top:1px dashed rgba(255,255,255,.08);padding-top:6px}
+.t-rows span:last-child{font-weight:700}
+.apply{background:#121216;border:1px solid rgba(255,255,255,.09);border-radius:26px;padding:34px;margin-top:36px}
+.apply-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:26px}
+label{display:block;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#a1a1aa;margin:0 0 6px 2px}
+input,select,textarea{width:100%;background:#0c0c10;border:1px solid rgba(255,255,255,.12);border-radius:13px;padding:12px 14px;
+  color:#f4f4f5;font:inherit;font-size:14px;outline:none;transition:.2s}
+input:focus,select:focus,textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 20%,transparent)}
+.field{margin-bottom:14px}
+.photos{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.ph{border:1.5px dashed rgba(255,255,255,.16);border-radius:14px;padding:12px;text-align:center;cursor:pointer;transition:.2s;display:block}
+.ph:hover{border-color:var(--brand)}
+.ph svg{width:22px;height:22px;stroke:#71717a;margin-bottom:6px}
+.ph span{display:block;font-size:12px;color:#a1a1aa;font-weight:600}
+.ph input{display:none}
+.ph.done{border-color:#34d399;border-style:solid;background:rgba(52,211,153,.06)}
+.ph.done svg{stroke:#34d399}
+.ph.done span{color:#34d399}
+.check{display:flex;gap:10px;align-items:center;margin:6px 0 14px;cursor:pointer}
+.check input{width:18px;height:18px;accent-color:var(--brand)}
+.check span{font-size:14px;color:#d4d4d8}
+.note{font-size:12.5px;color:#71717a;margin-top:12px;line-height:1.5}
+.msg{display:none;margin-top:16px;padding:14px 16px;border-radius:14px;font-weight:600;font-size:14px}
+.msg.ok{display:block;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:#6ee7b7}
+.msg.err{display:block;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#fca5a5}
+.spin{animation:rot 1s linear infinite}
+footer{border-top:1px solid rgba(255,255,255,.07);margin-top:40px;padding:30px 0;color:#71717a;font-size:13px}
+footer .wrap{display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+footer a{color:#a1a1aa;text-decoration:none}
+footer a:hover{color:#fff}
+@keyframes rot{to{transform:rotate(360deg)}}
+@media(max-width:640px){ nav a:not(.cta){display:none} .hero{padding:56px 0 40px} .apply{padding:22px} }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="logo" id="logo"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg></div>
+    <div>
+      <div class="brand-name" id="brandName">НАШЕ Такси</div>
+      <div class="brand-sub" id="brandCity">Тюмень · 24/7</div>
+    </div>
+    <nav>
+      <a href="#tariffs">Тарифы</a>
+      <a href="#driver">Водителям</a>
+      <a href="admin/">Персоналу</a>
+      <a class="cta" id="phoneTop" href="tel:">Позвонить</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero wrap" id="top">
+    <span class="tag"><span class="dot"></span> Сервис работает</span>
+    <h1 id="heroTitle">Заказ такси по Тюмени <em>за минуту</em></h1>
+    <p class="sub" id="heroSub">Живая оценка цены по реальным дорогам, отслеживание водителя на карте и чат с ним.</p>
+    <div class="hero-btns">
+      <a class="btn prime" id="phoneHero" href="tel:"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span id="phoneLabel">Заказать по телефону</span></a>
+      <a class="btn ghost" href="#driver"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 18H3c-.6 0-1-.4-1-1V7c0-.6.4-1 1-1h10c.6 0 1 .4 1 1v11"/><path d="M14 9h4l4 4v4c-.6 0-1 .4-1 1h-2"/><circle cx="7" cy="18" r="2"/><path d="M9 18h6"/><circle cx="17" cy="18" r="2"/></svg>Стать водителем</a>
+    </div>
+    <div class="feats" id="feats"></div>
+  </section>
+
+  <section class="wrap" id="tariffs">
+    <h2 class="sec-h">Честные тарифы</h2>
+    <p class="sec-sub">Цена известна до поездки — считаем по реальным дорогам</p>
+    <div class="tariffs" id="tariffGrid"></div>
+  </section>
+
+  <section class="wrap" id="driver">
+    <h2 class="sec-h">Работа водителем</h2>
+    <p class="sec-sub">Свободный график, заказы с первого дня, выплаты без задержек</p>
+
+    <form class="apply" id="applyForm" enctype="multipart/form-data">
+      <div class="apply-grid">
+        <div>
+          <div class="field"><label>Имя *</label><input name="firstName" required maxlength="60" autocomplete="given-name"></div>
+          <div class="field"><label>Фамилия *</label><input name="lastName" required maxlength="60" autocomplete="family-name"></div>
+          <div class="field"><label>Телефон *</label><input name="phone" type="tel" required placeholder="+7 ___ ___-__-__" autocomplete="tel"></div>
+          <div class="field"><label>Номер ВУ</label><input name="licenseNumber" maxlength="20"></div>
+          <div class="field"><label>Стаж вождения, лет</label><input name="experienceYears" type="number" min="0" max="70" value="3"></div>
+          <div class="field"><label>Комментарий</label><textarea name="comment" rows="3" maxlength="500" placeholder="График, пожелания…"></textarea></div>
+        </div>
+        <div>
+          <div class="field"><label>Марка авто *</label><input name="carBrand" required maxlength="60" placeholder="Kia"></div>
+          <div class="field"><label>Модель *</label><input name="carModel" required maxlength="60" placeholder="Rio"></div>
+          <div class="field" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div><label>Цвет</label><input name="carColor" maxlength="30"></div>
+            <div><label>Год</label><input name="carYear" type="number" min="1990" max="2030" value="2018"></div>
+          </div>
+          <div class="field"><label>Госномер *</label><input name="licensePlate" required maxlength="15" placeholder="А123ВС72" style="text-transform:uppercase"></div>
+          <label class="check"><input type="checkbox" name="hasChildSeat" value="1"><span>Есть детское кресло</span></label>
+        </div>
+      </div>
+
+      <label style="margin-top:8px">Фотографии (все 6 обязательны)</label>
+      <div class="photos" id="photos">
+        <label class="ph"><input type="file" name="photo_license" accept="image/png,image/jpeg,image/webp" required><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M15 8h4M15 12h4M7 16h10"/></svg><span>Вод. удостоверение</span></label>
+        <label class="ph"><input type="file" name="photo_selfie" accept="image/png,image/jpeg,image/webp" required><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg><span>Ваше фото</span></label>
+        <label class="ph"><input type="file" name="photo_car_front" accept="image/png,image/jpeg,image/webp" required><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16M6 12v5m12-5v5M8 8h8l2 4H6l2-4z"/></svg><span>Авто спереди</span></label>
+        <label class="ph"><input type="file" name="photo_car_back" accept="image/png,image/jpeg,image/webp" required><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16M6 12v5m12-5v5M8 8h8l2 4H6l2-4z"/></svg><span>Авто сзади</span></label>
+        <label class="ph"><input type="file" name="photo_car_left" accept="image/png,image/jpeg,image/webp" required><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16v-5l2-5h10l3 5h3v5"/><circle cx="8" cy="18" r="1.6"/><circle cx="16" cy="18" r="1.6"/></svg><span>Авто слева</span></label>
+        <label class="ph"><input type="file" name="photo_car_right" accept="image/png,image/jpeg,image/webp" required><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16v-5l-2-5H9l-3 5H3v5"/><circle cx="16" cy="18" r="1.6"/><circle cx="8" cy="18" r="1.6"/></svg><span>Авто справа</span></label>
+      </div>
+
+      <div style="margin-top:22px">
+        <button class="btn prime" type="submit" id="submitBtn" style="width:100%;justify-content:center;padding:16px">
+          Отправить анкету — свяжемся в течение дня
+        </button>
+        <div class="msg" id="msg"></div>
+        <p class="note">Нажимая кнопку, вы соглашаетесь на обработку персональных данных. Анкета попадает напрямую диспетчерам — после проверки вас подключат к линии и расскажут условия.</p>
+      </div>
+    </form>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>© <span id="year"></span> <span id="footName">НАШЕ Такси</span> · Тюмень</div>
+    <div style="display:flex;gap:18px">
+      <a href="admin/">Вход для персонала</a>
+      <a id="phoneFoot" href="tel:">Позвонить</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(async function(){
+  const $ = (s)=>document.querySelector(s);
+  $('#year').textContent = new Date().getFullYear();
+
+  // ── Брендинг: название, цвет, телефон, преимущества ──
+  try{
+    const b = await (await fetch('api/branding.php?app=client')).json();
+    if (b.appCode || b.appName){
+      const name = (b.appCode || b.appName).split('·')[0].trim();
+      document.title = name + ' — Тюмень';
+      $('#brandName').textContent = name;
+      $('#footName').textContent = name;
+    }
+    if (b.heroTitle) $('#heroTitle').innerHTML = b.heroTitle;
+    if (b.heroSubtitle) $('#heroSub').textContent = b.heroSubtitle;
+    if (b.primaryColor) document.documentElement.style.setProperty('--brand', b.primaryColor);
+    if (b.primaryTextColor) document.documentElement.style.setProperty('--ink', b.primaryTextColor);
+    if (b.logoUrl) $('#logo').innerHTML = '<img src="'+b.logoUrl+'" alt="">';
+    const phone = b.supportPhone;
+    if (phone){
+      for (const id of ['phoneTop','phoneHero','phoneFoot']){ $( '#'+id ).href = 'tel:' + phone.replace(/[^+\d]/g,''); }
+      $('#phoneLabel').textContent = 'Заказать: ' + phone;
+      $('#phoneFoot').textContent = phone;
+      $('#phoneTop').textContent = phone;
+    }
+    const feats = JSON.parse(b.features || '[]');
+    $('#feats').innerHTML = feats.slice(0,5).map(f =>
+      '<span class="feat"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'+f+'</span>').join('');
+  }catch(e){ /* страница полностью работает и без API */ }
+
+  // ── Тарифы из API ──
+  const icoCar = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>';
+  try{
+    const list = await (await fetch('api/tariffs/')).json();
+    $('#tariffGrid').innerHTML = list.filter(t=>t.isActive).map(t =>
+      '<div class="t-card"><div class="t-name"><span class="t-ico">'+icoCar+'</span>'+t.name+'</div>'+
+      '<div class="t-desc">'+t.description+'</div>'+
+      '<div class="t-price">от '+t.minimumFare+' <small>₽</small></div>'+
+      '<div class="t-rows"><div><span>Подача</span><span>'+t.baseFare+' ₽</span></div>'+
+      '<div><span>Километр</span><span>'+t.pricePerKm+' ₽/км</span></div>'+
+      '<div><span>Ожидание</span><span>'+t.freeWaitingMinutes+' мин беспл.</span></div></div></div>'
+    ).join('');
+  }catch(e){ $('#tariffGrid').innerHTML = ''; }
+
+  // ── Фото: визуальное подтверждение выбора ──
+  document.querySelectorAll('.ph input').forEach(inp => {
+    inp.addEventListener('change', () => {
+      inp.closest('.ph').classList.toggle('done', !!inp.files.length);
+    });
+  });
+
+  // ── Анкета водителя → api/applications.php ──
+  $('#applyForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const form = ev.target, btn = $('#submitBtn'), msg = $('#msg');
+    msg.className = 'msg'; msg.textContent = '';
+    btn.disabled = true;
+    btn.innerHTML = '<svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:19px;height:19px"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg> Отправляем…';
+    try{
+      const res = await fetch('api/applications.php', { method:'POST', body:new FormData(form) });
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok) throw new Error(data.error || 'Ошибка отправки (' + res.status + ')');
+      form.reset();
+      document.querySelectorAll('.ph').forEach(p=>p.classList.remove('done'));
+      msg.className = 'msg ok';
+      msg.textContent = 'Анкета принята! Диспетчер свяжется с вами по указанному телефону.';
+    }catch(err){
+      msg.className = 'msg err';
+      msg.textContent = err.message;
+    }finally{
+      btn.disabled = false;
+      btn.textContent = 'Отправить анкету — свяжемся в течение дня';
+    }
+  });
+})();
+</script>
+</body>
+</html>
