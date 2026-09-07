@@ -153,6 +153,7 @@ switch ($action) {
             : ZvonokService::callClientOnDriverArrived($db, $fresh);
         // Телефония: соединить клиента с водителем при прибытии (если включено)
         try {
+            if (!class_exists('Telephony')) require_once dirname(__DIR__).'/src/Telephony.php';
             $tel = Telephony::settings($db);
             if ((int) $tel['call_on_arrival'] === 1 && Telephony::isConfigured($tel)) {
                 $cStmt = $db->prepare(
@@ -180,9 +181,13 @@ switch ($action) {
         // Для мобильного клиента: заказ + результат постановки звонка в очередь.
         $response = Serialize::order($db, $load());
         $callJson = [];
-        if (!empty($callResult['response'])) {
-            $decodedCall = json_decode((string) $callResult['response'], true);
-            if (is_array($decodedCall)) $callJson = $decodedCall;
+        try {
+            if (!empty($callResult['response'])) {
+                $decodedCall = json_decode((string) $callResult['response'], true);
+                if (is_array($decodedCall)) $callJson = $decodedCall;
+            }
+        } catch (\Throwable) {
+            $callJson = [];
         }
         $response['clientNotificationStatus'] = (string) ($callResult['status'] ?? 'unknown');
         $response['clientNotificationMessage'] = (string) (
