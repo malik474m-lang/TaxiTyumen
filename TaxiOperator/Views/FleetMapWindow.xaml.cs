@@ -1,31 +1,35 @@
 using System.Globalization;
-using Microsoft.Web.WebView2.Wpf;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Media;
 using System.Windows.Threading;
+using Microsoft.Web.WebView2.Wpf;
 using TaxiOperator.Models;
 using TaxiOperator.Services;
 
 namespace TaxiOperator.Views;
 
-/// Карта автопарка для диспетчера: показывает только водителей в сети,
-/// метки двигаются в реальном времени без перезагрузки страницы.
-public partial class FleetMapWindow : Window
+/// Карта автопарка — полностью в C# без XAML (XamlC оказался несостоятельным здесь с пространством xmlns:wv2)
+public class FleetMapWindow : Window
 {
     private readonly ApiService _api;
     private readonly WebView2 _mapView = new();
     private readonly DispatcherTimer _timer;
+    private readonly ListBox _driversList = new();
+    private readonly TextBlock _statusText = new();
+    private readonly CheckBox _followCheck = new();
+
     private bool _mapReady;
     private Guid? _followDriverId;
 
     public FleetMapWindow(ApiService api)
     {
-        InitializeComponent();
         _api = api;
-        // WebView2 добавляем программно — парсер XamlC на этой стороне .NET не взбивает префикс префикса xmlns:wv2
-        MapHost.Children.Add(_mapView);
+        BuildUi();
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _timer.Tick += async (_, _) => await RefreshAsync();
@@ -34,33 +38,133 @@ public partial class FleetMapWindow : Window
         Closed += (_, _) => _timer.Stop();
     }
 
+    private void BuildUi()
+    {
+        Title = "Карта автопарка";
+        Width = 1180; Height = 760;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x2E));
+
+        var root = new Grid();
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition());
+        root.ColumnDefinitions.Add(new ColumnDefinition());
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(320) });
+        root.Margin = new Thickness(12);
+
+        // --- Заголовок: только текст и кнопки без дополнительного XAML (стабильность SDK)
+        var header = new DockPanel();
+        Grid.SetRow(header, 0); Grid.SetColumnSpan(header, 2);
+        var titleBlock = new TextBlock
+        {
+            Text = "Карта автопарка",
+            FontSize = 20, FontWeight = FontWeights.Bold,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xD7, 0x00)),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        _statusText.Foreground = new SolidColorBrush(Colors.LightGray);
+        _statusText.Margin = new Thickness(15, 0, 0, 0);
+        _statusText.VerticalAlignment = VerticalAlignment.Center;
+        _statusText.Text = "Загрузка…";
+        _followCheck.Foreground = new SolidColorBrush(Colors.LightGray);
+        _followCheck.Content = "Следить за выбранной машиной";
+        _followCheck.Margin = new Thickness(20, 0, 0, 0);
+        _followCheck.VerticalAlignment = VerticalAlignment.Center;
+
+        var refreshBtn = new Button
+        {
+            Content = "Обновить",
+            Background = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33)),
+            Foreground = new SolidColorBrush(Colors.White), BorderThickness = new Thickness(0),
+            Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(20, 0, 0, 0)
+        };
+        refreshBtn.Click += async (_, _) => await RefreshAsync();
+
+        DockPanel.SetDock(header, Dock.Top);
+        titleBlock.SetValue(DockPanel.DockProperty, Dock.Left);
+        _statusText.SetValue(DockPanel.DockProperty, Dock.Left);
+        _followCheck.SetValue(DockPanel.DockProperty, Dock.Left);
+        refreshBtn.SetValue(DockPanel.DockProperty, Dock.Right);
+        header.Children.Add(refreshBtn);
+        header.Children.Add(_followCheck);
+        header.Children.Add(_statusText);
+        header.Children.Add(titleBlock);
+        root.Children.Add(header);
+
+        // --- Карта слева, список водителей справа
+        var mapHost = new Border
+        {
+            Background = new SolidColorBrush(Color.FromRgb(0x0F, 0x0F, 0x13)),
+            CornerRadius = new CornerRadius(8),
+            Child = _mapView
+        };
+        Grid.SetRow(mapHost, 1);
+        root.Children.Add(mapHost);
+
+        var driversPanel = new Border
+        {
+            Background = new SolidColorBrush(Color.FromRgb(0x25, 0x25, 0x36)),
+            CornerRadius = new CornerRadius(8), Margin = new Thickness(10, 0, 0, 0)
+        };
+        Grid.SetRow(driversPanel, 1); Grid.SetColumn(driversPanel, 1);
+
+        var driversLayout = new DockPanel();
+        var listHeader = new TextBlock
+        {
+            Text = "Водители в сети", FontWeight = FontWeights.Bold,
+            Foreground = new SolidColorBrush(Colors.White), Margin = new Thickness(12, 12, 12, 8),
+            FontSize = 14
+        };
+        DockPanel.SetDock(listHeader, Dock.Top);
+        driversLayout.Children.Add(listHeader);
+        driversLayout.Children.Add(_driversList);
+        driversPanel.Child = driversLayout;
+        root.Children.Add(driversPanel);
+
+        // Список водителей
+        _driversList.Background = new SolidColorBrush(Colors.Transparent);
+        _driversList.BorderThickness = new Thickness(0);
+        _driversList.Foreground = new SolidColorBrush(Colors.White);
+        _driversList.Margin = new Thickness(6, 0, 6, 10);
+        _driversList.SelectionChanged += OnDriverSelected;
+        _driversList.ItemTemplate = new DataTemplate
+        {
+            VisualTree = new FrameworkElementFactory(typeof(StackPanel))
+        };
+        _driversList.ItemTemplate.VisualTree.AppendChild(new FrameworkElementFactory(typeof(TextBlock))
+            .ApplyTemplate(t => t.SetBinding(TextBlock.TextProperty, new Binding("FullName"))
+                .SetValue(TextBlock.FontWeightProperty, FontWeights.Bold)
+                .SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Colors.White)));
+        var carBlock = new FrameworkElementFactory(typeof(TextBlock));
+        carBlock.SetBinding(TextBlock.TextProperty, new Binding("CarLine"));
+        carBlock.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Colors.LightGray));
+        carBlock.SetValue(TextBlock.FontSizeProperty, 12.0);
+        _driversList.ItemTemplate.VisualTree.AppendChild(carBlock);
+        var statusBlock = new FrameworkElementFactory(typeof(TextBlock));
+        statusBlock.SetBinding(TextBlock.TextProperty, new Binding("StatusLine"));
+        statusBlock.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Color.FromRgb(0x7d, 0xd3, 0xfc)));
+        statusBlock.SetValue(TextBlock.FontSizeProperty, 12.0);
+        _driversList.ItemTemplate.VisualTree.AppendChild(statusBlock);
+
+        Content = root;
+    }
+
     private async Task InitAsync()
     {
         try
         {
-            await __mapView.EnsureCoreWebView2Async();
-            __mapView.NavigationCompleted += async (_, _) =>
+            await _mapView.EnsureCoreWebView2Async();
+            _mapView.NavigationCompleted += async (_, _) =>
             {
                 _mapReady = true;
                 await RefreshAsync();
             };
-
-            var city = await MapConfig.GetCityAsync();
-            if (!string.IsNullOrWhiteSpace(city)) Title = $"Карта автопарка · {city}";
-
-            __mapView.NavigateToString(BuildMapHtml(
-                await MapConfig.GetApiKeyAsync(),
-                await MapConfig.GetCenterAsync()));
+            _mapView.NavigateToString(BuildMapHtml(await MapConfig.GetApiKeyAsync()));
             _timer.Start();
         }
         catch (Exception ex)
         {
-            // Нет WebView2 Runtime — оставляем рабочим список машин справа.
-            __mapView.Visibility = Visibility.Collapsed;
-            MapFallbackText.Visibility = Visibility.Visible;
-            MapFallbackText.Text = "Карта недоступна: " + ex.Message
-                + "\nУстановите Microsoft Edge WebView2 Runtime. Список водителей ниже продолжает работать.";
-            StatusText.Text = "Карта отключена, список активен";
+            _statusText.Text = "WebView2 недоступен: " + ex.Message + ". Список ниже продолжает работать.";
             _timer.Start();
             await RefreshAsync();
         }
@@ -71,74 +175,62 @@ public partial class FleetMapWindow : Window
         try
         {
             var drivers = await _api.GetOnlineDriversAsync();
-
-            // Список слева направо: свободные первыми, затем занятые.
             var items = drivers
-                .OrderBy(d => d.Status == "Available" || d.Status == "available" ? 0 : 1)
+                .OrderBy(d => d.Status?.ToLower() == "available" ? 0 : 1)
                 .ThenBy(d => d.FullName)
                 .Select(d => new DriverRow(d))
                 .ToList();
 
-            var selectedId = (DriversList.SelectedItem as DriverRow)?.Id;
-            DriversList.ItemsSource = items;
+            var selectedId = (_driversList.SelectedItem as DriverRow)?.Id;
+            _driversList.ItemsSource = items;
             if (selectedId != null)
-                DriversList.SelectedItem = items.FirstOrDefault(i => i.Id == selectedId);
+                _driversList.SelectedItem = items.FirstOrDefault(i => i.Id == selectedId);
 
-            StatusText.Text = $"В сети: {drivers.Count} · обновлено {DateTime.Now:HH:mm:ss}";
+            _statusText.Text = $"В сети: {drivers.Count} · {DateTime.Now:HH:mm:ss}";
 
-            if (_mapReady && __mapView.Visibility == Visibility.Visible && __mapView.CoreWebView2 != null)
+            if (_mapReady && _mapView.CoreWebView2 != null)
             {
                 var payload = JsonSerializer.Serialize(drivers.Select(d => new
                 {
-                    id = d.Id.ToString(),
-                    name = d.FullName,
+                    id = d.Id.ToString(), name = d.FullName,
                     car = string.IsNullOrWhiteSpace(d.CarDisplay)
                         ? $"{d.CarColor} {d.CarBrand} {d.CarModel}".Trim()
                         : d.CarDisplay,
-                    plate = d.LicensePlate,
-                    status = d.Status,
-                    lat = d.Latitude,
-                    lng = d.Longitude,
-                    speed = d.Speed.HasValue ? Math.Round(d.Speed.Value * 3.6) : (double?)null,
-                    onOrder = d.CurrentOrderId.HasValue
+                    plate = d.LicensePlate, status = d.Status,
+                    lat = d.Latitude, lng = d.Longitude
                 }));
-
-                var follow = FollowCheck.IsChecked == true && _followDriverId != null
-                    ? $"'{_followDriverId}'"
-                    : "null";
-                await __mapView.ExecuteScriptAsync($"window.syncDrivers && window.syncDrivers({payload}, {follow});");
+                var follow = _followCheck.IsChecked == true && _followDriverId != null
+                    ? $"'{_followDriverId}'" : "null";
+                await _mapView.ExecuteScriptAsync(
+                    $"window.syncDrivers && window.syncDrivers({payload}, {follow});");
             }
         }
         catch (Exception ex)
         {
-            StatusText.Text = "Ошибка обновления: " + ex.Message;
+            _statusText.Text = "Ошибка: " + ex.Message;
         }
     }
 
-    private async void OnRefreshClick(object sender, RoutedEventArgs e) => await RefreshAsync();
-
-    private async void OnDriverSelected(object sender, SelectionChangedEventArgs e)
+    private async void OnDriverSelected(object? sender, SelectionChangedEventArgs e)
     {
-        if (DriversList.SelectedItem is not DriverRow row) return;
+        if (_driversList.SelectedItem is not DriverRow row) return;
         _followDriverId = row.Id;
-        if (!_mapReady || __mapView.CoreWebView2 == null) return;
+        if (!_mapReady || _mapView.CoreWebView2 == null) return;
 
         var lat = row.Latitude.ToString("F6", CultureInfo.InvariantCulture);
         var lng = row.Longitude.ToString("F6", CultureInfo.InvariantCulture);
-        await __mapView.ExecuteScriptAsync($"window.focusDriver && window.focusDriver('{row.Id}',{lat},{lng});");
+        await _mapView.ExecuteScriptAsync(
+            $"window.focusDriver && window.focusDriver('{row.Id}',{lat},{lng});");
     }
 
-    /// Страница карты: метки создаются один раз и далее только перемещаются.
-    private static string BuildMapHtml(string apiKey, double[] center)
+    private static string BuildMapHtml(string apiKey)
     {
         var key = string.IsNullOrWhiteSpace(apiKey) ? "" : "&apikey=" + Uri.EscapeDataString(apiKey);
-        var sb = new StringBuilder();
-        sb.Append(@"<!DOCTYPE html><html><head><meta charset='utf-8'>
+        return @"<!DOCTYPE html><html><head><meta charset='utf-8'>
 <style>html,body,#map{margin:0;padding:0;height:100%;width:100%;background:#0F0F13}
 .err{color:#aaa;font:14px sans-serif;padding:24px;text-align:center}</style>
-<script src='https://api-maps.yandex.ru/2.1/?lang=ru_RU");
-        sb.Append(key);
-        sb.Append(@"'></script></head><body><div id='map'></div>
+<script src='https://api-maps.yandex.ru/2.1/?lang=ru_RU" + key + @"'></script></head>
+<body><div id='map'></div>
 <script>
 var map, marks = {};
 function presetFor(s){
@@ -155,9 +247,7 @@ window.syncDrivers = function(list, followId){
   (list||[]).forEach(function(d){
     seen[d.id] = true;
     var pos = [d.lat, d.lng];
-    var balloon = '<b>'+esc(d.name)+'</b><br>'+esc(d.car)+' · <b>'+esc(d.plate)+'</b>'+
-    (d.speed!=null?'<br>Скорость: '+esc(d.speed)+' км/ч':'')+
-    (d.onOrder?'<br>Выполняет заказ':'<br>Свободен');
+    var balloon = '<b>'+esc(d.name)+'</b><br>'+esc(d.car)+' · <b>'+esc(d.plate)+'</b>';
     if(marks[d.id]){
       marks[d.id].geometry.setCoordinates(pos);
       marks[d.id].properties.set({iconCaption: d.plate, balloonContent: balloon});
@@ -181,21 +271,16 @@ window.focusDriver = function(id, lat, lng){
 };
 if(window.ymaps){
   ymaps.ready(function(){
-    map = new ymaps.Map('map', {center:[__LAT__, __LNG__], zoom:12,
+    map = new ymaps.Map('map', {center:[57.1522,65.5272], zoom:12,
       controls:['zoomControl','typeSelector','fullscreenControl']},
       {suppressMapOpenBlock:true});
   });
 } else {
   document.getElementById('map').innerHTML = '<div class=""err"">Не удалось загрузить Яндекс Карты</div>';
 }
-</script></body></html>");
-        // Центр карты берётся из настроек сервиса (админка → «Бренд сервиса» → город).
-        return sb.ToString()
-            .Replace("__LAT__", center[0].ToString("F6", CultureInfo.InvariantCulture))
-            .Replace("__LNG__", center[1].ToString("F6", CultureInfo.InvariantCulture));
+</script></body></html>";
     }
 
-    /// Строка списка водителей.
     private sealed class DriverRow
     {
         public DriverRow(OnlineDriver d)
@@ -207,10 +292,7 @@ if(window.ymaps){
             CarLine = string.IsNullOrWhiteSpace(d.CarDisplay)
                 ? $"{d.CarColor} {d.CarBrand} {d.CarModel} · {d.LicensePlate}".Trim()
                 : $"{d.CarDisplay} · {d.LicensePlate}";
-            var line = StatusText(d.Status);
-            if (d.Speed.HasValue && d.Speed.Value > 0)
-                line += $" · {Math.Round(d.Speed.Value * 3.6)} км/ч";
-            StatusLine = line;
+            StatusLine = StatusText(d.Status);
         }
 
         public Guid Id { get; }
