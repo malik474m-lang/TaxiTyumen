@@ -141,53 +141,94 @@ switch ($action) {
     }
 
     case 'arrived': {
+        // Сначала атомарно меняем этап заказа. Внешние сервисы (SMS, Zvonok,
+        // телефония) не имеют права отменять или превращать этот переход в HTTP 500.
         $wasArrived = !empty($order['driver_arrived_at']);
-        $db->prepare("UPDATE orders SET status = 'driver_arrived', driver_arrived_at = ? WHERE id = ?")
-            ->execute([Db::utcNow(), $id]);
+        $arrivedAt = $wasArrived
+            ? (string) $order['driver_arrived_at']
+            : Db::utcNow();
+
+        $db->prepare("UPDATE orders SET status='driver_arrived', driver_arrived_at=? WHERE id=?")
+            ->execute([$arrivedAt, $id]);
         $fresh = $load();
-        NotificationService::notifyClientDriverArrived($db, $fresh);
-        // Автообзвон звонит ОДИН раз: повторное нажатие «Я на месте» не спамит клиента.
-        // Результат возвращаем приложению водителя для явного подтверждения доставки в Zvonok.
+        if (!$fresh) {
+            Response::error('Не удалось перечитать заказ после смены статуса', 500);
+        }
+
+        $warnings = [];
+
+        // In-app/SMS уведомление пассажира — best effort.
+        try {
+            NotificationService::notifyClientDriverArrived($db, $fresh);
+        } catch (\Throwable $e) {
+            $warnings[] = 'Уведомление пассажира: ' . $e->getMessage();
+            error_log('[Taxi arrived notification] ' . $e->getMessage());
+        }
+
+        // Zvonok — best effort; ошибка API/БД не меняет успешный статус заказа.
         $callResult = $wasArrived
             ? ['status' => 'already_sent', 'message' => 'Оповещение уже запускалось ранее']
-            : ZvonokService::callClientOnDriverArrived($db, $fresh);
-        // Телефония: соединить клиента с водителем при прибытии (если включено)
+            : ['status' => 'skipped', 'message' => 'Автодозвон не выполнялся'];
+        if (!$wasArrived) {
+            try {
+                $callResult = ZvonokService::callClientOnDriverArrived($db, $fresh);
+            } catch (\Throwable $e) {
+                $callResult = [
+                    'status' => 'failed',
+                    'message' => 'Ошибка автодозвона: ' . $e->getMessage(),
+                    'httpCode' => null,
+                ];
+                $warnings[] = 'Zvonok: ' . $e->getMessage();
+                error_log('[Taxi arrived Zvonok] ' . $e->getMessage());
+            }
+        }
+
+        // Опциональное соединение водителя и пассажира через Plusofon — best effort.
         try {
-            if (!class_exists('Telephony')) require_once dirname(__DIR__).'/src/Telephony.php';
+            if (!class_exists('Telephony')) {
+                require_once dirname(__DIR__) . '/src/Telephony.php';
+            }
             $tel = Telephony::settings($db);
-            if ((int) $tel['call_on_arrival'] === 1 && Telephony::isConfigured($tel)) {
+            if ((int) ($tel['call_on_arrival'] ?? 0) === 1 && Telephony::isConfigured($tel)) {
                 $cStmt = $db->prepare(
                     'SELECT COALESCE(u.phone, o.client_phone) AS client_phone, du.phone AS driver_phone
                      FROM orders o
-                     LEFT JOIN users u ON u.id = o.client_id
-                     LEFT JOIN drivers d ON d.id = o.driver_id
-                     LEFT JOIN users du ON du.id = d.user_id
-                     WHERE o.id = ? LIMIT 1'
+                     LEFT JOIN users u ON u.id=o.client_id
+                     LEFT JOIN drivers d ON d.id=o.driver_id
+                     LEFT JOIN users du ON du.id=d.user_id
+                     WHERE o.id=? LIMIT 1'
                 );
                 $cStmt->execute([$id]);
                 $phones = $cStmt->fetch();
                 if ($phones && $phones['client_phone'] && $phones['driver_phone']) {
                     Telephony::connect(
-                        $db, (string) $phones['driver_phone'], (string) $phones['client_phone'],
+                        $db,
+                        (string) $phones['driver_phone'],
+                        (string) $phones['client_phone'],
                         'driver_arrived',
-                        ['orderId' => $id, 'driverId' => $order['driver_id'], 'userId' => $order['client_id']]
+                        ['orderId'=>$id, 'driverId'=>$order['driver_id'], 'userId'=>$order['client_id']]
                     );
                 }
             }
-        } catch (Throwable) {
+        } catch (\Throwable $e) {
+            $warnings[] = 'Телефония: ' . $e->getMessage();
+            error_log('[Taxi arrived telephony] ' . $e->getMessage());
         }
-        NotificationService::notifyOperatorsOrderUpdate($db, $fresh);
 
-        // Для мобильного клиента: заказ + результат постановки звонка в очередь.
-        $response = Serialize::order($db, $load());
-        $callJson = [];
+        // Обновление диспетчерской — best effort.
         try {
-            if (!empty($callResult['response'])) {
-                $decodedCall = json_decode((string) $callResult['response'], true);
-                if (is_array($decodedCall)) $callJson = $decodedCall;
-            }
-        } catch (\Throwable) {
-            $callJson = [];
+            NotificationService::notifyOperatorsOrderUpdate($db, $fresh);
+        } catch (\Throwable $e) {
+            $warnings[] = 'Диспетчерская: ' . $e->getMessage();
+            error_log('[Taxi arrived operators] ' . $e->getMessage());
+        }
+
+        // Основной ответ всегда отражает успешно записанный этап заказа.
+        $response = Serialize::order($db, $fresh);
+        $callJson = [];
+        if (!empty($callResult['response'])) {
+            $decodedCall = json_decode((string) $callResult['response'], true);
+            if (is_array($decodedCall)) $callJson = $decodedCall;
         }
         $response['clientNotificationStatus'] = (string) ($callResult['status'] ?? 'unknown');
         $response['clientNotificationMessage'] = (string) (
@@ -199,6 +240,8 @@ switch ($action) {
             ? (string) $callJson['call_id']
             : null;
         $response['clientNotificationHttpCode'] = $callResult['httpCode'] ?? null;
+        $response['notificationWarnings'] = $warnings;
+
         Bus::publish('orders');
         Response::json($response);
     }
