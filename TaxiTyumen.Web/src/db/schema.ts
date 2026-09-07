@@ -150,6 +150,8 @@ export const tariffs = pgTable("tariffs", {
   commissionPercent: doublePrecision("commission_percent")
     .notNull()
     .default(15),
+  // Наценка за предварительный заказ (порт tariffs.preorder_surcharge из PHP)
+  preorderSurcharge: doublePrecision("preorder_surcharge").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
   updatedAt: timestamp("updated_at", { withTimezone: true }),
 });
@@ -170,8 +172,11 @@ export const orders = pgTable("orders", {
   pickupLongitude: doublePrecision("pickup_longitude").notNull(),
   pickupEntrance: text("pickup_entrance"),
   destinationAddress: text("destination_address"),
+  destinationEntrance: text("destination_entrance"),
   destinationLatitude: doublePrecision("destination_latitude"),
   destinationLongitude: doublePrecision("destination_longitude"),
+  // Поездка «туда и обратно»: возврат к точке подачи напрямую, без объезда остановок
+  roundTrip: boolean("round_trip").notNull().default(false),
   tariff: tariffTypeEnum("tariff").notNull().default("economy"),
   estimatedPrice: doublePrecision("estimated_price").notNull().default(0),
   finalPrice: doublePrecision("final_price"),
@@ -190,6 +195,11 @@ export const orders = pgTable("orders", {
   waitingStartedAt: timestamp("waiting_started_at", { withTimezone: true }),
   waitingSeconds: integer("waiting_seconds").notNull().default(0),
   waitingCost: doublePrecision("waiting_cost").notNull().default(0),
+  // Промежуточные адреса и предзаказ (порт orders.stops_surcharge/scheduled_at из PHP):
+  // наценка за остановки при зонной цене и наценка за предварительный заказ
+  stopsSurcharge: doublePrecision("stops_surcharge").notNull().default(0),
+  scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+  preorderSurcharge: doublePrecision("preorder_surcharge").notNull().default(0),
   escalatedAt: timestamp("escalated_at", { withTimezone: true }),
   comment: text("comment"),
   cancellationReason: text("cancellation_reason"),
@@ -216,6 +226,23 @@ export const orderOptions = pgTable("order_options", {
   code: text("code").notNull(),
   name: text("name").notNull(),
   price: doublePrecision("price").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ── Route points (RoutePoint.cs): промежуточные адреса поездки ──────────────
+// Порядок следования строгий: подача → точка 1 → точка 2 → … → назначение.
+
+export const routePoints = pgTable("route_points", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  orderId: uuid("order_id")
+    .notNull()
+    .references(() => orders.id, { onDelete: "cascade" }),
+  address: text("address").notNull(),
+  latitude: doublePrecision("latitude").notNull(),
+  longitude: doublePrecision("longitude").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -263,6 +290,11 @@ export const zoneSettings = pgTable("zone_settings", {
   applyMultipliers: boolean("apply_multipliers").notNull().default(false),
   addOptions: boolean("add_options").notNull().default(true),
   fallbackToTariff: boolean("fallback_to_tariff").notNull().default(true),
+  // Наценка за промежуточные адреса при зонной цене (порт PHP zone_settings):
+  // stopMinPrice — минимум за один адрес; stopPriceMode — 'max' (большее из
+  // минимума и километража) или 'plus' (минимум + километраж всегда)
+  stopMinPrice: doublePrecision("stop_min_price").notNull().default(0),
+  stopPriceMode: text("stop_price_mode").notNull().default("max"), // max | plus
   updatedAt: timestamp("updated_at", { withTimezone: true }),
 });
 
@@ -398,6 +430,7 @@ export type ServiceBrand = typeof serviceBrand.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Driver = typeof drivers.$inferSelect;
 export type Order = typeof orders.$inferSelect;
+export type RoutePointRow = typeof routePoints.$inferSelect;
 export type Tariff = typeof tariffs.$inferSelect;
 export type BalanceTransaction = typeof balanceTransactions.$inferSelect;
 export type ChatMessage = typeof chatMessages.$inferSelect;

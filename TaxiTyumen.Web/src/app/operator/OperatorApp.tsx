@@ -19,6 +19,7 @@ import {
   DoorOpen,
   Clock3,
   Flame,
+  CalendarClock,
 } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import TaxiMap, { type MapMarker } from "@/components/TaxiMap";
@@ -55,6 +56,8 @@ export default function OperatorApp({ branding }: { branding: BrandingData }) {
   const [pickup, setPickup] = useState("");
   const [entrance, setEntrance] = useState("");
   const [destination, setDestination] = useState("");
+  const [destEntrance, setDestEntrance] = useState("");
+  const [preorderAt, setPreorderAt] = useState("");
   const [tariff, setTariff] = useState("economy");
   const [passengers, setPassengers] = useState(1);
   const [comment, setComment] = useState("");
@@ -154,6 +157,8 @@ export default function OperatorApp({ branding }: { branding: BrandingData }) {
           pickupAddress: pickup,
           pickupEntrance: entrance || null,
           destinationAddress: destination || null,
+          destinationEntrance: destEntrance || null,
+          scheduledAt: preorderAt ? new Date(preorderAt).toISOString() : null,
           tariff,
           passengerCount: passengers,
           comment: comment || null,
@@ -163,6 +168,8 @@ export default function OperatorApp({ branding }: { branding: BrandingData }) {
       setPickup("");
       setEntrance("");
       setDestination("");
+      setDestEntrance("");
+      setPreorderAt("");
       setComment("");
       setClientName("");
       setOpOptions([]);
@@ -307,6 +314,18 @@ export default function OperatorApp({ branding }: { branding: BrandingData }) {
               <Navigation className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-amber-400" />
               <input className="input-dark pl-11" placeholder="Куда (необязательно)" value={destination} onChange={(e) => setDestination(e.target.value)} list="places-op" />
             </div>
+            {destination.trim().length > 2 && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="relative">
+                  <DoorOpen className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                  <input className="input-dark pl-11" placeholder="Подъезд назначения" value={destEntrance} onChange={(e) => setDestEntrance(e.target.value)} inputMode="numeric" />
+                </div>
+                <div className="relative" title="Предварительный заказ ко времени (+наценка тарифа)">
+                  <CalendarClock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                  <input type="datetime-local" className="input-dark pl-11 [color-scheme:dark]" value={preorderAt} min={new Date(Date.now() + 20 * 60000).toISOString().slice(0, 16)} onChange={(e) => setPreorderAt(e.target.value)} />
+                </div>
+              </div>
+            )}
             <datalist id="places-op">
               {places.map((p) => (
                 <option key={p.name} value={p.name} />
@@ -407,8 +426,32 @@ export default function OperatorApp({ branding }: { branding: BrandingData }) {
                         </div>
                         <div className="mt-1.5 flex items-center gap-2 text-zinc-400">
                           <Navigation className="h-3.5 w-3.5 shrink-0 text-amber-400" />
-                          <span className="truncate">{o.destinationAddress ?? "Назовёт клиент"}</span>
+                          <span className="truncate">
+                            {o.destinationAddress ?? "Назовёт клиент"}
+                            {o.destinationEntrance && <span className="ml-1.5 font-normal text-zinc-500">п. {o.destinationEntrance}</span>}
+                          </span>
                         </div>
+                        {(o.intermediatePoints ?? []).length > 0 && (
+                          <div className="mt-1.5 flex items-center gap-2 text-xs text-sky-300/80">
+                            <MapPin className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">
+                              {(o.intermediatePoints ?? []).map((p) => p.address).join(" → ")}
+                            </span>
+                          </div>
+                        )}
+                        {(o.isPreorder || o.roundTrip) && (
+                          <div className="mt-1.5 flex flex-wrap gap-1.5">
+                            {o.isPreorder && o.scheduledAt && (
+                              <span className="chip bg-amber-400/15 text-amber-300">
+                                <CalendarClock className="h-3 w-3" />
+                                Подача {fmtDate(o.scheduledAt)}
+                              </span>
+                            )}
+                            {o.roundTrip && (
+                              <span className="chip bg-emerald-400/10 text-emerald-300">туда и обратно</span>
+                            )}
+                          </div>
+                        )}
                         {o.estimatedDistance && (
                           <div className="mt-1.5 flex items-center gap-2 text-xs text-zinc-600">
                             <Route className="h-3.5 w-3.5" />

@@ -1,23 +1,24 @@
 // POST /api/orders/operator — CreateOrderByOperatorAsync
+// Поддерживает промежуточные адреса, «туда и обратно», подъезд назначения
+// и предзаказ — общий расчёт computeOrderRoutePricing (как клиентский POST)
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { orders, tariffs } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import {
-  calculatePriceEstimate,
-  generateOrderNumber,
-  geocodeAddress,
-} from "@/lib/taxi";
+import { orders } from "@/db/schema";
+import { generateOrderNumber, geocodeAddress } from "@/lib/taxi";
 import { serializeOrder } from "@/lib/serialize";
 import { normalizePhone } from "@/lib/auth";
 import { ensureSeeded } from "@/lib/seed";
 import { getServiceBrand } from "@/lib/branding";
-import { fixedZonePrice } from "@/lib/zones";
 import { publishEvent } from "@/lib/bus";
 import { readClaims, forbidden, hasAdminRole } from "@/lib/session";
-import { getRouteGeometry } from "@/lib/taxi";
-import { orderOptions } from "@/db/schema";
+import { orderOptions, routePoints } from "@/db/schema";
 import { resolveOptions, optionsTotal } from "@/lib/options";
+import { computeOrderRoutePricing } from "@/lib/order-pricing";
+import {
+  parseRoundTrip,
+  parseScheduledAt,
+  resolveStopPoints,
+} from "@/lib/stops";
 
 export async function POST(req: Request) {
   try {
@@ -61,36 +62,30 @@ export async function POST(req: Request) {
     }
 
     const tariff = String(body.tariff ?? "economy");
-    let estimatedPrice = 0;
-    let estimatedDistance: number | null = null;
-    let estimatedDuration: number | null = null;
-    let routeGeometry: string | null = null;
-    let pricingMode = "tariff";
-    let fromZoneId: string | null = null;
-    let toZoneId: string | null = null;
 
-    if (destinationAddress && Number.isFinite(destLat)) {
-      const est = await calculatePriceEstimate(pickupLat, pickupLng, destLat, destLng, tariff, service.utcOffset);
-      estimatedPrice = est.price;
-      const zonePrice = await fixedZonePrice(pickupLat, pickupLng, destLat, destLng, tariff);
-      if (zonePrice) {
-        estimatedPrice = zonePrice.applyMultipliers
-          ? Math.round(zonePrice.price * est.multiplier)
-          : zonePrice.price;
-        pricingMode = "zone";
-        fromZoneId = zonePrice.fromZone.id;
-        toZoneId = zonePrice.toZone.id;
-      }
-      estimatedDistance = est.distanceKm;
-      estimatedDuration = est.durationMinutes;
-      const geo = await getRouteGeometry(pickupLat, pickupLng, destLat, destLng);
-      routeGeometry = JSON.stringify(geo);
-    }
-    // Если координаты назначения не указаны — минимальная цена тарифа
-    if (estimatedPrice === 0) {
-      const [t] = await db.select().from(tariffs).where(eq(tariffs.type, tariff as never));
-      if (t) estimatedPrice = t.minimumFare;
-    }
+    // Промежуточные адреса, «туда и обратно», предзаказ, подъезд назначения
+    const stops = resolveStopPoints(body.intermediatePoints, service.centerLat, service.centerLng);
+    const roundTrip = parseRoundTrip(body.roundTrip);
+    const scheduledAt = parseScheduledAt(body.scheduledAt);
+    const isPreorder = body.isPreorder === true || scheduledAt !== null;
+    const destinationEntrance = body.destinationEntrance
+      ? String(body.destinationEntrance).slice(0, 20)
+      : null;
+
+    // Общий расчёт (как в клиентском POST): маршрут через точки, зоны, наценки
+    const pr = await computeOrderRoutePricing({
+      pickupLat,
+      pickupLng,
+      destLat: destinationAddress && Number.isFinite(destLat) ? destLat : null,
+      destLng: destinationAddress && Number.isFinite(destLng) ? destLng : null,
+      destinationAddress,
+      stops,
+      roundTrip,
+      isPreorder,
+      tariff,
+      utcOffset: service.utcOffset,
+    });
+    let estimatedPrice = pr.estimatedPrice;
 
     // Опции заказа
     const optionCodes: string[] = Array.isArray(body.options)
@@ -112,16 +107,21 @@ export async function POST(req: Request) {
         pickupLongitude: pickupLng,
         pickupEntrance: body.pickupEntrance ?? null,
         destinationAddress,
+        destinationEntrance,
         destinationLatitude: Number.isFinite(destLat) ? destLat : null,
         destinationLongitude: Number.isFinite(destLng) ? destLng : null,
+        roundTrip,
         tariff: tariff as never,
         estimatedPrice,
-        estimatedDistance,
-        estimatedDuration,
-        routeGeometry,
-        pricingMode,
-        fromZoneId,
-        toZoneId,
+        estimatedDistance: pr.estimatedDistance,
+        estimatedDuration: pr.estimatedDuration,
+        routeGeometry: pr.routeGeometry,
+        pricingMode: pr.pricingMode,
+        fromZoneId: pr.fromZoneId,
+        toZoneId: pr.toZoneId,
+        stopsSurcharge: pr.stopsSurcharge,
+        scheduledAt,
+        preorderSurcharge: pr.preorderSurcharge,
         comment: body.comment ?? null,
         passengerCount: Number(body.passengerCount ?? 1) || 1,
         status: "searching",
@@ -135,6 +135,19 @@ export async function POST(req: Request) {
           code: o.code,
           name: o.name,
           price: o.price,
+        }))
+      );
+    }
+
+    // Промежуточные точки маршрута (RoutePoint.cs)
+    if (stops.length > 0) {
+      await db.insert(routePoints).values(
+        stops.map((s, index) => ({
+          orderId: order.id,
+          address: s.address,
+          latitude: s.latitude,
+          longitude: s.longitude,
+          sortOrder: index,
         }))
       );
     }

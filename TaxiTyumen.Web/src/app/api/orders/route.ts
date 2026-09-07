@@ -1,10 +1,9 @@
 // POST /api/orders — CreateOrderAsync | GET /api/orders — списки (active/available/history)
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { orders, tariffs, drivers, users } from "@/db/schema";
-import { eq, and, desc, inArray, or, isNull, gte } from "drizzle-orm";
+import { orders, drivers, users } from "@/db/schema";
+import { eq, and, desc, inArray, or, isNull, gte, lte, sql } from "drizzle-orm";
 import {
-  calculatePriceEstimate,
   generateOrderNumber,
   geocodeAddress,
   ACTIVE_STATUSES,
@@ -13,14 +12,18 @@ import {
 import { serializeOrder } from "@/lib/serialize";
 import { ensureSeeded } from "@/lib/seed";
 import { getServiceBrand } from "@/lib/branding";
-import { fixedZonePrice } from "@/lib/zones";
 import { advanceDriversGps } from "@/lib/simulate";
 import { runAutoCallTick } from "@/lib/autocall";
 import { publishEvent } from "@/lib/bus";
 import { readClaims, forbidden } from "@/lib/session";
-import { getRouteGeometry } from "@/lib/taxi";
-import { orderOptions } from "@/db/schema";
+import { orderOptions, routePoints } from "@/db/schema";
 import { resolveOptions, optionsTotal } from "@/lib/options";
+import { computeOrderRoutePricing } from "@/lib/order-pricing";
+import {
+  parseRoundTrip,
+  parseScheduledAt,
+  resolveStopPoints,
+} from "@/lib/stops";
 
 export async function POST(req: Request) {
   try {
@@ -61,36 +64,41 @@ export async function POST(req: Request) {
 
     const tariff = String(body.tariff ?? "economy");
 
-    // Расчёт цены (PricingService.CalculatePriceAsync)
-    let estimatedPrice = 0;
-    let estimatedDistance: number | null = null;
-    let estimatedDuration: number | null = null;
-    let routeGeometry: string | null = null;
-    let pricingMode = "tariff";
-    let fromZoneId: string | null = null;
-    let toZoneId: string | null = null;
-    if (destinationAddress && Number.isFinite(destLat)) {
-      const est = await calculatePriceEstimate(pickupLat, pickupLng, destLat, destLng, tariff, service.utcOffset);
-      estimatedPrice = est.price;
-      // Фиксированная зональная цена имеет приоритет над расчётом по км
-      const zonePrice = await fixedZonePrice(pickupLat, pickupLng, destLat, destLng, tariff);
-      if (zonePrice) {
-        estimatedPrice = zonePrice.applyMultipliers
-          ? Math.round(zonePrice.price * est.multiplier)
-          : zonePrice.price;
-        pricingMode = "zone";
-        fromZoneId = zonePrice.fromZone.id;
-        toZoneId = zonePrice.toZone.id;
-      }
-      estimatedDistance = est.distanceKm;
-      estimatedDuration = est.durationMinutes;
-      // Геометрия по дорогам для карты
-      const geo = await getRouteGeometry(pickupLat, pickupLng, destLat, destLng);
-      routeGeometry = JSON.stringify(geo);
-    } else {
-      const [t] = await db.select().from(tariffs).where(eq(tariffs.type, tariff as never));
-      estimatedPrice = t?.minimumFare ?? 99;
-    }
+    // Промежуточные адреса, «туда и обратно», предзаказ, подъезд назначения
+    const stops = resolveStopPoints(body.intermediatePoints, service.centerLat, service.centerLng);
+    const roundTrip = parseRoundTrip(body.roundTrip);
+    const scheduledAt = parseScheduledAt(body.scheduledAt);
+    const isPreorder = body.isPreorder === true || scheduledAt !== null;
+    const destinationEntrance = body.destinationEntrance
+      ? String(body.destinationEntrance).slice(0, 20)
+      : null;
+
+    // Расчёт цены (PricingService.CalculatePriceAsync) + многоточечный маршрут
+    // (порт PHP orders/index.php): общий помощник для клиентского и
+    // операторского создания заказа — computeOrderRoutePricing
+    const pr = await computeOrderRoutePricing({
+      pickupLat,
+      pickupLng,
+      destLat: destinationAddress && Number.isFinite(destLat) ? destLat : null,
+      destLng: destinationAddress && Number.isFinite(destLng) ? destLng : null,
+      destinationAddress,
+      stops,
+      roundTrip,
+      isPreorder,
+      tariff,
+      utcOffset: service.utcOffset,
+    });
+    const {
+      estimatedDistance,
+      estimatedDuration,
+      routeGeometry,
+      pricingMode,
+      fromZoneId,
+      toZoneId,
+      stopsSurcharge: stopsFee,
+      preorderSurcharge: preorderFee,
+    } = pr;
+    let estimatedPrice = pr.estimatedPrice;
 
     // Опции заказа (OrderOption.cs) — надбавка к цене
     const optionCodes: string[] = Array.isArray(body.options)
@@ -110,8 +118,10 @@ export async function POST(req: Request) {
         pickupLongitude: pickupLng,
         pickupEntrance: body.pickupEntrance ?? null,
         destinationAddress,
+        destinationEntrance,
         destinationLatitude: Number.isFinite(destLat) ? destLat : null,
         destinationLongitude: Number.isFinite(destLng) ? destLng : null,
+        roundTrip,
         tariff: tariff as never,
         estimatedPrice,
         estimatedDistance,
@@ -120,6 +130,9 @@ export async function POST(req: Request) {
         pricingMode,
         fromZoneId,
         toZoneId,
+        stopsSurcharge: stopsFee,
+        scheduledAt,
+        preorderSurcharge: preorderFee,
         comment: body.comment ?? null,
         passengerCount: Number(body.passengerCount ?? 1) || 1,
         paymentMethod: (body.paymentMethod as never) ?? "cash",
@@ -134,6 +147,19 @@ export async function POST(req: Request) {
           code: o.code,
           name: o.name,
           price: o.price,
+        }))
+      );
+    }
+
+    // Промежуточные точки маршрута (RoutePoint.cs)
+    if (stops.length > 0) {
+      await db.insert(routePoints).values(
+        stops.map((s, index) => ({
+          orderId: order.id,
+          address: s.address,
+          latitude: s.latitude,
+          longitude: s.longitude,
+          sortOrder: index,
         }))
       );
     }
@@ -177,16 +203,20 @@ export async function GET(req: Request) {
           .set({ latitude: lat, longitude: lng, lastLocationUpdate: new Date() })
           .where(eq(drivers.id, driverId));
       }
+      // Предварительные заказы попадают в ленту за 30 минут до подачи,
+      // чтобы не занимать водителей задолго до времени клиента (как в PHP)
+      const preorderCutoff = new Date(Date.now() + 30 * 60 * 1000);
       const rows = await db
         .select()
         .from(orders)
         .where(
           and(
             or(eq(orders.status, "searching"), eq(orders.status, "no_driver_found")),
-            isNull(orders.driverId)
+            isNull(orders.driverId),
+            or(isNull(orders.scheduledAt), lte(orders.scheduledAt, preorderCutoff))
           )
         )
-        .orderBy(orders.createdAt)
+        .orderBy(sql`${orders.scheduledAt} IS NULL DESC`, orders.scheduledAt, orders.createdAt)
         .limit(50);
       let serialized = await Promise.all(rows.map(serializeOrder));
       if (driverId && Number.isFinite(lat) && Number.isFinite(lng)) {

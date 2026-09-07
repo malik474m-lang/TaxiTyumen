@@ -23,6 +23,11 @@ import {
   Loader2,
   Car,
   Timer,
+  Plus,
+  X,
+  ArrowLeftRight,
+  CalendarClock,
+  MoreHorizontal,
 } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import OrderChat from "@/components/OrderChat";
@@ -58,6 +63,10 @@ export default function ClientApp({ branding }: { branding: BrandingData }) {
   const [pickup, setPickup] = useState("");
   const [entrance, setEntrance] = useState("");
   const [destination, setDestination] = useState("");
+  const [destEntrance, setDestEntrance] = useState("");
+  const [stops, setStops] = useState<string[]>([]);
+  const [roundTrip, setRoundTrip] = useState(false);
+  const [preorderAt, setPreorderAt] = useState("");
   const [comment, setComment] = useState("");
   const [passengers, setPassengers] = useState(1);
   const [payment, setPayment] = useState<"cash" | "card" | "bonus">("cash");
@@ -114,9 +123,12 @@ export default function ClientApp({ branding }: { branding: BrandingData }) {
     if (u?.role === "client") refresh(u);
   });
 
-  // Живой расчёт цены при вводе адресов (debounce)
+  // Живой расчёт цены при вводе адресов (debounce) — учитывает промежуточные
+  // точки, режим «туда и обратно» и предзаказ, как PricingService в PHP-версии
+  const stopsKey = stops.join("|");
   useEffect(() => {
     if (estimateTimer.current) clearTimeout(estimateTimer.current);
+    const filledStops = stops.map((s) => s.trim()).filter((s) => s.length > 3);
     if (pickup.trim().length > 3 && destination.trim().length > 3) {
       estimateTimer.current = setTimeout(async () => {
         setEstimating(true);
@@ -128,7 +140,13 @@ export default function ClientApp({ branding }: { branding: BrandingData }) {
             geometry?: [number, number][];
           }>("/api/pricing", {
             method: "POST",
-            body: JSON.stringify({ fromAddress: pickup, toAddress: destination }),
+            body: JSON.stringify({
+              fromAddress: pickup,
+              toAddress: destination,
+              intermediatePoints: filledStops.map((address) => ({ address })),
+              roundTrip,
+              scheduledAt: preorderAt ? new Date(preorderAt).toISOString() : null,
+            }),
           });
           setEstimates(res.estimates);
           setGeo({ from: res.from, to: res.to });
@@ -146,7 +164,8 @@ export default function ClientApp({ branding }: { branding: BrandingData }) {
       setGeo({});
       setGeoLine(null);
     }
-  }, [pickup, destination]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickup, destination, stopsKey, roundTrip, preorderAt]);
 
   async function createOrder(e: React.FormEvent) {
     e.preventDefault();
@@ -161,6 +180,13 @@ export default function ClientApp({ branding }: { branding: BrandingData }) {
           pickupAddress: pickup,
           pickupEntrance: entrance || null,
           destinationAddress: destination || null,
+          destinationEntrance: destEntrance || null,
+          intermediatePoints: stops
+            .map((s) => s.trim())
+            .filter((s) => s.length > 3)
+            .map((address) => ({ address })),
+          roundTrip,
+          scheduledAt: preorderAt ? new Date(preorderAt).toISOString() : null,
           tariff,
           comment: comment || null,
           passengerCount: passengers,
@@ -169,6 +195,9 @@ export default function ClientApp({ branding }: { branding: BrandingData }) {
         }),
       });
       setComment("");
+      setStops([]);
+      setRoundTrip(false);
+      setPreorderAt("");
       await refresh(user);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось создать заказ");
@@ -212,6 +241,14 @@ export default function ClientApp({ branding }: { branding: BrandingData }) {
           kind: "pickup" as const,
           label: "Подача",
         },
+        // Промежуточные остановки поездки
+        ...(active.intermediatePoints ?? []).map((p, i) => ({
+          id: `stop-${p.id}`,
+          lat: p.latitude,
+          lng: p.longitude,
+          kind: "dest" as const,
+          label: `Остановка ${i + 1}`,
+        })),
         ...(active.destinationLatitude != null
           ? [
               {
@@ -347,7 +384,7 @@ export default function ClientApp({ branding }: { branding: BrandingData }) {
                   ))}
                 </div>
 
-                {/* Маршрут */}
+                {/* Маршрут: подача → остановки → назначение (+ возврат) */}
                 <div className="mt-6 space-y-3 rounded-2xl border border-white/8 bg-zinc-950/50 p-4">
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5 h-3 w-3 rounded-full border-2 border-emerald-400" />
@@ -359,19 +396,68 @@ export default function ClientApp({ branding }: { branding: BrandingData }) {
                       </div>
                     </div>
                   </div>
+                  {(active.intermediatePoints ?? []).map((p, i) => (
+                    <div key={p.id}>
+                      <div className="ml-1.5 h-4 w-px bg-white/15" />
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 h-3 w-3 rounded-full border-2 border-sky-400 bg-sky-400/30" />
+                        <div>
+                          <div className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                            Остановка {i + 1}
+                          </div>
+                          <div className="font-bold">{p.address}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                   <div className="ml-1.5 h-4 w-px bg-white/15" />
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5 h-3 w-3 rounded-sm bg-amber-400" />
                     <div>
                       <div className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Пункт назначения</div>
-                      <div className="font-bold">{active.destinationAddress ?? "По указанию водителя"}</div>
+                      <div className="font-bold">
+                        {active.destinationAddress ?? "По указанию водителя"}
+                        {active.destinationEntrance && (
+                          <span className="ml-2 text-sm font-normal text-zinc-400">подъезд {active.destinationEntrance}</span>
+                        )}
+                      </div>
                     </div>
                   </div>
+                  {active.roundTrip && (
+                    <>
+                      <div className="ml-1.5 h-4 w-px bg-white/15" />
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 h-3 w-3 rounded-full border-2 border-emerald-400 bg-emerald-400/30" />
+                        <div>
+                          <div className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Возврат</div>
+                          <div className="font-bold">{active.pickupAddress}</div>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   <span className="chip bg-white/6 text-zinc-300">{active.tariffName}</span>
                   <span className="chip bg-white/6 text-zinc-300">{active.paymentMethodName}</span>
+                  {active.isPreorder && active.scheduledAt && (
+                    <span className="chip bg-amber-400/15 text-amber-300">
+                      <CalendarClock className="h-3 w-3" />
+                      Предзаказ на {fmtDate(active.scheduledAt)}
+                      {(active.preorderSurcharge ?? 0) > 0 ? ` · +${fmtPrice(active.preorderSurcharge!)}` : ""}
+                    </span>
+                  )}
+                  {active.roundTrip && (
+                    <span className="chip bg-emerald-400/10 text-emerald-300">
+                      <ArrowLeftRight className="h-3 w-3" />
+                      Туда и обратно
+                    </span>
+                  )}
+                  {(active.stopsSurcharge ?? 0) > 0 && (
+                    <span className="chip bg-sky-400/10 text-sky-300">
+                      остановки +{fmtPrice(active.stopsSurcharge!)}
+                    </span>
+                  )}
                   {(active.options ?? []).map((o) => (
                     <span key={o.code} className="chip bg-sky-400/10 text-sky-300">
                       {o.name}{o.price > 0 ? ` +${o.price} ₽` : ""}
@@ -496,6 +582,39 @@ export default function ClientApp({ branding }: { branding: BrandingData }) {
                       inputMode="numeric"
                     />
                   </div>
+                  {/* Промежуточные адреса: подача → остановки → назначение */}
+                  {stops.map((stop, i) => (
+                    <div key={i} className="relative">
+                      <MoreHorizontal className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-sky-400" />
+                      <input
+                        className="input-dark pl-11 pr-11"
+                        placeholder={`Остановка ${i + 1} (по пути)`}
+                        value={stop}
+                        onChange={(e) =>
+                          setStops((s) => s.map((x, j) => (j === i ? e.target.value : x)))
+                        }
+                        list="places"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setStops((s) => s.filter((_, j) => j !== i))}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-zinc-500 transition hover:bg-white/5 hover:text-red-300"
+                        title="Убрать остановку"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                  {stops.length < 3 && (
+                    <button
+                      type="button"
+                      onClick={() => setStops((s) => [...s, ""])}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 py-2.5 text-sm font-semibold text-zinc-400 transition hover:border-sky-400/50 hover:text-sky-300"
+                    >
+                      <Plus className="h-4 w-4" /> Добавить остановку по пути
+                    </button>
+                  )}
+
                   <div className="relative">
                     <Navigation className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-amber-400" />
                     <input
@@ -506,11 +625,57 @@ export default function ClientApp({ branding }: { branding: BrandingData }) {
                       list="places"
                     />
                   </div>
+                  {destination.trim().length > 2 && (
+                    <div className="relative">
+                      <DoorOpen className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                      <input
+                        className="input-dark pl-11"
+                        placeholder="Подъезд назначения (необязательно)"
+                        value={destEntrance}
+                        onChange={(e) => setDestEntrance(e.target.value)}
+                        inputMode="numeric"
+                      />
+                    </div>
+                  )}
                   <datalist id="places">
                     {places.map((p) => (
                       <option key={p.name} value={p.name} />
                     ))}
                   </datalist>
+
+                  {/* Режимы поездки: «туда и обратно» + предзаказ на время */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setRoundTrip((v) => !v)}
+                      className={`flex items-center gap-2.5 rounded-xl border px-3.5 py-3 text-left transition ${
+                        roundTrip
+                          ? "border-amber-400/60 bg-amber-400/10 text-amber-200"
+                          : "border-white/10 text-zinc-400 hover:border-white/20"
+                      }`}
+                      title="Водитель довезёт до точки назначения и вернёт вас обратно (напрямую, без остановок)"
+                    >
+                      <ArrowLeftRight className={`h-4 w-4 shrink-0 ${roundTrip ? "text-amber-300" : "text-zinc-500"}`} />
+                      <span className="text-xs font-bold leading-tight">Туда и обратно</span>
+                    </button>
+                    <div
+                      className={`flex items-center gap-2.5 rounded-xl border px-3.5 py-2 transition ${
+                        preorderAt
+                          ? "border-amber-400/60 bg-amber-400/10 text-amber-200"
+                          : "border-white/10 text-zinc-400"
+                      }`}
+                      title="Предварительный заказ ко времени (+наценка тарифа)"
+                    >
+                      <CalendarClock className={`h-4 w-4 shrink-0 ${preorderAt ? "text-amber-300" : "text-zinc-500"}`} />
+                      <input
+                        type="datetime-local"
+                        className="w-full bg-transparent text-xs font-bold outline-none [color-scheme:dark]"
+                        value={preorderAt}
+                        min={new Date(Date.now() + 20 * 60000).toISOString().slice(0, 16)}
+                        onChange={(e) => setPreorderAt(e.target.value)}
+                      />
+                    </div>
+                  </div>
 
                   <div className="relative">
                     <MessageSquareText className="pointer-events-none absolute left-4 top-4 h-4 w-4 text-zinc-500" />
@@ -587,12 +752,12 @@ export default function ClientApp({ branding }: { branding: BrandingData }) {
                   {(
                     estimates.length > 0
                       ? estimates
-                      : [
+                      : ([
                           { tariffType: "economy", tariffName: "Эконом", description: "Бюджетные поездки", price: 0, distanceKm: 0, durationMinutes: 0, minimumFare: 99 },
                           { tariffType: "comfort", tariffName: "Комфорт", description: "Комфортные авто", price: 0, distanceKm: 0, durationMinutes: 0, minimumFare: 179 },
                           { tariffType: "business", tariffName: "Бизнес", description: "Бизнес-класс", price: 0, distanceKm: 0, durationMinutes: 0, minimumFare: 349 },
                           { tariffType: "minivan", tariffName: "Минивэн", description: "6+ мест", price: 0, distanceKm: 0, durationMinutes: 0, minimumFare: 249 },
-                        ]
+                        ] as EstimateDto[])
                   ).map((e) => {
                     const Icon = TARIFF_ICONS[e.tariffType] ?? Car;
                     const selected = tariff === e.tariffType;
@@ -615,10 +780,30 @@ export default function ClientApp({ branding }: { branding: BrandingData }) {
                         {e.distanceKm > 0 && (
                           <div className="mt-0.5 text-[10px] text-zinc-500">{e.distanceKm} км · {e.durationMinutes} мин</div>
                         )}
+                        {((e.stopsSurcharge ?? 0) > 0 || (e.preorderSurcharge ?? 0) > 0) && (
+                          <div className="mt-1 space-y-0.5">
+                            {(e.stopsSurcharge ?? 0) > 0 && (
+                              <div className="text-[10px] font-semibold text-sky-300">
+                                остановки +{fmtPrice(e.stopsSurcharge!)}
+                              </div>
+                            )}
+                            {(e.preorderSurcharge ?? 0) > 0 && (
+                              <div className="text-[10px] font-semibold text-amber-300/80">
+                                предзаказ +{fmtPrice(e.preorderSurcharge!)}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </button>
                     );
                   })}
                 </div>
+                {estimates.some((e) => (e.stopsSurcharge ?? 0) > 0) && (
+                  <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
+                    Остановки по пути оплачиваются дополнительно — по километражу тарифа
+                    до каждой точки.
+                  </p>
+                )}
               </div>
 
               {error && (

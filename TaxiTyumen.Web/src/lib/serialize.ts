@@ -1,7 +1,7 @@
 // Сериализация заказа → OrderResponse (порт MapToResponseAsync)
 import { db } from "@/db";
-import { orders, drivers, users, orderOptions, type Order } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { orders, drivers, users, orderOptions, routePoints, type Order } from "@/db/schema";
+import { eq, asc } from "drizzle-orm";
 import { STATUS_TEXT, TARIFF_NAMES, PAYMENT_NAMES } from "@/lib/taxi";
 
 export async function serializeOrder(order: Order) {
@@ -10,6 +10,13 @@ export async function serializeOrder(order: Order) {
     .select({ code: orderOptions.code, name: orderOptions.name, price: orderOptions.price })
     .from(orderOptions)
     .where(eq(orderOptions.orderId, order.id));
+
+  // Промежуточные адреса (RoutePoint.cs → intermediatePoints в DTO, как в PHP)
+  const stops = await db
+    .select()
+    .from(routePoints)
+    .where(eq(routePoints.orderId, order.id))
+    .orderBy(asc(routePoints.sortOrder));
 
   let driverInfo = null;
   if (order.driverId) {
@@ -65,8 +72,21 @@ export async function serializeOrder(order: Order) {
     pickupLongitude: order.pickupLongitude,
     pickupEntrance: order.pickupEntrance,
     destinationAddress: order.destinationAddress,
+    destinationEntrance: order.destinationEntrance ?? null,
     destinationLatitude: order.destinationLatitude,
     destinationLongitude: order.destinationLongitude,
+    roundTrip: order.roundTrip ?? false,
+    scheduledAt: order.scheduledAt ?? null,
+    isPreorder: order.scheduledAt != null,
+    preorderSurcharge: order.preorderSurcharge ?? 0,
+    stopsSurcharge: order.stopsSurcharge ?? 0,
+    intermediatePoints: stops.map((p) => ({
+      id: p.id,
+      address: p.address,
+      latitude: p.latitude,
+      longitude: p.longitude,
+      sortOrder: p.sortOrder,
+    })),
     tariff: order.tariff,
     tariffName: TARIFF_NAMES[order.tariff] ?? order.tariff,
     estimatedPrice: order.estimatedPrice,

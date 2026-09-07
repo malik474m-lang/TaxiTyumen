@@ -127,6 +127,100 @@ export async function getRouteGeometry(
   ];
 }
 
+// ── Многоточечный маршрут (порт Taxi::getRouteThrough / getRouteGeometryThrough) ─
+// Порядок строгий: подача → промежуточная 1 → … → назначение.
+// OSRM считает участки последовательно, порядок не оптимизируется.
+
+export function cleanPoints(points: [number, number][]): [number, number][] {
+  return points.filter(
+    (p) => Array.isArray(p) && p.length >= 2 && p[0] !== 0 && p[1] !== 0
+  );
+}
+
+export async function getRouteThrough(
+  points: [number, number][]
+): Promise<{ distanceKm: number; durationMinutes: number }> {
+  const pts = cleanPoints(points);
+  if (pts.length < 2) return { distanceKm: 0, durationMinutes: 0 };
+  // Резерв: сумма участков по прямой с коэффициентом городских дорог
+  const fallback = () => {
+    let dist = 0;
+    for (let i = 1; i < pts.length; i++) {
+      dist += getDistanceKm(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]) * 1.3;
+    }
+    return {
+      distanceKm: Math.round(dist * 10) / 10,
+      durationMinutes: estimateDurationMinutes(dist),
+    };
+  };
+  try {
+    const coords = pts.map((p) => `${p[1]},${p[0]}`).join(";");
+    const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=false`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (res.ok) {
+      const json = await res.json();
+      const route = json?.routes?.[0];
+      if (route) {
+        return {
+          distanceKm: Math.round((route.distance / 1000) * 10) / 10,
+          durationMinutes: Math.ceil(route.duration / 60),
+        };
+      }
+    }
+  } catch {
+    /* fallback */
+  }
+  return fallback();
+}
+
+export async function getRouteGeometryThrough(
+  points: [number, number][]
+): Promise<[number, number][]> {
+  const pts = cleanPoints(points);
+  if (pts.length < 2) return pts;
+  try {
+    const coords = pts.map((p) => `${p[1]},${p[0]}`).join(";");
+    const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(7000) });
+    if (res.ok) {
+      const json = await res.json();
+      const line = json?.routes?.[0]?.geometry?.coordinates;
+      if (Array.isArray(line) && line.length > 1) {
+        return line.map((c: [number, number]) => [c[1], c[0]] as [number, number]);
+      }
+    }
+  } catch {
+    /* fallback ниже */
+  }
+  return pts;
+}
+
+// ── Наценка за промежуточные адреса при зонном ценообразовании ──────────────
+// (порт Taxi::stopsSurcharge). Зона остаётся базой поездки, а путь
+// подача → промежуточная 1 → … (А→Б) оплачивается дополнительно:
+//  - mode 'max':  surcharge = max(minPrice × stops, км × perKm);
+//  - mode 'plus': surcharge = minPrice × stops + км × perKm.
+// Когда stopMinPrice = 0 — чистый расчёт по километражу в обоих режимах.
+
+export function stopsSurcharge(
+  tariff: Pick<Tariff, "pricePerKm">,
+  routeDistanceKm: number,
+  stopCount: number,
+  stopMinPrice = 0,
+  stopPriceMode: "max" | "plus" = "max"
+): number {
+  const stops = Math.max(0, stopCount);
+  if (stops < 1) return 0;
+  const perKm = Math.max(0, tariff.pricePerKm);
+  const kmPrice = routeDistanceKm * perKm;
+  const minPrice = Math.max(0, stopMinPrice);
+  const surcharge =
+    stopPriceMode === "plus"
+      ? minPrice * stops + kmPrice
+      : Math.max(minPrice * stops, kmPrice);
+  return Math.round(surcharge);
+}
+
 // ── PricingService.cs ────────────────────────────────────────────────────────
 
 export interface PriceEstimate {

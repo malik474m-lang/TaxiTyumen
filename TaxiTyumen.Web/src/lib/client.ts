@@ -43,8 +43,21 @@ export interface OrderDto {
   pickupLongitude: number;
   pickupEntrance: string | null;
   destinationAddress: string | null;
+  destinationEntrance?: string | null;
   destinationLatitude: number | null;
   destinationLongitude: number | null;
+  roundTrip?: boolean;
+  scheduledAt?: string | null;
+  isPreorder?: boolean;
+  preorderSurcharge?: number;
+  stopsSurcharge?: number;
+  intermediatePoints?: {
+    id: string;
+    address: string;
+    latitude: number;
+    longitude: number;
+    sortOrder: number;
+  }[];
   tariff: string;
   tariffName: string;
   estimatedPrice: number;
@@ -120,6 +133,11 @@ export interface EstimateDto {
   isPeakRate: boolean;
   multiplier: number;
   minimumFare: number;
+  isFixedPrice?: boolean;
+  pricingMode?: string;
+  preorderSurcharge?: number;
+  isPreorder?: boolean;
+  stopsSurcharge?: number;
 }
 
 export interface ChatMsg {

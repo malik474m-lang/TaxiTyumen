@@ -21,6 +21,8 @@ import {
   Hourglass,
   PauseCircle,
   PlayCircle,
+  ArrowLeftRight,
+  CalendarClock,
 } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import OrderChat from "@/components/OrderChat";
@@ -361,14 +363,46 @@ export default function DriverApp({ branding }: { branding: BrandingData }) {
                       </div>
                     </div>
                   </div>
+                  {/* Остановки по пути (порядок следования) */}
+                  {(current.intermediatePoints ?? []).map((p, i) => (
+                    <div key={p.id}>
+                      <div className="ml-1.5 h-4 w-px bg-white/15" />
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 h-3 w-3 shrink-0 rounded-full border-2 border-sky-400 bg-sky-400/30" />
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-bold uppercase tracking-wider text-sky-300">
+                            Остановка {i + 1}
+                          </div>
+                          <div className="truncate font-bold">{p.address}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                   <div className="ml-1.5 h-4 w-px bg-white/15" />
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5 h-3 w-3 shrink-0 rounded-sm bg-amber-400" />
                     <div className="min-w-0">
                       <div className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Куда</div>
-                      <div className="truncate font-bold">{current.destinationAddress ?? "Назовёт клиент"}</div>
+                      <div className="truncate font-bold">
+                        {current.destinationAddress ?? "Назовёт клиент"}
+                        {current.destinationEntrance && (
+                          <span className="ml-2 text-sm font-normal text-zinc-400">подъезд {current.destinationEntrance}</span>
+                        )}
+                      </div>
                     </div>
                   </div>
+                  {current.roundTrip && (
+                    <>
+                      <div className="ml-1.5 h-4 w-px bg-white/15" />
+                      <div className="flex items-start gap-3">
+                        <ArrowLeftRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Туда и обратно</div>
+                          <div className="truncate font-bold">Возврат: {current.pickupAddress}</div>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-zinc-400">
@@ -540,12 +574,38 @@ export default function DriverApp({ branding }: { branding: BrandingData }) {
                           )}
                         </div>
                         <div className="flex items-center gap-2 text-zinc-400">
-                          <Navigation className="h-3.5 w-3.5 shrink-0 text-amber-400" />
-                          <span className="truncate">{o.destinationAddress ?? "Назовёт клиент"}</span>
-                          {o.estimatedDistance && <span className="shrink-0 text-xs text-zinc-500">{o.estimatedDistance} км</span>}
-                        </div>
-                      </div>
-                      {o.comment && (
+                           <Navigation className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+                           <span className="truncate">{o.destinationAddress ?? "Назовёт клиент"}</span>
+                           {o.estimatedDistance && <span className="shrink-0 text-xs text-zinc-500">{o.estimatedDistance} км</span>}
+                         </div>
+                         {(o.intermediatePoints ?? []).length > 0 && (
+                           <div className="flex items-center gap-2 text-sky-300/80">
+                             <MapPin className="h-3.5 w-3.5 shrink-0" />
+                             <span className="truncate text-xs">
+                               {(o.intermediatePoints ?? []).length === 1 ? "1 остановка: " : `${(o.intermediatePoints ?? []).length} остановки: `}
+                               {(o.intermediatePoints ?? []).map((p) => p.address).join(" → ")}
+                             </span>
+                           </div>
+                         )}
+                       </div>
+                       {/* Режимы поездки: предзаказ / туда и обратно */}
+                       {(o.isPreorder || o.roundTrip) && (
+                         <div className="mt-2 flex flex-wrap gap-1.5">
+                           {o.isPreorder && o.scheduledAt && (
+                             <span className="chip bg-amber-400/15 text-amber-300">
+                               <CalendarClock className="h-3 w-3" />
+                               Подача {fmtDate(o.scheduledAt)}
+                             </span>
+                           )}
+                           {o.roundTrip && (
+                             <span className="chip bg-emerald-400/10 text-emerald-300">
+                               <ArrowLeftRight className="h-3 w-3" />
+                               Туда и обратно
+                             </span>
+                           )}
+                         </div>
+                       )}
+                       {o.comment && (
                         <div className="mt-2 text-xs italic text-zinc-500">«{o.comment}»</div>
                       )}
                       <div className="mt-3 flex items-center justify-between">

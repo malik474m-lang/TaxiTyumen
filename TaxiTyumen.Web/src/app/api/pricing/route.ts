@@ -1,12 +1,22 @@
 // POST /api/pricing — CalculateAllTariffsAsync (оценка цены по всем тарифам)
+// Порт PHP pricing.php: тот же маршрут, что и при создании заказа —
+// подача → промежуточные → назначение (+ обратный путь для «туда и обратно»),
+// иначе предварительная и итоговая цены разойдутся.
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { tariffs } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { getRealRoute, getRouteGeometry, computePrice, geocodeAddress } from "@/lib/taxi";
+import {
+  computePrice,
+  geocodeAddress,
+  getRouteThrough,
+  getRouteGeometryThrough,
+  stopsSurcharge,
+} from "@/lib/taxi";
 import { ensureSeeded } from "@/lib/seed";
 import { getServiceBrand } from "@/lib/branding";
-import { fixedZonePrice } from "@/lib/zones";
+import { fixedZonePrice, getZoneSettings } from "@/lib/zones";
+import { parseRoundTrip, parseScheduledAt, resolveStopPoints } from "@/lib/stops";
 
 export async function POST(req: Request) {
   try {
@@ -35,16 +45,61 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Укажите адреса подачи и назначения" }, { status: 400 });
     }
 
-    const route = await getRealRoute(fromLat, fromLng, toLat, toLng);
-    const geometry = await getRouteGeometry(fromLat, fromLng, toLat, toLng);
+    // Промежуточные адреса + «туда и обратно» (как в PHP-версии)
+    const stops = resolveStopPoints(body.intermediatePoints, service.centerLat, service.centerLng);
+    const roundTrip = parseRoundTrip(body.roundTrip);
+    const scheduledAt = parseScheduledAt(body.scheduledAt);
+    const isPreorder = body.isPreorder === true || scheduledAt !== null;
+
+    const path: [number, number][] = [
+      [fromLat, fromLng],
+      ...stops.map((s): [number, number] => [s.latitude, s.longitude]),
+      [toLat, toLng],
+    ];
+    // Возврат выполняется напрямую к точке подачи, без повторного объезда остановок
+    if (roundTrip) path.push([fromLat, fromLng]);
+
+    const route = await getRouteThrough(path);
+    const geometry = await getRouteGeometryThrough(path);
     const activeTariffs = await db.select().from(tariffs).where(eq(tariffs.isActive, true));
+    const zs = await getZoneSettings();
+
+    // Путь до промежуточных точек (А→Б) — база наценки при зонной цене
+    const stopPath: [number, number][] = [
+      [fromLat, fromLng],
+      ...stops.map((s): [number, number] => [s.latitude, s.longitude]),
+    ];
+    const stopRoute =
+      stops.length > 0 ? await getRouteThrough(stopPath) : { distanceKm: 0 };
 
     const estimates = await Promise.all(activeTariffs.map(async (t) => {
         const p = computePrice(t, route.distanceKm, route.durationMinutes, service.utcOffset);
         const zonePrice = await fixedZonePrice(fromLat, fromLng, toLat, toLng, t.type);
-        const finalPrice = zonePrice
-          ? (zonePrice.applyMultipliers ? Math.round(zonePrice.price * p.multiplier) : zonePrice.price)
-          : p.price;
+
+        // Наценка за промежуточные адреса при зонном ценообразовании:
+        // цена зоны остаётся базой, путь до каждой точки — по километражу тарифа
+        const stopsFee =
+          zonePrice && stops.length > 0
+            ? stopsSurcharge(
+                t,
+                stopRoute.distanceKm,
+                stops.length,
+                zs.stopMinPrice,
+                (zs.stopPriceMode === "plus" ? "plus" : "max")
+              )
+            : 0;
+
+        let finalPrice = p.price;
+        if (zonePrice) {
+          finalPrice = zonePrice.applyMultipliers
+            ? Math.round(zonePrice.price * p.multiplier)
+            : zonePrice.price;
+          finalPrice += stopsFee;
+        }
+        // Наценка за предварительный заказ прибавляется поверх тарифа или зоны
+        const preorderFee = isPreorder ? Math.max(0, t.preorderSurcharge) : 0;
+        finalPrice += preorderFee;
+
         return {
           tariffType: t.type,
           tariffName: t.name,
@@ -60,6 +115,9 @@ export async function POST(req: Request) {
           isPeakRate: p.isPeakRate,
           multiplier: p.multiplier,
           minimumFare: t.minimumFare,
+          preorderSurcharge: preorderFee,
+          isPreorder,
+          stopsSurcharge: stopsFee,
         };
       }));
     estimates.sort((a, b) => a.price - b.price);
@@ -67,6 +125,10 @@ export async function POST(req: Request) {
     return NextResponse.json({
       from: { lat: fromLat, lng: fromLng },
       to: { lat: toLat, lng: toLng },
+      stopPoints: stops,
+      roundTrip,
+      isPreorder,
+      scheduledAt: scheduledAt?.toISOString() ?? null,
       geometry,
       estimates,
     });
