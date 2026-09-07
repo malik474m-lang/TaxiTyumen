@@ -10,6 +10,8 @@ public class ApiService
     private readonly HttpClient _http;
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
+        // Сервер ожидает camelCase (в т.ч. во вложенных объектах маршрута)
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true,
         Converters =
         {
@@ -72,7 +74,7 @@ public class ApiService
 
     public async Task<OrderResponse?> CreateOrderAsync(CreateOperatorOrderRequest request)
     {
-        var response = await _http.PostAsJsonAsync("orders/operator", request);
+        var response = await _http.PostAsJsonAsync("orders/operator", request, _jsonOptions);
         if (!response.IsSuccessStatusCode)
         {
             var error = await response.Content.ReadAsStringAsync();
@@ -94,11 +96,22 @@ public class ApiService
         return response.IsSuccessStatusCode;
     }
 
+    /// Оценка стоимости по тому же маршруту, что и создаваемый заказ:
+    /// подача → промежуточные точки → назначение (+ обратный путь).
     public async Task<List<PriceEstimate>> GetPriceEstimateAsync(
-        double fromLat, double fromLng, double toLat, double toLng)
+        double fromLat, double fromLng, double toLat, double toLng,
+        List<IntermediatePointRequest>? stops = null, bool roundTrip = false)
     {
-        var url = $"pricing/estimate-all?fromLat={fromLat}&fromLng={fromLng}&toLat={toLat}&toLng={toLng}";
-        var response = await _http.GetAsync(url);
+        var payload = new
+        {
+            fromLat,
+            fromLng,
+            toLat,
+            toLng,
+            intermediatePoints = stops ?? new List<IntermediatePointRequest>(),
+            roundTrip
+        };
+        var response = await _http.PostAsJsonAsync("pricing/estimate-all", payload, _jsonOptions);
         if (!response.IsSuccessStatusCode) return new List<PriceEstimate>();
         return await response.Content.ReadFromJsonAsync<List<PriceEstimate>>(_jsonOptions)
                ?? new List<PriceEstimate>();

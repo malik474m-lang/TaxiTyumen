@@ -202,9 +202,15 @@ if (preg_match('#^orders/([0-9a-f-]+)$#i',$route,$m) && $method==='GET') $dispat
 
 // ── PricingController ───────────────────────────────────────────────────────
 if ($routeLower==='pricing/estimate'||$routeLower==='pricing/estimate-all') {
+    // Координаты можно передать и в query (совместимость), и в теле POST.
+    // Промежуточные точки и «туда-обратно» приходят только телом запроса.
     Response::setBodyOverride([
-        'fromLat'=>(float)($_GET['fromLat']??0),'fromLng'=>(float)($_GET['fromLng']??0),
-        'toLat'=>(float)($_GET['toLat']??0),'toLng'=>(float)($_GET['toLng']??0),
+        'fromLat'=>(float)($_GET['fromLat'] ?? $body['fromLat'] ?? 0),
+        'fromLng'=>(float)($_GET['fromLng'] ?? $body['fromLng'] ?? 0),
+        'toLat'=>(float)($_GET['toLat'] ?? $body['toLat'] ?? 0),
+        'toLng'=>(float)($_GET['toLng'] ?? $body['toLng'] ?? 0),
+        'intermediatePoints'=>$body['intermediatePoints'] ?? $body['IntermediatePoints'] ?? [],
+        'roundTrip'=>$body['roundTrip'] ?? $body['RoundTrip'] ?? false,
     ]);
     $GLOBALS['pricing_compat_mode']=$routeLower==='pricing/estimate'?'single':'all';
     $GLOBALS['pricing_compat_tariff']=$_GET['tariff']??0;

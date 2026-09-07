@@ -352,6 +352,12 @@
                             <Label Grid.Column="1" x:Name="ActivePickupLabel" TextColor="White" FontSize="14"/>
                         </Grid>
 
+                        <StackLayout x:Name="ActiveStopsPanel" IsVisible="False" Spacing="2">
+                            <Label Text="Промежуточные адреса:" TextColor="#FFD700"
+                                   FontSize="12" FontAttributes="Bold"/>
+                            <Label x:Name="ActiveStopsLabel" TextColor="White" FontSize="13"/>
+                        </StackLayout>
+
                         <Grid ColumnDefinitions="20,*">
                             <Label Grid.Column="0" Text="" FontSize="16" VerticalOptions="Center"/>
                             <Label Grid.Column="1" x:Name="ActiveDestLabel" TextColor="LightGray" FontSize="14"/>

@@ -62,6 +62,9 @@ public class CreateOperatorOrderRequest
 
     /// Промежуточные адреса маршрута в порядке следования.
     public List<IntermediatePointRequest> IntermediatePoints { get; set; } = new();
+
+    /// Поездка «туда и обратно»: возврат клиента на адрес подачи.
+    public bool RoundTrip { get; set; }
 }
 
 public class IntermediatePointRequest

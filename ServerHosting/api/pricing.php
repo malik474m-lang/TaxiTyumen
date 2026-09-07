@@ -4,6 +4,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/_bootstrap.php';
 
 $body = Response::requirePostJson();
+// Настройки сервиса нужны уже при геокодировании адресов ниже.
+$service = ServiceSettings::get($db);
 $fromLat = (float) ($body['fromLat'] ?? 0);
 $fromLng = (float) ($body['fromLng'] ?? 0);
 $toLat = (float) ($body['toLat'] ?? 0);
@@ -23,9 +25,32 @@ if ($fromLat == 0.0 || $toLat == 0.0) {
     Response::error('Укажите адреса подачи и назначения');
 }
 
-$service = ServiceSettings::get($db);
-$route = Taxi::getRealRoute($fromLat, $fromLng, $toLat, $toLng);
-$geometry = Taxi::getRouteGeometry($fromLat, $fromLng, $toLat, $toLng);
+// Тот же маршрут, что и при создании заказа: подача → промежуточные → назначение
+// (+ обратный путь для «туда и обратно»). Иначе предварительная и итоговая цены разойдутся.
+$stopPoints = [];
+foreach ((array) ($body['intermediatePoints'] ?? $body['IntermediatePoints'] ?? []) as $point) {
+    if (!is_array($point)) continue;
+    $lat = (float) ($point['latitude'] ?? $point['Latitude'] ?? 0);
+    $lng = (float) ($point['longitude'] ?? $point['Longitude'] ?? 0);
+    if ($lat == 0.0 || $lng == 0.0) {
+        $address = trim((string) ($point['address'] ?? $point['Address'] ?? ''));
+        if ($address === '') continue;
+        $g = Taxi::geocodeAddress($address, $service['center_latitude'], $service['center_longitude']);
+        $lat = $g['lat'];
+        $lng = $g['lng'];
+    }
+    $stopPoints[] = [$lat, $lng];
+}
+
+$roundTrip = !empty($body['roundTrip'] ?? $body['RoundTrip'] ?? false);
+
+$routePoints = array_merge([[$fromLat, $fromLng]], $stopPoints, [[$toLat, $toLng]]);
+if ($roundTrip) {
+    $routePoints = array_merge($routePoints, array_reverse($stopPoints), [[$fromLat, $fromLng]]);
+}
+
+$route = Taxi::getRouteThrough($routePoints);
+$geometry = Taxi::getRouteGeometryThrough($routePoints);
 $activeTariffs = $db->query('SELECT * FROM tariffs WHERE is_active = 1')->fetchAll();
 
 $estimates = [];

@@ -153,6 +153,10 @@
                                  FontSize="13" Width="80"/>
                     </StackPanel>
 
+                    <CheckBox x:Name="RoundTripCheck" Content="Туда и обратно (возврат на адрес подачи)"
+                              Foreground="LightGray" Margin="0,0,0,10"
+                              Checked="OnRoundTripChanged" Unchecked="OnRoundTripChanged"/>
+
                     <TextBlock Text="Тариф:" Foreground="LightGray" Margin="0,0,0,3"/>
                     <ComboBox x:Name="TariffCombo" SelectedIndex="0"
                               Padding="8,6" Margin="0,0,0,10"

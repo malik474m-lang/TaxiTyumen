@@ -388,6 +388,12 @@ public partial class MainWindow : Window
         _ = UpdatePriceAsync();
     }
 
+    private void OnRoundTripChanged(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        _ = UpdatePriceAsync();
+    }
+
     private void OnClearStopsClick(object sender, RoutedEventArgs e)
     {
         _stops.Clear();
@@ -417,7 +423,9 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var estimates = await _api.GetPriceEstimateAsync(_pickupLat, _pickupLng, _destLat, _destLng);
+            var estimates = await _api.GetPriceEstimateAsync(
+                _pickupLat, _pickupLng, _destLat, _destLng,
+                _stops.ToList(), RoundTripCheck.IsChecked == true);
             if (estimates.Count == 0)
             {
                 PriceText.Text = "—";
@@ -428,10 +436,9 @@ public partial class MainWindow : Window
             var index = Math.Clamp(TariffCombo.SelectedIndex, 0, estimates.Count - 1);
             var estimate = estimates[index];
 
-            // Промежуточные точки увеличивают маршрут — предупреждаем оператора.
-            var stopsNote = _stops.Count > 0
-                ? $" · +{_stops.Count} остановк(и) — итог может вырасти"
-                : "";
+            // Маршрут уже посчитан через все точки, поэтому просто показываем их количество.
+            var stopsNote = _stops.Count > 0 ? $" · через {_stops.Count} точк(и)" : "";
+            if (RoundTripCheck.IsChecked == true) stopsNote += " · туда и обратно";
 
             PriceText.Text = $"{estimate.Price:F0} ₽";
             DistanceText.Text = $"{estimate.DistanceKm:F1} км · ~{estimate.DurationMinutes} мин{stopsNote}";
@@ -545,7 +552,8 @@ public partial class MainWindow : Window
                     ? null
                     : CommentBox.Text.Trim(),
                 PassengerCount = PassengersCombo.SelectedIndex + 1,
-                IntermediatePoints = _stops.ToList()
+                IntermediatePoints = _stops.ToList(),
+                RoundTrip = RoundTripCheck.IsChecked == true
             };
 
             var order = await _api.CreateOrderAsync(request);
@@ -1026,6 +1034,7 @@ public partial class MainWindow : Window
         DestEntranceBox.Text = "";
         ClientHintText.Text = "";
         StopAddressBox.Text = "";
+        RoundTripCheck.IsChecked = false;
         _stops.Clear();
         RefreshStopsList();
     }

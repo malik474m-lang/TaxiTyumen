@@ -1,3 +1,4 @@
+using System.Linq;
 using TaxiDriver.Models;
 using TaxiDriver.Services;
 
@@ -702,6 +703,20 @@ public partial class MainDriverPage : ContentPage
         ActiveOrderNumber.Text = order.OrderNumber;
         ActivePickupLabel.Text = order.PickupAddress
             + (string.IsNullOrWhiteSpace(order.PickupEntrance) ? "" : ", подъезд " + order.PickupEntrance);
+        // Промежуточные адреса — в строгом порядке следования
+        if (order.IntermediatePoints is { Count: > 0 })
+        {
+            ActiveStopsPanel.IsVisible = true;
+            ActiveStopsLabel.Text = string.Join("\n", order.IntermediatePoints
+                .OrderBy(p => p.SortOrder)
+                .Select((p, i) => $"{i + 1}. {p.Address}"));
+        }
+        else
+        {
+            ActiveStopsPanel.IsVisible = false;
+            ActiveStopsLabel.Text = "";
+        }
+
         ActiveDestLabel.Text = order.DestinationAddress ?? "не указано";
         if (!string.IsNullOrWhiteSpace(order.DestinationEntrance))
             ActiveDestLabel.Text += ", подъезд " + order.DestinationEntrance;

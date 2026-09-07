@@ -83,6 +83,91 @@ final class Taxi
         return $fallback();
     }
 
+    /**
+     * Маршрут через список точек в строгом порядке следования:
+     * подача → промежуточная 1 → промежуточная 2 → ... → назначение.
+     * OSRM считает участки последовательно, порядок точек не оптимизируется.
+     *
+     * @param array<int,array{0:float,1:float}> $points [[lat,lng], ...]
+     */
+    public static function getRouteThrough(array $points): array
+    {
+        $points = array_values(array_filter(
+            $points,
+            fn($p) => is_array($p) && count($p) >= 2
+                && (float) $p[0] != 0.0 && (float) $p[1] != 0.0
+        ));
+        if (count($points) < 2) {
+            return ['distanceKm' => 0.0, 'durationMinutes' => 0];
+        }
+
+        // Резерв: сумма участков по прямой с коэффициентом городских дорог.
+        $fallback = function () use ($points) {
+            $dist = 0.0;
+            for ($i = 1; $i < count($points); $i++) {
+                $dist += self::getDistanceKm(
+                    (float) $points[$i - 1][0], (float) $points[$i - 1][1],
+                    (float) $points[$i][0], (float) $points[$i][1]
+                ) * 1.3;
+            }
+            return [
+                'distanceKm' => round($dist, 1),
+                'durationMinutes' => (int) ceil($dist / 25 * 60),
+            ];
+        };
+
+        try {
+            $coords = [];
+            foreach ($points as $p) {
+                $coords[] = sprintf('%F,%F', (float) $p[1], (float) $p[0]);
+            }
+            $url = 'https://router.project-osrm.org/route/v1/driving/'
+                . implode(';', $coords) . '?overview=false';
+            $json = self::httpGet($url, 6);
+            $route = $json['routes'][0] ?? null;
+            if ($route) {
+                return [
+                    'distanceKm' => round(((float) $route['distance']) / 1000, 1),
+                    'durationMinutes' => (int) ceil(((float) $route['duration']) / 60),
+                ];
+            }
+        } catch (\Throwable) {
+        }
+        return $fallback();
+    }
+
+    /**
+     * Геометрия маршрута через список точек в заданном порядке.
+     *
+     * @param array<int,array{0:float,1:float}> $points
+     */
+    public static function getRouteGeometryThrough(array $points): array
+    {
+        $points = array_values(array_filter(
+            $points,
+            fn($p) => is_array($p) && count($p) >= 2
+                && (float) $p[0] != 0.0 && (float) $p[1] != 0.0
+        ));
+        if (count($points) < 2) {
+            return $points;
+        }
+        try {
+            $coords = [];
+            foreach ($points as $p) {
+                $coords[] = sprintf('%F,%F', (float) $p[1], (float) $p[0]);
+            }
+            $url = 'https://router.project-osrm.org/route/v1/driving/'
+                . implode(';', $coords) . '?overview=full&geometries=geojson';
+            $json = self::httpGet($url, 7);
+            $line = $json['routes'][0]['geometry']['coordinates'] ?? null;
+            if (is_array($line) && count($line) > 1) {
+                return array_map(fn(array $c) => [$c[1], $c[0]], $line);
+            }
+        } catch (\Throwable) {
+        }
+        return $points;
+    }
+
     public static function getRouteGeometry(float $lat1, float $lng1, float $lat2, float $lng2): array
     {
         try {

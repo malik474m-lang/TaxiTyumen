@@ -41,6 +41,9 @@ public class OrderResponse
     public int PassengerCount { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 
+    /// Промежуточные адреса маршрута в порядке следования.
+    public List<IntermediatePointDto> IntermediatePoints { get; set; } = new();
+
     // Простой по просьбе пассажира (поминутная тарификация)
     public DateTimeOffset? WaitingStartedAt { get; set; }
     public int WaitingSeconds { get; set; }
@@ -136,6 +139,14 @@ public class FleetMessageDto
     public string Text { get; set; } = "";
     // DateTimeOffset: метки сервера UTC 'Z' — миллисекундная точность для ?after=
     public DateTimeOffset CreatedAt { get; set; }
+}
+
+public class IntermediatePointDto
+{
+    public string Address { get; set; } = string.Empty;
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
+    public int SortOrder { get; set; }
 }
 
 public class DriverInfoDto
