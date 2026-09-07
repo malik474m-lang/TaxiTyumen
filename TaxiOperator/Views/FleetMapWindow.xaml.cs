@@ -214,7 +214,8 @@ public class FleetMapWindow : Window
         }
     }
 
-    private async void OnDriverSelected(object? sender, SelectionChangedEventArgs e)
+    private async void OnDriverSelected(object? sender,
+        System.Windows.Controls.SelectionChangedEventArgs e)
     {
         if (_driversList.SelectedItem is not DriverRow row) return;
         _followDriverId = row.Id;

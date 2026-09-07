@@ -434,7 +434,8 @@ public partial class MainWindow : Window
         _ = UpdatePriceAsync();
     }
 
-    private void OnPreorderDateTimeChanged(object sender, SelectionChangedEventArgs e)
+    private void OnPreorderDateTimeChanged(object sender,
+        System.Windows.Controls.SelectionChangedEventArgs e)
     {
         if (!IsLoaded) return;
         UpdatePreorderHint();
