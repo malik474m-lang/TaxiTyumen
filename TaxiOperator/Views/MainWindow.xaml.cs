@@ -288,6 +288,8 @@ public partial class MainWindow : Window
         DetailPickup.Text = o.PickupAddress
                 + (string.IsNullOrWhiteSpace(o.PickupEntrance) ? "" : ", подъезд " + o.PickupEntrance);
         DetailDest.Text = o.DestinationAddress ?? "не указано";
+        if (!string.IsNullOrWhiteSpace(o.DestinationEntrance))
+            DetailDest.Text += ", подъезд " + o.DestinationEntrance;
         DetailDriver.Text = o.Driver != null ? o.Driver.FullName : "не назначен";
         DetailCar.Text = o.Driver != null
             ? (!string.IsNullOrWhiteSpace(o.Driver.CarDisplay)
@@ -535,6 +537,9 @@ public partial class MainWindow : Window
                 DestinationAddress = destinationAddress,
                 DestinationLatitude = destinationLat,
                 DestinationLongitude = destinationLng,
+                DestinationEntrance = string.IsNullOrWhiteSpace(DestEntranceBox.Text)
+                    ? null
+                    : DestEntranceBox.Text.Trim(),
                 Tariff = tariff,
                 Comment = string.IsNullOrWhiteSpace(CommentBox.Text)
                     ? null
@@ -1018,6 +1023,7 @@ public partial class MainWindow : Window
         _destLat = 0;
         _destLng = 0;
         EntranceBox.Text = "";
+        DestEntranceBox.Text = "";
         ClientHintText.Text = "";
         StopAddressBox.Text = "";
         _stops.Clear();

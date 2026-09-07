@@ -144,6 +144,14 @@
                              Background="#2D2D3F" Foreground="White"
                              BorderBrush="#555" Margin="0,0,0,8"
                              SelectionChanged="OnDestSuggestionSelected"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBlock Text=" Подъезд:" Foreground="LightGray"
+                                   VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBox x:Name="DestEntranceBox"
+                                 Padding="8,6" Background="#2D2D3F"
+                                 Foreground="White" BorderBrush="#555"
+                                 FontSize="13" Width="80"/>
+                    </StackPanel>
 
                     <TextBlock Text="Тариф:" Foreground="LightGray" Margin="0,0,0,3"/>
                     <ComboBox x:Name="TariffCombo" SelectedIndex="0"

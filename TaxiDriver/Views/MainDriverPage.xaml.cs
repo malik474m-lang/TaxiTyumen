@@ -703,6 +703,8 @@ public partial class MainDriverPage : ContentPage
         ActivePickupLabel.Text = order.PickupAddress
             + (string.IsNullOrWhiteSpace(order.PickupEntrance) ? "" : ", подъезд " + order.PickupEntrance);
         ActiveDestLabel.Text = order.DestinationAddress ?? "не указано";
+        if (!string.IsNullOrWhiteSpace(order.DestinationEntrance))
+            ActiveDestLabel.Text += ", подъезд " + order.DestinationEntrance;
         ActivePriceLabel.Text = order.EstimatedPrice.ToString("F0") + " ₽";
         ActiveTariffLabel.Text = order.TariffName;
 

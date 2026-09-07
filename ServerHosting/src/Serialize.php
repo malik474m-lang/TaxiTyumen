@@ -110,6 +110,7 @@ final class Serialize
             'pickupLongitude' => (float) $o['pickup_longitude'],
             'pickupEntrance' => $o['pickup_entrance'],
             'destinationAddress' => $o['destination_address'],
+            'destinationEntrance' => $o['destination_entrance'] ?? null,
             'destinationLatitude' => $o['destination_latitude'] !== null ? (float) $o['destination_latitude'] : null,
             'destinationLongitude' => $o['destination_longitude'] !== null ? (float) $o['destination_longitude'] : null,
             'tariff' => $o['tariff'],

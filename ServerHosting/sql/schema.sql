@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS orders (
   pickup_longitude     DOUBLE NOT NULL,
   pickup_entrance      VARCHAR(20) NULL,
   destination_address  VARCHAR(255) NULL,
+  destination_entrance VARCHAR(20) NULL,
   destination_latitude  DOUBLE NULL,
   destination_longitude DOUBLE NULL,
   tariff               ENUM('economy','comfort','business','minivan') NOT NULL DEFAULT 'economy',

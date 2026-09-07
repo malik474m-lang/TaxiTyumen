@@ -30,6 +30,7 @@ public class OrderResponse
     public double PickupLatitude { get; set; }
     public double PickupLongitude { get; set; }
     public string? DestinationAddress { get; set; }
+    public string? DestinationEntrance { get; set; }
     public double? DestinationLatitude { get; set; }
     public double? DestinationLongitude { get; set; }
     public string TariffName { get; set; } = string.Empty;
@@ -78,6 +79,7 @@ public class NewOrderNotification
     public string PickupAddress { get; set; } = string.Empty;
     public string? PickupEntrance { get; set; }
     public string? DestinationAddress { get; set; }
+    public string? DestinationEntrance { get; set; }
     public decimal EstimatedPrice { get; set; }
     public string Tariff { get; set; } = string.Empty;
     public string? Comment { get; set; }

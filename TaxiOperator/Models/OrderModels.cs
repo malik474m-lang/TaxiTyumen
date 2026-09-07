@@ -2,6 +2,7 @@
 
 public class OrderResponse
 {
+    public string? DestinationEntrance { get; set; }
     public Guid Id { get; set; }
     public string OrderNumber { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
@@ -53,6 +54,7 @@ public class CreateOperatorOrderRequest
     public string? DestinationAddress { get; set; }
     public double? DestinationLatitude { get; set; }
     public double? DestinationLongitude { get; set; }
+    public string? DestinationEntrance { get; set; }
 
     public string Tariff { get; set; } = "Economy";
     public string? Comment { get; set; }
