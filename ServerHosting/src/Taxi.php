@@ -200,6 +200,36 @@ final class Taxi
     }
 
     // Цена по тарифу с множителями Тюмени (UTC+5) — порт computePrice из web-версии
+    /**
+     * Наценка за промежуточные адреса при зонном ценообразовании.
+     *
+     * Зона имеет приоритет: её фиксированная цена остаётся базой поездки,
+     * а путь подачи → промежуточная точка 1 → точка 2 ... (А→Б) оплачивается
+     * дополнительно по километражу тарифа, потому что это отклонение от маршрута зоны.
+     *
+     * @param array $tariff строка тарифа с полем price_per_km
+     * @param array<int,array{0:float,1:float}> $points [[lat,lng], ...] — подача и промежуточные точки
+     */
+    public static function stopsSurcharge(array $tariff, array $points): array
+    {
+        $points = array_values(array_filter(
+            $points,
+            fn($p) => is_array($p) && count($p) >= 2
+                && (float) $p[0] != 0.0 && (float) $p[1] != 0.0
+        ));
+        if (count($points) < 2) {
+            return ['distanceKm' => 0.0, 'surcharge' => 0];
+        }
+
+        $route = self::getRouteThrough($points);
+        $perKm = max(0.0, (float) ($tariff['price_per_km'] ?? 0));
+
+        return [
+            'distanceKm' => (float) $route['distanceKm'],
+            'surcharge' => (int) round((float) $route['distanceKm'] * $perKm),
+        ];
+    }
+
     public static function computePrice(array $tariff, float $distanceKm, ?int $utcOffset = null): array
     {
         $price = $tariff['base_fare'] + $distanceKm * $tariff['price_per_km'];

@@ -63,11 +63,21 @@ foreach ($activeTariffs as $t) {
     $zonePrice = Zones::fixedPrice($db, $fromLat, $fromLng, $toLat, $toLng, (string) $t['type']);
     $finalPrice = $p['price'];
     $isFixed = false;
+    // Наценка за промежуточные адреса при зонном ценообразовании:
+    // цена зоны остаётся базой, путь до каждой точки (А→Б) — по километражу тарифа.
+    $stopsSurcharge = 0;
+    if ($zonePrice !== null && count($stopPoints) > 0) {
+        $stopPath = array_merge([[$fromLat, $fromLng]], $stopPoints);
+        $charge = Taxi::stopsSurcharge($t, $stopPath);
+        $stopsSurcharge = $charge['surcharge'];
+    }
+
     if ($zonePrice !== null) {
         $finalPrice = $zonePrice['applyMultipliers']
             ? round($zonePrice['price'] * (float) $p['multiplier'])
             : $zonePrice['price'];
         $isFixed = true;
+        $finalPrice += $stopsSurcharge;
     }
 
     // Наценка за предварительный заказ прибавляется поверх тарифа или зоны.
@@ -91,6 +101,7 @@ foreach ($activeTariffs as $t) {
         'minimumFare' => (float) $t['minimum_fare'],
         'preorderSurcharge' => $preorderSurcharge,
         'isPreorder' => $isPreorder,
+        'stopsSurcharge' => $stopsSurcharge,
     ];
 }
 usort($estimates, fn($a, $b) => $a['price'] <=> $b['price']);

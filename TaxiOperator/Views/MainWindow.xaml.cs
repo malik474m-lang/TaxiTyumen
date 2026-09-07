@@ -525,6 +525,8 @@ public partial class MainWindow : Window
 
             // Маршрут уже посчитан через все точки, поэтому просто показываем их количество.
             var stopsNote = _stops.Count > 0 ? $" · через {_stops.Count} точк(и)" : "";
+            if (estimate.StopsSurcharge > 0)
+                stopsNote += $" · адрес +{estimate.StopsSurcharge:F0} ₽";
             if (RoundTripCheck.IsChecked == true) stopsNote += " · туда и обратно";
             if (estimate.PreorderSurcharge > 0)
                 stopsNote += $" · предзаказ +{estimate.PreorderSurcharge:F0} ₽";

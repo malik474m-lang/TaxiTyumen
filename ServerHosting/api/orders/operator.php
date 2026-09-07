@@ -106,12 +106,24 @@ if ($destinationAddress && $destLat != 0.0) {
         $estimatedPrice = (float) $p['price'];
         $zonePrice = Zones::fixedPrice($db, $pickupLat, $pickupLng, $destLat, $destLng, $tariff);
         if ($zonePrice !== null) {
+            // Зона приоритетна: её цена — база поездки до пункта назначения (Б→В).
             $estimatedPrice = $zonePrice['applyMultipliers']
                 ? round($zonePrice['price'] * (float) $p['multiplier'])
                 : $zonePrice['price'];
             $pricingMode = 'zone';
             $fromZoneId = $zonePrice['fromZone']['id'];
             $toZoneId = $zonePrice['toZone']['id'];
+
+            // Промежуточные адреса (путь А→Б) оплачиваются по километражу тарифа
+            // и прибавляются к фиксированной цене зоны.
+            if ($stops) {
+                $stopPath = [[$pickupLat, $pickupLng]];
+                foreach ($stops as $stop) {
+                    $stopPath[] = [$stop['lat'], $stop['lng']];
+                }
+                $stopsCharge = Taxi::stopsSurcharge($tariffRow, $stopPath);
+                $estimatedPrice += $stopsCharge['surcharge'];
+            }
         }
         $estimatedDistance = (float) $route['distanceKm'];
         $estimatedDuration = (int) $route['durationMinutes'];
