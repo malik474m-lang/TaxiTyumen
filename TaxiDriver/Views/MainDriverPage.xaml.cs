@@ -800,19 +800,20 @@ public partial class MainDriverPage : ContentPage
         var paidTimer = $"{total / 60:00}:{total % 60:00}";
         var freeLeft = order.FreeWaitingLeftSeconds;
 
-        // Кнопка «Простой» нужна только когда счётчик стоит.
-        // Пока ожидание идёт — она неактивна, остановка выполняется кнопкой «Начало».
+        // На точке подачи ожидание идёт автоматически (бесплатное → платное),
+        // поэтому кнопка нужна только в поездке — для остановок в пути.
+        var canStartWaiting = st == "inprogress" && !order.WaitingActive;
         WaitingBtn.Text = "Простой";
-        WaitingBtn.IsEnabled = !order.WaitingActive;
-        WaitingBtn.BackgroundColor = order.WaitingActive
-            ? Color.FromArgb("#2A3A44")
-            : Color.FromArgb("#0EA5E9");
+        WaitingBtn.IsEnabled = canStartWaiting;
+        WaitingBtn.BackgroundColor = canStartWaiting
+            ? Color.FromArgb("#0EA5E9")
+            : Color.FromArgb("#2A3A44");
 
         MapWaitingBtn.Text = "Простой";
-        MapWaitingBtn.IsEnabled = !order.WaitingActive;
-        MapWaitingBtn.BackgroundColor = order.WaitingActive
-            ? Color.FromArgb("#2A3A44")
-            : Color.FromArgb("#0EA5E9");
+        MapWaitingBtn.IsEnabled = canStartWaiting;
+        MapWaitingBtn.BackgroundColor = canStartWaiting
+            ? Color.FromArgb("#0EA5E9")
+            : Color.FromArgb("#2A3A44");
 
         // Счётчик виден всегда: сначала бесплатное ожидание, затем платное.
         string waitingText;
@@ -842,6 +843,9 @@ public partial class MainDriverPage : ContentPage
         WaitingLabel.TextColor = waitingColor;
         MapWaitingLabel.Text = waitingText;
         MapWaitingLabel.IsVisible = waitingText.Length > 0;
+
+        // Кнопка этапа зависит от состояния ожидания («Продолжить»/«Завершить»).
+        UpdateStatusButton();
         if (_mapFullscreen) SyncFullscreenButtons();
     }
 
@@ -948,20 +952,84 @@ public partial class MainDriverPage : ContentPage
         }
     }
 
+    /// Во время поездки идёт платное ожидание: кнопка этапа должна его
+    /// останавливать («Продолжить»), а не завершать заказ.
+    private bool IsWaitingStopStep()
+        => _activeOrder is { WaitingActive: true }
+           && NormStatus(_activeOrder.Status) == "inprogress";
+
     private void UpdateStatusButton()
     {
         if (_orderStatusStep >= _statusLabels.Length) return;
-        StatusBtn.Text = _statusLabels[_orderStatusStep];
-        StatusBtn.BackgroundColor = Color.FromArgb(_statusColors[_orderStatusStep]);
+
+        var label = _statusLabels[_orderStatusStep];
+        var color = _statusColors[_orderStatusStep];
+
+        // Остановок в пути может быть сколько угодно: пока счётчик идёт,
+        // кнопка «Завершить» временно превращается в «Продолжить».
+        if (IsWaitingStopStep())
+        {
+            label = "Продолжить";
+            color = "#4CAF50";
+        }
+
+        StatusBtn.Text = label;
+        StatusBtn.BackgroundColor = Color.FromArgb(color);
         // Дублируем текущий этап на кнопке поверх карты
-        MapStatusBtn.Text = _statusLabels[_orderStatusStep];
-        MapStatusBtn.BackgroundColor = Color.FromArgb(_statusColors[_orderStatusStep]);
+        MapStatusBtn.Text = label;
+        MapStatusBtn.BackgroundColor = Color.FromArgb(color);
         if (_mapFullscreen) SyncFullscreenButtons();
+    }
+
+    /// Останавливает платное ожидание, не меняя этап заказа.
+    private async Task StopWaitingAsync()
+    {
+        if (_activeOrder == null || _auth.DriverId == null) return;
+        try
+        {
+            var (ok, serverError, fresh) = await _api.SetOrderWaitingAsync(
+                _activeOrder.Id, _auth.DriverId.Value, false);
+            if (!ok)
+            {
+                await DisplayAlert("Ожидание",
+                    serverError ?? "Не удалось остановить ожидание.", "OK");
+                return;
+            }
+
+            if (fresh != null)
+            {
+                _activeOrder.WaitingActive = fresh.WaitingActive;
+                _activeOrder.WaitingStartedAt = fresh.WaitingStartedAt;
+                _activeOrder.WaitingSeconds = fresh.WaitingSeconds;
+                _activeOrder.WaitingAutoStarted = fresh.WaitingAutoStarted;
+                _activeOrder.FreeWaitingLeftSeconds = fresh.FreeWaitingLeftSeconds;
+            }
+            else
+            {
+                _activeOrder.WaitingActive = false;
+                _activeOrder.WaitingStartedAt = null;
+            }
+
+            UpdateWaitingUi(_activeOrder);
+            UpdateStatusButton();
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlert("Ожидание", "Ошибка связи: " + ex.Message, "OK");
+        }
     }
 
     private async void OnStatusButtonClick(object? sender, EventArgs e)
     {
         if (_activeOrder == null || _orderStatusStep >= _statusSteps.Length) return;
+
+        // «Продолжить»: снимаем ожидание и остаёмся в поездке.
+        // Этап не меняется, поэтому остановок может быть неограниченно много.
+        if (IsWaitingStopStep())
+        {
+            await StopWaitingAsync();
+            return;
+        }
 
         var status = _statusSteps[_orderStatusStep];
 
