@@ -250,6 +250,14 @@ switch ($action) {
     }
 
     case 'start': {
+        // «Начало движения» всегда останавливает счётчик простоя и фиксирует накопленное время.
+        if (!empty($order['waiting_started_at'])) {
+            $startedTs = strtotime((string) $order['waiting_started_at'] . ' UTC');
+            $elapsed = $startedTs !== false ? max(0, time() - $startedTs) : 0;
+            $db->prepare(
+                'UPDATE orders SET waiting_started_at = NULL, waiting_seconds = waiting_seconds + ? WHERE id = ?'
+            )->execute([$elapsed, $id]);
+        }
         $db->prepare("UPDATE orders SET status = 'in_progress', trip_started_at = ? WHERE id = ?")
             ->execute([Db::utcNow(), $id]);
         if (!empty($order['driver_id'])) {

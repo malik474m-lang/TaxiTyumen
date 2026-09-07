@@ -34,6 +34,9 @@ if ($destinationAddress && $destLat == 0.0) {
     $destLng = $g['lng'];
 }
 
+// Клиент автоматически сохраняется в базе: повторные заказы найдут его по телефону.
+$clientId = ClientDirectory::ensure($db, $clientPhone, $clientName);
+
 $tariff = Taxi::normalizeTariff($body['tariff'] ?? 'economy');
 $pricingMode = 'tariff';
 $fromZoneId = null;
@@ -81,16 +84,16 @@ $estimatedPrice += Options::total($optionCodes);
 
 $orderId = Db::uuid();
 $db->prepare(
-    'INSERT INTO orders (id, order_number, operator_id, source, client_phone, client_name,
+    'INSERT INTO orders (id, order_number, operator_id, source, client_id, client_phone, client_name,
      pickup_address, pickup_latitude, pickup_longitude, pickup_entrance,
      destination_address, destination_latitude, destination_longitude,
      tariff, estimated_price, estimated_distance, estimated_duration, route_geometry,
      pricing_mode, from_zone_id, to_zone_id,
      comment, passenger_count, status)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
 )->execute([
     $orderId, Taxi::generateOrderNumber(),
-    (string) ($body['operatorId'] ?? $claims['uid']), 'operator_app', $clientPhone, $clientName,
+    (string) ($body['operatorId'] ?? $claims['uid']), 'operator_app', $clientId, $clientPhone, $clientName,
     $pickupAddress, $pickupLat, $pickupLng, $body['pickupEntrance'] ?? null,
     $destinationAddress, $destLat != 0.0 ? $destLat : null, $destLng != 0.0 ? $destLng : null,
     $tariff, $estimatedPrice, $estimatedDistance, $estimatedDuration, $routeGeometry,

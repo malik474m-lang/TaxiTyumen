@@ -81,7 +81,11 @@
                     <TextBox x:Name="ClientPhoneBox" Text="+7"
                              Padding="8,6" Background="#2D2D3F"
                              Foreground="White" BorderBrush="#555"
-                             Margin="0,0,0,10" FontSize="13"/>
+                             Margin="0,0,0,2" FontSize="13"
+                             LostFocus="OnClientPhoneLostFocus"
+                             KeyDown="OnClientPhoneKeyDown"/>
+                    <TextBlock x:Name="ClientHintText" Text="" Foreground="#7dd3fc"
+                               FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap"/>
 
                     <TextBlock Text="Имя клиента:" Foreground="LightGray" Margin="0,0,0,3"/>
                     <TextBox x:Name="ClientNameBox"
@@ -111,7 +115,25 @@
                              Foreground="White" BorderBrush="#555"
                              Margin="0,0,0,10" FontSize="13"
                              Width="80" HorizontalAlignment="Left"/>
-                    <TextBlock Text=" Куда (необязательно):" Foreground="LightGray" Margin="0,0,0,3"/>
+                    <TextBlock Text=" Промежуточные адреса:" Foreground="LightGray" Margin="0,0,0,3"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                        <TextBox x:Name="StopAddressBox" Width="200"
+                                 Padding="8,6" Background="#2D2D3F"
+                                 Foreground="White" BorderBrush="#555" FontSize="13"/>
+                        <Button Content="+ Добавить" Click="OnAddStopClick"
+                                Background="#2196F3" Foreground="White" BorderThickness="0"
+                                Padding="10,6" Margin="6,0,0,0" Cursor="Hand"/>
+                    </StackPanel>
+                    <ListBox x:Name="StopsList" MaxHeight="90" Margin="0,0,0,4"
+                             Background="#2D2D3F" Foreground="White" BorderBrush="#555"
+                             Visibility="Collapsed"/>
+                    <Button x:Name="ClearStopsBtn" Content="Очистить промежуточные"
+                            Click="OnClearStopsClick" Visibility="Collapsed"
+                            Background="#333" Foreground="#fca5a5" BorderThickness="0"
+                            Padding="8,4" Margin="0,0,0,10" HorizontalAlignment="Left"
+                            FontSize="11" Cursor="Hand"/>
+
+                    <TextBlock Text=" Куда:" Foreground="LightGray" Margin="0,0,0,3"/>
                     <TextBox x:Name="DestinationBox"
                              Padding="8,6" Background="#2D2D3F"
                              Foreground="White" BorderBrush="#555"
@@ -126,7 +148,8 @@
                     <TextBlock Text="Тариф:" Foreground="LightGray" Margin="0,0,0,3"/>
                     <ComboBox x:Name="TariffCombo" SelectedIndex="0"
                               Padding="8,6" Margin="0,0,0,10"
-                              FontSize="13">
+                              FontSize="13"
+                              SelectionChanged="OnTariffChanged">
                         <ComboBoxItem Content=" Эконом" Tag="Economy"/>
                         <ComboBoxItem Content=" Комфорт" Tag="Comfort"/>
                         <ComboBoxItem Content=" Бизнес" Tag="Business"/>

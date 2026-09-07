@@ -105,6 +105,21 @@ public class ApiService
     }
 
     // ===== ВОДИТЕЛИ =====
+    /// Поиск клиента по телефону для автоподстановки имени в форме заказа.
+    public async Task<ClientLookupResult?> LookupClientAsync(string phone)
+    {
+        try
+        {
+            var response = await _http.GetAsync($"clients/lookup?phone={Uri.EscapeDataString(phone)}");
+            if (!response.IsSuccessStatusCode) return null;
+            return await response.Content.ReadFromJsonAsync<ClientLookupResult>(_jsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public async Task<List<OnlineDriver>> GetOnlineDriversAsync()
     {
         var response = await _http.GetAsync("drivers/online");

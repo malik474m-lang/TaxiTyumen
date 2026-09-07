@@ -57,6 +57,28 @@ public class CreateOperatorOrderRequest
     public string Tariff { get; set; } = "Economy";
     public string? Comment { get; set; }
     public int PassengerCount { get; set; } = 1;
+
+    /// Промежуточные адреса маршрута в порядке следования.
+    public List<IntermediatePointRequest> IntermediatePoints { get; set; } = new();
+}
+
+public class IntermediatePointRequest
+{
+    public string Address { get; set; } = string.Empty;
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
+}
+
+public class ClientLookupResult
+{
+    public bool Found { get; set; }
+    public string? Name { get; set; }
+    public string? FirstName { get; set; }
+    public bool IsBlocked { get; set; }
+    public int CompletedTrips { get; set; }
+    public string? LastPickupAddress { get; set; }
+    public string? LastPickupEntrance { get; set; }
+    public string? LastDestinationAddress { get; set; }
 }
 
 public class CancelOrderRequest

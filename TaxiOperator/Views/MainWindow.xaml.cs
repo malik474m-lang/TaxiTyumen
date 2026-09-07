@@ -1,4 +1,5 @@
 ﻿using System.Collections.ObjectModel;
+using System.Linq;
 using System.Windows;
 using System.Windows.Threading;
 using TaxiOperator.Models;
@@ -19,6 +20,7 @@ public partial class MainWindow : Window
     private double _destLng = 0;
     private bool _suppressPickupChange = false;
     private bool _suppressDestChange = false;
+    private readonly List<IntermediatePointRequest> _stops = new();
     private List<AddressSuggestion> _pickupSuggestions = new();
     private List<AddressSuggestion> _destSuggestions = new();
 
@@ -307,6 +309,138 @@ public partial class MainWindow : Window
     }
 
     // ===== Создание заказа =====
+    // ── Автоподстановка клиента по номеру телефона ─────────────────────────
+    private async void OnClientPhoneLostFocus(object sender, RoutedEventArgs e)
+        => await LookupClientAsync();
+
+    private async void OnClientPhoneKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter) await LookupClientAsync();
+    }
+
+    private async Task LookupClientAsync()
+    {
+        var phone = ClientPhoneBox.Text.Trim();
+        if (phone.Length < 11)
+        {
+            ClientHintText.Text = "";
+            return;
+        }
+
+        var client = await _api.LookupClientAsync(phone);
+        if (client is not { Found: true })
+        {
+            ClientHintText.Text = "Новый клиент — будет сохранён автоматически";
+            return;
+        }
+
+        // Имя подставляем только в пустое поле, чтобы не затирать ручной ввод.
+        if (string.IsNullOrWhiteSpace(ClientNameBox.Text) && !string.IsNullOrWhiteSpace(client.FirstName))
+            ClientNameBox.Text = client.FirstName;
+
+        var hint = $"Клиент найден: {client.Name}, поездок: {client.CompletedTrips}";
+        if (client.IsBlocked) hint += " · ЗАБЛОКИРОВАН";
+        if (!string.IsNullOrWhiteSpace(client.LastPickupAddress))
+            hint += $"\nПоследняя подача: {client.LastPickupAddress}";
+        ClientHintText.Text = hint;
+
+        // Пустой адрес подачи заполняем прошлым — частый повторный заказ.
+        if (string.IsNullOrWhiteSpace(PickupAddressBox.Text) && !string.IsNullOrWhiteSpace(client.LastPickupAddress))
+        {
+            PickupAddressBox.Text = client.LastPickupAddress;
+            if (string.IsNullOrWhiteSpace(EntranceBox.Text) && !string.IsNullOrWhiteSpace(client.LastPickupEntrance))
+                EntranceBox.Text = client.LastPickupEntrance;
+        }
+    }
+
+    // ── Промежуточные адреса маршрута ──────────────────────────────────────
+    private async void OnAddStopClick(object sender, RoutedEventArgs e)
+    {
+        var address = StopAddressBox.Text.Trim();
+        if (address.Length < 3)
+        {
+            MessageBox.Show("Введите промежуточный адрес", "Промежуточная точка",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        double lat = 0, lng = 0;
+        var found = await _dadata.SearchAsync(address);
+        if (found.Count > 0)
+        {
+            address = found[0].Value;
+            lat = found[0].Latitude;
+            lng = found[0].Longitude;
+        }
+
+        _stops.Add(new IntermediatePointRequest { Address = address, Latitude = lat, Longitude = lng });
+        RefreshStopsList();
+        StopAddressBox.Clear();
+        await UpdatePriceAsync();
+    }
+
+    private void OnTariffChanged(object sender,
+        System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        _ = UpdatePriceAsync();
+    }
+
+    private void OnClearStopsClick(object sender, RoutedEventArgs e)
+    {
+        _stops.Clear();
+        RefreshStopsList();
+    }
+
+    private void RefreshStopsList()
+    {
+        StopsList.ItemsSource = _stops
+            .Select((p, i) => $"{i + 1}. {p.Address}")
+            .ToList();
+        var hasStops = _stops.Count > 0;
+        StopsList.Visibility = hasStops ? Visibility.Visible : Visibility.Collapsed;
+        ClearStopsBtn.Visibility = hasStops ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// Предварительная стоимость: считается по выбранному тарифу,
+    /// как только известны координаты подачи и назначения.
+    private async Task UpdatePriceAsync()
+    {
+        try
+        {
+            if (_pickupLat == 0 || _destLat == 0)
+            {
+                PriceText.Text = "—";
+                DistanceText.Text = "Укажите адреса подачи и назначения";
+                return;
+            }
+
+            var estimates = await _api.GetPriceEstimateAsync(_pickupLat, _pickupLng, _destLat, _destLng);
+            if (estimates.Count == 0)
+            {
+                PriceText.Text = "—";
+                DistanceText.Text = "Не удалось рассчитать стоимость";
+                return;
+            }
+
+            var index = Math.Clamp(TariffCombo.SelectedIndex, 0, estimates.Count - 1);
+            var estimate = estimates[index];
+
+            // Промежуточные точки увеличивают маршрут — предупреждаем оператора.
+            var stopsNote = _stops.Count > 0
+                ? $" · +{_stops.Count} остановк(и) — итог может вырасти"
+                : "";
+
+            PriceText.Text = $"{estimate.Price:F0} ₽";
+            DistanceText.Text = $"{estimate.DistanceKm:F1} км · ~{estimate.DurationMinutes} мин{stopsNote}";
+        }
+        catch
+        {
+            PriceText.Text = "—";
+            DistanceText.Text = "Ошибка расчёта стоимости";
+        }
+    }
+
     private async void OnCreateOrderClick(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrWhiteSpace(ClientPhoneBox.Text) ||
@@ -314,6 +448,15 @@ public partial class MainWindow : Window
         {
             MessageBox.Show("Заполните телефон и адрес подачи!",
                 "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        // Конечный адрес обязателен: без него нельзя рассчитать стоимость поездки.
+        if (string.IsNullOrWhiteSpace(DestinationBox.Text))
+        {
+            MessageBox.Show("Укажите адрес назначения — он обязателен.",
+                "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+            DestinationBox.Focus();
             return;
         }
 
@@ -396,7 +539,8 @@ public partial class MainWindow : Window
                 Comment = string.IsNullOrWhiteSpace(CommentBox.Text)
                     ? null
                     : CommentBox.Text.Trim(),
-                PassengerCount = PassengersCombo.SelectedIndex + 1
+                PassengerCount = PassengersCombo.SelectedIndex + 1,
+                IntermediatePoints = _stops.ToList()
             };
 
             var order = await _api.CreateOrderAsync(request);
@@ -405,9 +549,10 @@ public partial class MainWindow : Window
             {
                 System.Media.SystemSounds.Asterisk.Play();
 
+                var stopsInfo = _stops.Count > 0 ? $"\nПромежуточных точек: {_stops.Count}" : "";
                 MessageBox.Show(
                     $"Заказ {order.OrderNumber} создан!\n" +
-                    $"Стоимость: {order.EstimatedPrice:F0} \n" +
+                    $"Стоимость по тарифу: {order.EstimatedPrice:F0} ₽{stopsInfo}\n" +
                     $"Статус: {order.StatusText}",
                     "Успех",
                     MessageBoxButton.OK,
@@ -491,6 +636,7 @@ public partial class MainWindow : Window
         _pickupLng = selected.Longitude;
         _suppressPickupChange = false;
         PickupSuggestionsList.Visibility = Visibility.Collapsed;
+        _ = UpdatePriceAsync();
     }
 
     private async void OnDestChanged(object sender,
@@ -533,6 +679,7 @@ public partial class MainWindow : Window
         _destLng = selected.Longitude;
         _suppressDestChange = false;
         DestSuggestionsList.Visibility = Visibility.Collapsed;
+        _ = UpdatePriceAsync();
     }
 
     private void OnClearFormClick(object sender, RoutedEventArgs e) => ClearForm();
@@ -871,6 +1018,10 @@ public partial class MainWindow : Window
         _destLat = 0;
         _destLng = 0;
         EntranceBox.Text = "";
+        ClientHintText.Text = "";
+        StopAddressBox.Text = "";
+        _stops.Clear();
+        RefreshStopsList();
     }
 }
 

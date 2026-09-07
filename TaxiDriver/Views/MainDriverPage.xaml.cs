@@ -18,7 +18,7 @@ public partial class MainDriverPage : ContentPage
     private readonly string[] _statusSteps =
         { "DriverEnRoute", "DriverArrived", "InProgress", "Completed" };
     private readonly string[] _statusLabels =
-        { "Еду к клиенту", "На месте", "Начать поездку", "Завершить" };
+        { "Еду к клиенту", "На месте", "Начало движения", "Завершить" };
     private readonly string[] _statusColors =
         { "#2196F3", "#FF9800", "#4CAF50", "#9C27B0" };
 
@@ -763,40 +763,58 @@ public partial class MainDriverPage : ContentPage
             WaitingLabel.Text = "";
             return;
         }
-        WaitingBtn.Text = order.WaitingActive ? "Стоп простой" : "Простой";
-        WaitingBtn.BackgroundColor = Color.FromArgb(order.WaitingActive ? "#0EA5E9" : "#333");
-
+        // Накопленное платное время простоя (включая текущий незакрытый интервал)
         var total = order.WaitingSeconds;
         if (order.WaitingActive && order.WaitingStartedAt.HasValue)
         {
             total += Math.Max(0,
                 (int)(DateTimeOffset.UtcNow - order.WaitingStartedAt.Value).TotalSeconds);
         }
-        var timer = total > 0 || order.WaitingActive
-            ? $"{total / 60:00}:{total % 60:00}"
-            : "";
-
-        // До истечения бесплатного ожидания показываем обратный отсчёт,
-        // затем сервер включает платный счётчик автоматически.
+        var timer = $"{total / 60:00}:{total % 60:00}";
         var freeLeft = order.FreeWaitingLeftSeconds;
-        if (!order.WaitingActive && total == 0 && freeLeft > 0)
+
+        // Кнопка простоя: во время простоя превращается в «Начало движения»,
+        // потому что именно движение завершает ожидание.
+        if (order.WaitingActive)
         {
-            WaitingLabel.Text = $"Бесплатно ещё {freeLeft / 60:00}:{freeLeft % 60:00}";
+            WaitingBtn.Text = "Начало движения";
+            WaitingBtn.BackgroundColor = Color.FromArgb("#4CAF50");
         }
         else
         {
-            WaitingLabel.Text = order.WaitingActive && order.WaitingAutoStarted
-                ? timer + " (авто)"
-                : timer;
+            WaitingBtn.Text = "Простой";
+            WaitingBtn.BackgroundColor = Color.FromArgb("#333");
         }
 
-        // Кнопка и таймер простоя поверх карты
-        MapWaitingBtn.Text = order.WaitingActive ? "Стоп" : "Простой";
-        MapWaitingBtn.BackgroundColor = Color.FromArgb(order.WaitingActive ? "#0EA5E9" : "#475569");
-        MapWaitingLabel.Text = order.WaitingActive
-            ? (order.WaitingAutoStarted ? "Платный простой " : "Простой ") + timer
-            : (freeLeft > 0 && total == 0 ? $"Бесплатно {freeLeft / 60:00}:{freeLeft % 60:00}" : timer);
-        MapWaitingLabel.IsVisible = order.WaitingActive || total > 0 || freeLeft > 0;
+        // Подпись всегда информативна: обратный отсчёт, идущий счётчик или итог.
+        string waitingText;
+        if (order.WaitingActive)
+        {
+            waitingText = (order.WaitingAutoStarted ? "Платный простой " : "Простой ") + timer;
+        }
+        else if (total > 0)
+        {
+            waitingText = "Простой всего " + timer;
+        }
+        else if (freeLeft > 0)
+        {
+            waitingText = $"Бесплатно ещё {freeLeft / 60:00}:{freeLeft % 60:00}";
+        }
+        else
+        {
+            waitingText = "";
+        }
+
+        WaitingLabel.Text = waitingText;
+        WaitingLabel.TextColor = order.WaitingActive
+            ? Color.FromArgb("#0EA5E9")
+            : Color.FromArgb("#9CA3AF");
+
+        // Дублируем состояние на карте
+        MapWaitingBtn.Text = order.WaitingActive ? "Движение" : "Простой";
+        MapWaitingBtn.BackgroundColor = Color.FromArgb(order.WaitingActive ? "#4CAF50" : "#475569");
+        MapWaitingLabel.Text = waitingText;
+        MapWaitingLabel.IsVisible = waitingText.Length > 0;
         if (_mapFullscreen) SyncFullscreenButtons();
     }
 
@@ -880,7 +898,17 @@ public partial class MainDriverPage : ContentPage
         {
             if (status == "Completed")
             {
-                await _api.CompleteOrderAsync(_activeOrder.Id);
+                var finished = await _api.CompleteOrderAsync(_activeOrder.Id);
+                if (finished != null)
+                {
+                    // Итог показываем разбивкой: поездка, простой и полная сумма.
+                    var waitingLine = finished.WaitingCost > 0
+                        ? $"\nПростой: {finished.WaitingCost:F0} ₽ ({finished.WaitingSeconds / 60} мин)"
+                        : "\nПростой: 0 ₽";
+                    await DisplayAlert("Поездка завершена",
+                        $"По тарифу: {finished.TariffPrice:F0} ₽{waitingLine}\nИтого к оплате: {finished.TotalPrice:F0} ₽",
+                        "OK");
+                }
                 await OnOrderCompleted();
             }
             else

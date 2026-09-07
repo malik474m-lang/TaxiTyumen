@@ -128,9 +128,20 @@ public class ApiService
         }
     }
 
-    public async Task CompleteOrderAsync(Guid orderId)
+    /// Завершение поездки. Возвращает итоговый заказ с разбивкой стоимости.
+    public async Task<OrderResponse?> CompleteOrderAsync(Guid orderId)
     {
-        await _http.PostAsync($"orders/{orderId}/complete", null);
+        var response = await _http.PostAsync($"orders/{orderId}/complete", null);
+        if (!response.IsSuccessStatusCode) return null;
+        try
+        {
+            var raw = await response.Content.ReadAsStringAsync();
+            return JsonSerializer.Deserialize<OrderResponse>(raw, _json);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// Простой: запуск/остановка.

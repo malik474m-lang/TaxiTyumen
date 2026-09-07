@@ -133,6 +133,11 @@ if ($routeLower === 'applications' || $routeLower === 'apply') {
     exit;
 }
 
+// ── Справочник клиентов (автоподстановка в пульте оператора) ────────────────
+if ($routeLower === 'clients/lookup') {
+    $dispatch($api.'/clients.php', [], ['phone' => (string) ($_GET['phone'] ?? $body['phone'] ?? '')]);
+}
+
 // ── SOS (тревожная кнопка водителя) ─────────────────────────────────────────
 if ($routeLower === 'sos' && $method === 'GET') {
     $dispatch($api.'/sos.php', [], ['history' => (string) ($_GET['history'] ?? '')]);

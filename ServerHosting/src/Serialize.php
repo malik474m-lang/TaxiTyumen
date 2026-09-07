@@ -145,6 +145,9 @@ final class Serialize
             ] : null,
             'escalatedAt' => $o['escalated_at'],
             'waitingStartedAt' => $o['waiting_started_at'] ?? null,
+            // Разбивка стоимости: поездка по тарифу, простой и итог
+            'tariffPrice' => round((float) ($o['final_price'] ?? $o['estimated_price']) - (float) ($o['waiting_cost'] ?? 0), 2),
+            'totalPrice' => round((float) ($o['final_price'] ?? ((float) $o['estimated_price'] + (float) ($o['waiting_cost'] ?? 0))), 2),
             'waitingSeconds' => (int) ($o['waiting_seconds'] ?? 0),
             'waitingCost' => (float) ($o['waiting_cost'] ?? 0),
             'waitingActive' => !empty($o['waiting_started_at']),
