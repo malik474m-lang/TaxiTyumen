@@ -131,10 +131,13 @@ public class FleetMapWindow : Window
         {
             VisualTree = new FrameworkElementFactory(typeof(StackPanel))
         };
-        _driversList.ItemTemplate.VisualTree.AppendChild(new FrameworkElementFactory(typeof(TextBlock))
-            .ApplyTemplate(t => t.SetBinding(TextBlock.TextProperty, new Binding("FullName"))
-                .SetValue(TextBlock.FontWeightProperty, FontWeights.Bold)
-                .SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Colors.White)));
+
+        var nameBlock = new FrameworkElementFactory(typeof(TextBlock));
+        nameBlock.SetBinding(TextBlock.TextProperty, new Binding("FullName") { StringFormat = "{0}" });
+        nameBlock.SetValue(TextBlock.FontWeightProperty, FontWeights.Bold);
+        nameBlock.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Colors.White));
+        _driversList.ItemTemplate.VisualTree.AppendChild(nameBlock);
+
         var carBlock = new FrameworkElementFactory(typeof(TextBlock));
         carBlock.SetBinding(TextBlock.TextProperty, new Binding("CarLine"));
         carBlock.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Colors.LightGray));
