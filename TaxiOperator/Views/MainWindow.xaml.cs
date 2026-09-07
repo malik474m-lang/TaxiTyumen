@@ -368,7 +368,7 @@ public partial class MainWindow : Window
         var found = await _dadata.SearchAsync(address);
         if (found.Count > 0)
         {
-            address = found[0].Value;
+            address = found[0].DisplayName;
             lat = found[0].Latitude;
             lng = found[0].Longitude;
         }
