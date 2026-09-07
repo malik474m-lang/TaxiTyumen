@@ -38,7 +38,8 @@ final class ZvonokService
         // Ограничиваем повторный вызов одного и того же номера в течение 2 минут.
         $recent = $db->prepare(
             "SELECT COUNT(*) FROM service_call_logs
-             WHERE service='zvonok' AND action='call' AND summary LIKE ? AND created_at > ?"
+             WHERE service='zvonok' AND action='call'
+               AND request_summary LIKE ? AND created_at > ?"
         );
         $recent->execute(['%' . $phone . '%', gmdate('Y-m-d H:i:s', time() - 120)]);
         if ((int) $recent->fetchColumn() > 0) {
