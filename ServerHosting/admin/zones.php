@@ -86,8 +86,8 @@ foreach ($zones as $z) { if ($z['id'] === $editId) { $editZone = $z; break; } }
 
 layout_header('Зоны и цены', 'zones');
 ?>
-<?php if (YANDEX_MAPS_API_KEY !== ''): ?>
-<script src="https://api-maps.yandex.ru/2.1/?apikey=<?= rawurlencode(YANDEX_MAPS_API_KEY) ?>&lang=ru_RU&coordorder=latlong"></script>
+<?php if (api_key('yandex_maps') !== ''): ?>
+<script src="https://api-maps.yandex.ru/2.1/?apikey=<?= rawurlencode(api_key('yandex_maps')) ?>&lang=ru_RU&coordorder=latlong"></script>
 <?php endif; ?>
 
 <div class="flex between">
@@ -158,10 +158,10 @@ layout_header('Зоны и цены', 'zones');
     </style>
     <div id="mapWrap">
       <div id="map" style="position:relative;z-index:1;height:340px;border-radius:12px;overflow:hidden;background:#0f0f13">
-      <?php if (YANDEX_MAPS_API_KEY === ''): ?>
+      <?php if (api_key('yandex_maps') === ''): ?>
       <div style="height:100%;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">
         <div><div style="font-size:32px">🗺️</div><b>API-ключ Яндекс Карт не настроен</b>
-        <div class="mut" style="margin-top:7px;max-width:360px">Добавьте <code>YANDEX_MAPS_API_KEY</code> в <code>config.local.php</code> и ограничьте ключ доменом <?= h($_SERVER['HTTP_HOST'] ?? '') ?>.</div></div>
+        <div class="mut" style="margin-top:7px;max-width:360px">Добавьте <code>api_key('yandex_maps')</code> в <code>config.local.php</code> и ограничьте ключ доменом <?= h($_SERVER['HTTP_HOST'] ?? '') ?>.</div></div>
       </div>
       <?php endif; ?>
       </div>
@@ -245,7 +245,7 @@ layout_header('Зоны и цены', 'zones');
 </form>
 <?php endif; ?>
 
-<?php if (YANDEX_MAPS_API_KEY !== ''): ?>
+<?php if (api_key('yandex_maps') !== ''): ?>
 <script>
 var center = [<?= (float) $service['center_latitude'] ?>, <?= (float) $service['center_longitude'] ?>];
 var existing = <?= json_encode(array_map(fn($z) => ['name'=>$z['name'],'color'=>$z['color'],'points'=>$z['points'],'id'=>$z['id']], $zones), JSON_UNESCAPED_UNICODE) ?>;

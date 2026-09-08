@@ -20,7 +20,7 @@ final class GeocodingService
         $results = [];
 
         // DaData — точные российские адреса и ФИАС
-        if (DADATA_API_KEY !== '') {
+        if (api_key('dadata') !== '') {
             $body = json_encode([
                 'query' => $query,
                 'count' => 7,
@@ -28,7 +28,7 @@ final class GeocodingService
                 'restrict_value' => false,
             ], JSON_UNESCAPED_UNICODE);
             [$code, $raw, $ms] = self::request(self::DADATA_SUGGEST, 'POST', $body, [
-                'Authorization: Token ' . DADATA_API_KEY,
+                'Authorization: Token ' . api_key('dadata'),
                 'Content-Type: application/json',
                 'Accept: application/json',
             ]);
@@ -54,13 +54,13 @@ final class GeocodingService
         // OpenCage Data (OSM) — независимый резервный геокодер:
         // подхватывает адреса, которых нет в DaData/ФИАС
         $queryLower = mb_strtolower($query);
-        if (count($results) < 3 && OPENCAGE_API_KEY !== '') {
+        if (count($results) < 3 && api_key('opencage') !== '') {
             $searchQuery = str_contains($queryLower, mb_strtolower($city))
                 || str_contains($queryLower, mb_strtolower($region))
                 ? $query
                 : $query . ', ' . $city . ', ' . $region;
             $url = self::OPENCAGE_GEOCODE . '?' . http_build_query([
-                'key' => OPENCAGE_API_KEY,
+                'key' => api_key('opencage'),
                 'q' => $searchQuery,
                 'countrycode' => 'ru',
                 'language' => 'ru',
@@ -80,14 +80,14 @@ final class GeocodingService
         }
 
         // Яндекс HTTP Геокодер — fallback и адреса, которых нет в DaData
-        if (count($results) < 3 && YANDEX_MAPS_API_KEY !== '') {
+        if (count($results) < 3 && api_key('yandex_maps') !== '') {
             $searchQuery = str_contains($queryLower, mb_strtolower($city))
                 || str_contains($queryLower, mb_strtolower($region))
                 ? $query
                 : $query . ', ' . $city . ', ' . $region;
 
             $url = self::YANDEX_GEOCODER . '?' . http_build_query([
-                'apikey' => YANDEX_MAPS_API_KEY,
+                'apikey' => api_key('yandex_maps'),
                 'geocode' => $searchQuery,
                 'format' => 'json',
                 'lang' => 'ru_RU',
@@ -112,10 +112,10 @@ final class GeocodingService
     public static function reverse(\PDO $db, float $lat, float $lng): array
     {
         // DaData geolocate — сначала
-        if (DADATA_API_KEY !== '') {
+        if (api_key('dadata') !== '') {
             $body = json_encode(['lat' => $lat, 'lon' => $lng, 'radius_meters' => 100, 'count' => 1]);
             [$code, $raw, $ms] = self::request(self::DADATA_GEOLOCATE, 'POST', $body, [
-                'Authorization: Token ' . DADATA_API_KEY,
+                'Authorization: Token ' . api_key('dadata'),
                 'Content-Type: application/json',
             ]);
             $json = json_decode($raw, true);
@@ -134,9 +134,9 @@ final class GeocodingService
         }
 
         // OpenCage — резервный reverse (OSM)
-        if (OPENCAGE_API_KEY !== '') {
+        if (api_key('opencage') !== '') {
             $url = self::OPENCAGE_GEOCODE . '?' . http_build_query([
-                'key' => OPENCAGE_API_KEY,
+                'key' => api_key('opencage'),
                 'q' => $lat . ',' . $lng,
                 'language' => 'ru',
                 'limit' => 1,
@@ -153,9 +153,9 @@ final class GeocodingService
         }
 
         // Яндекс — reverse fallback
-        if (YANDEX_MAPS_API_KEY !== '') {
+        if (api_key('yandex_maps') !== '') {
             $url = self::YANDEX_GEOCODER . '?' . http_build_query([
-                'apikey' => YANDEX_MAPS_API_KEY,
+                'apikey' => api_key('yandex_maps'),
                 'geocode' => $lng . ',' . $lat,
                 'format' => 'json',
                 'lang' => 'ru_RU',
@@ -186,13 +186,13 @@ final class GeocodingService
         $svc = ServiceSettings::get($db);
         $items = self::search($db, (string) $svc['city_name']);
         return [
-            'configured' => DADATA_API_KEY !== '' || OPENCAGE_API_KEY !== '' || YANDEX_MAPS_API_KEY !== '',
+            'configured' => api_key('dadata') !== '' || api_key('opencage') !== '' || api_key('yandex_maps') !== '',
             'ok' => count($items) > 0,
             'results' => count($items),
             'sources' => array_values(array_unique(array_column($items, 'source'))),
             'message' => count($items) > 0
                 ? 'Геокодинг РФ доступен'
-                : 'Настройте DADATA_API_KEY, OPENCAGE_API_KEY или YANDEX_MAPS_API_KEY',
+                : 'Добавьте ключ DaData, OpenCage или Яндекс в админке → «API-ключи»',
         ];
     }
 

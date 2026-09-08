@@ -24,17 +24,17 @@ $checks['storage']=['ok'=>is_dir($storage)&&is_writable($storage),'detail'=>'upl
 $lastEvent=(int)$db->query('SELECT COALESCE(MAX(id),0) FROM events')->fetchColumn();
 $checks['realtime']=['ok'=>true,'detail'=>'MySQL polling · последнее событие #'.$lastEvent,'ms'=>null];
 $settings=AutoCall::getSettings($db);
-$checks['sms']=['ok'=>SMS_API_ID!==''?null:false,'detail'=>SMS_API_ID!==''?'Ключ настроен, нажмите «Проверить всё»':'SMS_API_ID не настроен','ms'=>null];
+$checks['sms']=['ok'=>api_key('sms_ru')!==''?null:false,'detail'=>api_key('sms_ru')!==''?'Ключ настроен, нажмите «Проверить всё»':'SMS_API_ID не настроен','ms'=>null];
 $geoProviders=[];
-if(DADATA_API_KEY!=='')$geoProviders[]='DaData';
-if(OPENCAGE_API_KEY!=='')$geoProviders[]='OpenCage';
-if(YANDEX_MAPS_API_KEY!=='')$geoProviders[]='Яндекс';
+if(api_key('dadata')!=='')$geoProviders[]='DaData';
+if(api_key('opencage')!=='')$geoProviders[]='OpenCage';
+if(api_key('yandex_maps')!=='')$geoProviders[]='Яндекс';
 $checks['geocoding']=['ok'=>null,'detail'=>$geoProviders?implode(' + ',$geoProviders):'ключи геокодинга не настроены','ms'=>null];
 $checks['yandex_maps']=[
-    'ok'=>YANDEX_MAPS_API_KEY!=='' ? true : false,
-    'detail'=>YANDEX_MAPS_API_KEY!==''
+    'ok'=>api_key('yandex_maps')!=='' ? true : false,
+    'detail'=>api_key('yandex_maps')!==''
         ? 'JS API 2.1 настроен · ключ должен быть ограничен доменом'
-        : 'Добавьте YANDEX_MAPS_API_KEY в config.local.php',
+        : 'Добавьте api_key('yandex_maps') в config.local.php',
     'ms'=>null,
 ];
 $zConfigured=!empty($settings['zvonok_api_key'])&&!empty($settings['zvonok_campaign_id']);
@@ -50,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         $checks['osrm']=['ok'=>$ok,'detail'=>$ok?'Маршрутизация по дорогам доступна':'Недоступен — работает fallback Haversine × 1.3','ms'=>(int)round((microtime(true)-$s)*1000)];
         $db->prepare('INSERT INTO service_call_logs(service,action,request_summary,status,response_body,duration_ms) VALUES (?,?,?,?,?,?)')->execute(['osrm','route_probe','Tyumen station → Goodwin',$ok?'success':'failed',$raw!==false?mb_substr($raw,0,1000):'connection failed',$checks['osrm']['ms']]);
     }
-    if(($cmd==='check_all'||$cmd==='check_sms')&&SMS_API_ID!==''){
+    if(($cmd==='check_all'||$cmd==='check_sms')&&api_key('sms_ru')!==''){
         $r=SmsService::check($db);$checks['sms']=['ok'=>$r['ok'],'detail'=>$r['message'].(isset($r['balance'])&&$r['balance']!==null?' · баланс '.$r['balance'].' ₽':''),'ms'=>$r['durationMs']??null];
     }
     if($cmd==='check_all'||$cmd==='check_geocoding'){

@@ -63,7 +63,7 @@ layout_header('Сообщения', 'messages');
 ?>
 <div class="flex between">
   <div><h1>Сообщения и уведомления</h1><p class="mut">Ручная отправка клиентам, водителям и операторам</p></div>
-  <span class="chip <?= SMS_API_ID !== '' ? 'ok' : 'warn' ?>">SMS: <?= SMS_API_ID !== '' ? 'sms.ru настроен' : 'не настроен' ?></span>
+  <span class="chip <?= api_key('sms_ru') !== '' ? 'ok' : 'warn' ?>">SMS: <?= api_key('sms_ru') !== '' ? 'sms.ru настроен' : 'не настроен' ?></span>
 </div>
 
 <?php if (!empty($_GET['ok'])): ?><div class="flash" style="margin-top:14px">✓ <?= h((string) $_GET['ok']) ?></div><?php endif; ?>
@@ -114,7 +114,7 @@ layout_header('Сообщения', 'messages');
     </label>
     <label class="mut" style="display:block;margin-top:12px">Заголовок<input name="title" id="title" value="Сообщение от службы такси" maxlength="160"></label>
     <label class="mut" style="display:block;margin-top:12px">Текст<textarea name="message" id="message" rows="6" maxlength="1000" required></textarea></label>
-    <div class="mut" style="font-size:11px;margin-top:6px">In-app сообщение появится через `/api/notifications.php`; SMS требует `SMS_API_ID`.</div>
+    <div class="mut" style="font-size:11px;margin-top:6px">In-app сообщение появится через `/api/notifications.php`; SMS требует `api_key('sms_ru')`.</div>
     <button class="btn" type="submit" style="width:100%;margin-top:14px" onclick="return confirm('Отправить сообщение выбранным получателям?')">Отправить</button>
   </form>
 

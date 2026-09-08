@@ -20,8 +20,8 @@ $result = [
     'mysql' => ['ok' => false],
     'storage' => ['ok' => false],
     'realtime' => ['ok' => false],
-    'sms' => ['configured' => SMS_API_ID !== '', 'ok' => null],
-    'geocoding' => ['configured' => DADATA_API_KEY !== '', 'ok' => null],
+    'sms' => ['configured' => api_key('sms_ru') !== '', 'ok' => null],
+    'geocoding' => ['configured' => api_key('dadata') !== '', 'ok' => null],
     'zvonok' => ['configured' => false, 'ok' => null],
     'telephony' => ['configured' => false, 'ok' => null],
     'osrm' => ['configured' => true, 'ok' => null],
@@ -93,7 +93,7 @@ if ($check === 'all' || $check === 'osrm') {
         'durationMs' => (int) round((microtime(true) - $s) * 1000),
     ];
 }
-if (($check === 'all' || $check === 'sms') && SMS_API_ID !== '') {
+if (($check === 'all' || $check === 'sms') && api_key('sms_ru') !== '') {
     $result['sms'] = SmsService::check($db);
 }
 if ($check === 'all' || $check === 'geocoding') {

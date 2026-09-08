@@ -7,8 +7,8 @@ require_once __DIR__ . '/_bootstrap.php';
 $service = ServiceSettings::get($db);
 Response::json([
     'provider' => 'yandex',
-    'apiKey' => YANDEX_MAPS_API_KEY,
-    'configured' => YANDEX_MAPS_API_KEY !== '',
+    'apiKey' => api_key('yandex_maps'),
+    'configured' => api_key('yandex_maps') !== '',
     'lang' => 'ru_RU',
     'center' => [(float) $service['center_latitude'], (float) $service['center_longitude']],
     'city' => $service['city_name'],

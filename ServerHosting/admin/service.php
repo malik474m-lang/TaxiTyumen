@@ -72,7 +72,7 @@ layout_header('Бренд сервиса', 'service');
       Автомобиль подан («Вас ожидает автомобиль…», бесплатное ожидание)
     </label>
     <div class="mut" style="font-size:11px;margin-top:6px">
-      Требуется SMS_API_ID (sms.ru) в config.local.php. Время бесплатного ожидания
+      Требуется api_key('sms_ru') (sms.ru) в config.local.php. Время бесплатного ожидания
       берётся из тарифа заказа (раздел «Тарифы» → «Простой бесплатно, мин»).
     </div>
   </div>

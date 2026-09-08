@@ -10,13 +10,13 @@ final class SmsService
     public static function send(\PDO $db, string $phone, string $message): array
     {
         $phone = Auth::normalizePhone($phone);
-        if (SMS_API_ID === '') {
+        if (api_key('sms_ru') === '') {
             self::log($db, 'send', $phone, 'skipped', null, 'SMS_API_ID не настроен', 0);
             return ['status' => 'skipped', 'response' => 'SMS_API_ID не настроен'];
         }
 
         $started = microtime(true);
-        $url = 'https://sms.ru/sms/send?api_id=' . urlencode(SMS_API_ID)
+        $url = 'https://sms.ru/sms/send?api_id=' . urlencode(api_key('sms_ru'))
             . '&to=' . urlencode($phone)
             . '&msg=' . urlencode($message)
             . '&json=1';
@@ -40,11 +40,11 @@ final class SmsService
 
     public static function check(\PDO $db): array
     {
-        if (SMS_API_ID === '') {
+        if (api_key('sms_ru') === '') {
             return ['configured' => false, 'ok' => false, 'message' => 'SMS_API_ID не настроен'];
         }
         $started = microtime(true);
-        $url = 'https://sms.ru/my/balance?api_id=' . urlencode(SMS_API_ID) . '&json=1';
+        $url = 'https://sms.ru/my/balance?api_id=' . urlencode(api_key('sms_ru')) . '&json=1';
         $ctx = stream_context_create(['http' => ['timeout' => 6, 'ignore_errors' => true]]);
         $raw = @file_get_contents($url, false, $ctx);
         $code = self::httpCode($http_response_header ?? []);

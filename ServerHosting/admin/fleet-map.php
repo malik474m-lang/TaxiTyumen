@@ -74,9 +74,9 @@ layout_header('Карта автопарка', 'fleetmap');
   <span class="chip <?= $drivers ? 'ok' : 'warn' ?>" id="fleetCount"><?= count($drivers) ?> на линии</span>
 </div>
 
-<?php if (YANDEX_MAPS_API_KEY === ''): ?>
+<?php if (api_key('yandex_maps') === ''): ?>
   <div class="flash" style="margin-top:14px;border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);color:#fca5a5">
-    Не задан ключ Яндекс Карт (YANDEX_MAPS_API_KEY в config.local.php) — карта не загрузится.
+    Не задан ключ Яндекс Карт (api_key('yandex_maps') в config.local.php) — карта не загрузится.
   </div>
 <?php endif; ?>
 
@@ -94,7 +94,7 @@ layout_header('Карта автопарка', 'fleetmap');
   </div>
 </div>
 
-<script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU<?= YANDEX_MAPS_API_KEY !== '' ? '&apikey=' . rawurlencode(YANDEX_MAPS_API_KEY) : '' ?>"></script>
+<script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU<?= api_key('yandex_maps') !== '' ? '&apikey=' . rawurlencode(api_key('yandex_maps')) : '' ?>"></script>
 <script>
 var CENTER = [<?= (float) $service['center_latitude'] ?>, <?= (float) $service['center_longitude'] ?>];
 var initialDrivers = <?= json_encode($drivers, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
