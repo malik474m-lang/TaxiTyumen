@@ -1065,20 +1065,18 @@ public partial class MainDriverPage : ContentPage
                 if (string.Equals(status, "DriverArrived", StringComparison.OrdinalIgnoreCase))
                 {
                     var notificationStatus = fresh?.ClientNotificationStatus ?? "unknown";
-                    var notificationText = notificationStatus switch
+                    var shortText = notificationStatus switch
                     {
-                        "sent" => "Сервер подтвердил прибытие. Звонок пассажиру поставлен в очередь Zvonok."
-                            + (string.IsNullOrWhiteSpace(fresh?.ClientNotificationCallId)
-                                ? ""
-                                : $" Call ID: {fresh.ClientNotificationCallId}"),
-                        "already_sent" => "Сервер подтвердил прибытие. Оповещение пассажиру уже запускалось ранее.",
-                        "skipped" => "Сервер подтвердил прибытие, но звонок не отправлен: "
-                            + (fresh?.ClientNotificationMessage ?? "автодозвон отключён или сработала защита от дубля"),
-                        "failed" => "Сервер подтвердил прибытие, но Zvonok отклонил звонок: "
-                            + (fresh?.ClientNotificationMessage ?? "неизвестная ошибка"),
-                        _ => "Сервер подтвердил прибытие. In-app/SMS-оповещение пассажиру создано."
+                        "sent" => "Звонок пассажиру поставлен в очередь.",
+                        "already_sent" => "Оповещение пассажиру уже было запущено.",
+                        "skipped" => "Оповещение пассажиру пропущено.",
+                        "failed" => "Не удалось позвонить пассажиру автоматически.",
+                        _ => "Сервер подтвердил прибытие."
                     };
-                    await SafeAlertAsync("На месте", notificationText);
+                    NavigatorOverlay.Toast(shortText);
+                    // После успешной смены этапа поднимаем приложение, чтобы панель/Навигатор
+                    // не оставляли водителя без интерфейса.
+                    NavigatorOverlay.BringAppToFront();
                 }
             }
         }
@@ -1227,83 +1225,74 @@ public partial class MainDriverPage : ContentPage
 
     /// Куда сейчас ведёт Навигатор — чтобы не перестраивать маршрут на каждый тик.
     private string _lastNavTargetKey = string.Empty;
-    private bool _navRouteBuilding;
 
     /// До посадки: текущее положение → подача.
-    /// После начала поездки: текущее положение → все промежуточные → назначение.
-    /// Составной маршрут передаётся установленному Навигатору официальными
-    /// параметрами lat_via_N/lon_via_N и работает по его офлайн-картам.
+    /// После начала поездки: текущее положение → промежуточные точки → назначение.
+    /// Яндекс Навигатор получает официальный составной URL (lat_from/lon_from,
+    /// lat_via_N/lon_via_N, lat_to/lon_to). Если какой-то точки нет координат,
+    /// Навигатор ищет её по точному тексту адреса из своей офлайн-карты.
     private void RouteInNavigator(bool force = false)
     {
-        if (!NavigatorOverlay.ModeEnabled || _activeOrder == null || _navRouteBuilding) return;
+        if (!NavigatorOverlay.ModeEnabled || _activeOrder == null) return;
 
         var inProgress = NormStatus(_activeOrder.Status) == "inprogress";
         var key = inProgress
-            ? "trip|" + _activeOrder.Id + "|" + string.Join("|", _activeOrder.IntermediatePoints
-                .OrderBy(p => p.SortOrder).Select(p => $"{p.Latitude:F6},{p.Longitude:F6}"))
-                + "|" + _activeOrder.DestinationLatitude + "," + _activeOrder.DestinationLongitude
-            : $"pickup|{_activeOrder.Id}|{_activeOrder.PickupLatitude:F6},{_activeOrder.PickupLongitude:F6}";
+            ? $"trip:{_activeOrder.Id}:{_activeOrder.DestinationAddress}:{_activeOrder.IntermediatePoints.Count}"
+            : $"pickup:{_activeOrder.Id}:{_activeOrder.PickupAddress}";
         if (!force && key == _lastNavTargetKey) return;
 
-        _navRouteBuilding = true;
-        try
+        bool ok;
+        if (!inProgress)
         {
-            bool ok;
-            if (!inProgress)
-            {
-                var pickup = PointFromOrder(
-                    _activeOrder.PickupAddress,
-                    _activeOrder.PickupLatitude,
-                    _activeOrder.PickupLongitude);
-                ok = pickup != null
-                    ? NavigatorOverlay.OpenNavigator(pickup.Latitude, pickup.Longitude)
-                    : NavigatorOverlay.SearchInNavigator(_activeOrder.PickupAddress);
-            }
-            else
-            {
-                var points = new List<NavigatorPoint>();
-                if (_location.CurrentLat != 0 && _location.CurrentLng != 0)
-                {
-                    points.Add(new NavigatorPoint
-                    {
-                        Address = "Текущее местоположение",
-                        Latitude = _location.CurrentLat,
-                        Longitude = _location.CurrentLng,
-                    });
-                }
-
-                foreach (var stop in _activeOrder.IntermediatePoints.OrderBy(p => p.SortOrder))
-                {
-                    var point = PointFromOrder(stop.Address, stop.Latitude, stop.Longitude);
-                    if (point != null) points.Add(point);
-                }
-
-                var destination = PointFromOrder(
-                    _activeOrder.DestinationAddress,
-                    _activeOrder.DestinationLatitude,
-                    _activeOrder.DestinationLongitude);
-                if (destination != null) points.Add(destination);
-
-                ok = points.Count >= 2
-                    ? NavigatorOverlay.OpenMultiPointRoute(points)
-                    : NavigatorOverlay.SearchInNavigator(_activeOrder.DestinationAddress ?? string.Empty);
-            }
-
-            if (ok)
-            {
-                _lastNavTargetKey = key;
-                // Яндекс Навигатор стал верхним Activity. Через небольшую задержку
-                // возвращаем прозрачную сервисную панель поверх его карты.
-                NavigatorOverlay.BringControlsToFront();
-            }
-            else
-            {
-                NavigatorOverlay.Toast("Не удалось открыть маршрут Яндекс Навигатора");
-            }
+            var pickup = PointFromOrder(
+                _activeOrder.PickupAddress,
+                _activeOrder.PickupLatitude,
+                _activeOrder.PickupLongitude);
+            ok = pickup != null
+                ? NavigatorOverlay.OpenNavigator(pickup.Latitude, pickup.Longitude)
+                : NavigatorOverlay.SearchInNavigator(_activeOrder.PickupAddress);
         }
-        finally
+        else
         {
-            _navRouteBuilding = false;
+            var navPoints = new List<NavigatorPoint>();
+
+            if (_location.CurrentLat != 0 && _location.CurrentLng != 0)
+            {
+                navPoints.Add(new NavigatorPoint
+                {
+                    Address = "Текущее местоположение",
+                    Latitude = _location.CurrentLat,
+                    Longitude = _location.CurrentLng,
+                });
+            }
+
+            foreach (var stop in _activeOrder.IntermediatePoints.OrderBy(p => p.SortOrder))
+            {
+                var point = PointFromOrder(stop.Address, stop.Latitude, stop.Longitude);
+                if (point != null) navPoints.Add(point);
+            }
+
+            var destination = PointFromOrder(
+                _activeOrder.DestinationAddress,
+                _activeOrder.DestinationLatitude,
+                _activeOrder.DestinationLongitude);
+            if (destination != null) navPoints.Add(destination);
+
+            ok = navPoints.Count >= 2
+                ? NavigatorOverlay.OpenMultiPointRoute(navPoints)
+                : NavigatorOverlay.SearchInNavigator(_activeOrder.DestinationAddress ?? string.Empty);
+        }
+
+        if (ok)
+        {
+            _lastNavTargetKey = key;
+            // Яндекс Навигатор стал верхним Activity. Через небольшую задержку
+            // возвращаем прозрачную сервисную панель поверх его карты.
+            NavigatorOverlay.BringControlsToFront();
+        }
+        else
+        {
+            NavigatorOverlay.Toast("Не удалось открыть маршрут Яндекс Навигатора");
         }
     }
 

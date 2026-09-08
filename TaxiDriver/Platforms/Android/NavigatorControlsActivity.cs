@@ -24,8 +24,7 @@ namespace TaxiDriver.Platforms.Android;
     Exported = false,
     ExcludeFromRecents = true,
     LaunchMode = global::Android.Content.PM.LaunchMode.SingleTop,
-    NoHistory = false,
-    TaskAffinity = "ru.taxityumen.driver.navigatorcontrols")]
+    NoHistory = false)]
 public class NavigatorControlsActivity : Activity
 {
     private static NavigatorControlsActivity? _instance;
@@ -63,8 +62,7 @@ public class NavigatorControlsActivity : Activity
                 try
                 {
                     var intent = new Intent(context, typeof(NavigatorControlsActivity));
-                    intent.AddFlags(ActivityFlags.NewTask
-                        | ActivityFlags.ReorderToFront
+                    intent.AddFlags(ActivityFlags.ReorderToFront
                         | ActivityFlags.NoAnimation);
                     context.StartActivity(intent);
                 }
