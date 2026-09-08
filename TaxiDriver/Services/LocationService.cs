@@ -18,6 +18,28 @@ public class LocationService
     {
         _api = api;
         _signalR = signalR;
+
+        // Координаты от фонового сервиса: пока водитель в Яндекс Навигаторе,
+        // MAUI-таймер может тормозиться системой, а нативный опрос — нет.
+        // Благодаря этому машина не «замирает» на картах админки, оператора и клиента.
+        NavigatorOverlay.NativeLocation += OnNativeLocation;
+    }
+
+    private void OnNativeLocation(double lat, double lng, double? speed, double? bearing)
+    {
+        if (!_tracking) return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await ApplyLocationAsync(new Location(lat, lng)
+                {
+                    Speed = speed,
+                    Course = bearing,
+                });
+            }
+            catch { }
+        });
     }
 
     /// <summary>

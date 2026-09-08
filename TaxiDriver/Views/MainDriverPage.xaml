@@ -443,6 +443,19 @@
                                     HeightRequest="36"
                                     Clicked="OnGoogleNavClicked"/>
                         </Grid>
+
+                        <!-- Ведение в Яндекс Навигаторе: карта Навигатора на весь
+                             экран, кнопки заказа — плавающей панелью поверх него -->
+                        <Button x:Name="NavOverlayBtn"
+                                Text="🧭 Вести в Яндекс Навигаторе"
+                                BackgroundColor="#FFCC00"
+                                TextColor="#1A1A1A"
+                                FontAttributes="Bold"
+                                CornerRadius="8"
+                                FontSize="13"
+                                Margin="0,8,0,0"
+                                HeightRequest="42"
+                                Clicked="OnNavOverlayClicked"/>
                     </StackLayout>
                 </Border>
 

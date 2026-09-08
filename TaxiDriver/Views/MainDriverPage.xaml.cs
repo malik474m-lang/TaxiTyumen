@@ -54,6 +54,9 @@ public partial class MainDriverPage : ContentPage
         _signalR.ChatMessageReceived += OnChatMessageOnMainPage;
         _location.LocationUpdated += OnLocationUpdated;
 
+        // Кнопки плавающей панели поверх Яндекс Навигатора
+        NavigatorOverlay.ActionRequested += OnOverlayAction;
+
         _ = LoadBalanceAsync();
         _ = LoadBalanceHistoryAsync();
         _ = LoadDriverStatsAsync();
@@ -929,9 +932,8 @@ public partial class MainDriverPage : ContentPage
             if (!ok)
             {
                 // Показываем точную причину отказа от сервера — быстрее найти проблему
-                await DisplayAlert("Простой",
-                    serverError ?? "Не удалось изменить простой. Он доступен после нажатия «Я на месте» и во время поездки.",
-                    "OK");
+                await SafeAlertAsync("Простой",
+                    serverError ?? "Не удалось изменить простой. Он доступен после нажатия «Я на месте» и во время поездки.");
                 return;
             }
             // Сервер — единственный источник истины: применяем его подсчёт времени
@@ -982,6 +984,8 @@ public partial class MainDriverPage : ContentPage
         MapStatusBtn.Text = label;
         MapStatusBtn.BackgroundColor = Color.FromArgb(color);
         if (_mapFullscreen) SyncFullscreenButtons();
+        // И на плавающей панели поверх Яндекс Навигатора
+        UpdateOverlayState();
     }
 
     /// Останавливает платное ожидание, не меняя этап заказа.
@@ -1047,9 +1051,8 @@ public partial class MainDriverPage : ContentPage
                     var waitingLine = finished.WaitingCost > 0
                         ? $"\nПростой: {finished.WaitingCost:F0} ₽ ({finished.WaitingSeconds / 60} мин)"
                         : "\nПростой: 0 ₽";
-                    await DisplayAlert("Поездка завершена",
-                        $"По тарифу: {finished.TariffPrice:F0} ₽{waitingLine}\nИтого к оплате: {finished.TotalPrice:F0} ₽",
-                        "OK");
+                    await SafeAlertAsync("Поездка завершена",
+                        $"По тарифу: {finished.TariffPrice:F0} ₽{waitingLine}\nИтого к оплате: {finished.TotalPrice:F0} ₽");
                 }
                 await OnOrderCompleted();
             }
@@ -1057,7 +1060,7 @@ public partial class MainDriverPage : ContentPage
             {
                 if (_auth.DriverId == null)
                 {
-                    await DisplayAlert("Ошибка", "Профиль водителя не найден. Войдите заново.", "OK");
+                    await SafeAlertAsync("Ошибка", "Профиль водителя не найден. Войдите заново.");
                     return;
                 }
 
@@ -1066,8 +1069,8 @@ public partial class MainDriverPage : ContentPage
                 if (!ok)
                 {
                     // Не меняем кнопку локально: показываем точный отказ сервера.
-                    await DisplayAlert("Не удалось изменить этап",
-                        serverError ?? "Сервер не подтвердил изменение статуса заказа.", "OK");
+                    await SafeAlertAsync("Не удалось изменить этап",
+                        serverError ?? "Сервер не подтвердил изменение статуса заказа.");
                     return;
                 }
 
@@ -1101,7 +1104,7 @@ public partial class MainDriverPage : ContentPage
                             + (fresh?.ClientNotificationMessage ?? "неизвестная ошибка"),
                         _ => "Сервер подтвердил прибытие. In-app/SMS-оповещение пассажиру создано."
                     };
-                    await DisplayAlert("На месте", notificationText, "OK");
+                    await SafeAlertAsync("На месте", notificationText);
                 }
             }
         }
@@ -1190,6 +1193,10 @@ public partial class MainDriverPage : ContentPage
         HideRouteMap();
         _location.ActiveOrderId = null;
         _orderStatusStep = 0;
+        // Плавающая панель поверх Навигатора больше не нужна
+        NavigatorOverlay.ModeEnabled = false;
+        NavigatorOverlay.Hide();
+        SyncNavOverlayButton();
 
         await LoadBalanceAsync();
         await LoadBalanceHistoryAsync();
@@ -1242,6 +1249,176 @@ public partial class MainDriverPage : ContentPage
             }
             catch { }
         });
+    }
+
+    // ── Режим «Яндекс Навигатор + панель поверх» ───────────────────────────
+
+    /// Страница видна на экране. Когда сверху Навигатор — диалоги MAUI показать
+    /// нельзя, поэтому сообщения уходят системным Toast поверх карты.
+    private bool _uiVisible = true;
+
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        _uiVisible = true;
+        SyncNavOverlayButton();
+        UpdateOverlayState();
+    }
+
+    protected override void OnDisappearing()
+    {
+        _uiVisible = false;
+        base.OnDisappearing();
+    }
+
+    private async Task SafeAlertAsync(string title, string message, string cancel = "OK")
+    {
+        if (_uiVisible)
+        {
+            await DisplayAlert(title, message, cancel);
+            return;
+        }
+        NavigatorOverlay.Toast(title + ": " + message);
+    }
+
+    /// Точка, к которой строим маршрут: подача, а после посадки — назначение.
+    private (double lat, double lng) CurrentNavTarget()
+    {
+        if (_activeOrder == null) return (_location.CurrentLat, _location.CurrentLng);
+        if (_orderStatusStep >= 2 &&
+            _activeOrder.DestinationLatitude.HasValue &&
+            _activeOrder.DestinationLongitude.HasValue)
+        {
+            return (_activeOrder.DestinationLatitude.Value, _activeOrder.DestinationLongitude.Value);
+        }
+        return (_activeOrder.PickupLatitude, _activeOrder.PickupLongitude);
+    }
+
+    private async void OnNavOverlayClicked(object? sender, EventArgs e)
+    {
+        // Повторное нажатие выключает режим и убирает панель
+        if (NavigatorOverlay.ModeEnabled)
+        {
+            NavigatorOverlay.ModeEnabled = false;
+            NavigatorOverlay.Hide();
+            SyncNavOverlayButton();
+            return;
+        }
+
+        if (!NavigatorOverlay.IsSupported)
+        {
+            await DisplayAlert("Навигатор", "Режим доступен только на Android.", "OK");
+            return;
+        }
+        if (_activeOrder == null)
+        {
+            await DisplayAlert("Навигатор", "Сначала примите заказ.", "OK");
+            return;
+        }
+        if (!NavigatorOverlay.IsNavigatorInstalled())
+        {
+            var install = await DisplayAlert("Яндекс Навигатор",
+                "Приложение не установлено на этом телефоне. Открыть страницу установки?",
+                "Установить", "Отмена");
+            if (install) NavigatorOverlay.OpenNavigatorInStore();
+            return;
+        }
+        if (!NavigatorOverlay.HasOverlayPermission())
+        {
+            var grant = await DisplayAlert("Нужно разрешение",
+                "Чтобы кнопки заказа были видны поверх Навигатора, разрешите приложению "
+                + "«Поверх других приложений». Сейчас откроются настройки — включите переключатель "
+                + "и вернитесь назад.", "Открыть настройки", "Отмена");
+            if (grant) NavigatorOverlay.RequestOverlayPermission();
+            return;
+        }
+
+        NavigatorOverlay.ModeEnabled = true;
+        SyncNavOverlayButton();
+        UpdateOverlayState();
+
+        var (lat, lng) = CurrentNavTarget();
+        if (!NavigatorOverlay.OpenNavigator(lat, lng))
+            await SafeAlertAsync("Навигатор", "Не удалось открыть Яндекс Навигатор.");
+    }
+
+    private void SyncNavOverlayButton()
+    {
+        try
+        {
+            NavOverlayBtn.Text = NavigatorOverlay.ModeEnabled
+                ? "🧭 Навигатор ведёт · выключить панель"
+                : "🧭 Вести в Яндекс Навигаторе";
+            NavOverlayBtn.BackgroundColor = Color.FromArgb(
+                NavigatorOverlay.ModeEnabled ? "#4CAF50" : "#FFCC00");
+            NavOverlayBtn.TextColor = NavigatorOverlay.ModeEnabled
+                ? Colors.White : Color.FromArgb("#1A1A1A");
+        }
+        catch { }
+    }
+
+    /// Синхронизация плавающей панели с текущим этапом заказа.
+    private void UpdateOverlayState()
+    {
+        if (!NavigatorOverlay.IsSupported) return;
+
+        if (!NavigatorOverlay.ModeEnabled || _activeOrder == null)
+        {
+            NavigatorOverlay.Hide();
+            return;
+        }
+
+        var index = Math.Clamp(_orderStatusStep, 0, _statusLabels.Length - 1);
+        var label = _statusLabels[index];
+        var color = _statusColors[index];
+        if (IsWaitingStopStep())
+        {
+            label = "Продолжить";
+            color = "#4CAF50";
+        }
+
+        var target = _orderStatusStep >= 2
+            ? (_activeOrder.DestinationAddress ?? _activeOrder.PickupAddress)
+            : _activeOrder.PickupAddress;
+
+        var price = _activeOrder.EstimatedPrice.ToString("F0");
+        var subtitle = $"№{_activeOrder.OrderNumber} · {price} ₽";
+        if (_activeOrder.WaitingActive)
+            subtitle += " · идёт простой";
+
+        NavigatorOverlay.Show(new OverlayState
+        {
+            Title = string.IsNullOrWhiteSpace(target) ? "Заказ в работе" : target,
+            Subtitle = subtitle,
+            ActionText = label,
+            ActionColor = color,
+            // Кнопку простоя показываем там же, где она доступна в приложении
+            WaitingText = (_orderStatusStep >= 1 && !_activeOrder.WaitingActive) ? "Простой" : "",
+        });
+    }
+
+    /// Нажатия на плавающей панели выполняют те же действия, что и в приложении.
+    private void OnOverlayAction(string action)
+    {
+        try
+        {
+            switch (action)
+            {
+                case "status":
+                    OnStatusButtonClick(this, EventArgs.Empty);
+                    break;
+                case "waiting":
+                    OnToggleWaiting(this, EventArgs.Empty);
+                    break;
+                case "sos":
+                    // Тревожная кнопка требует подтверждения — поднимаем приложение,
+                    // чтобы водитель увидел диалог и не отправил SOS случайно
+                    NavigatorOverlay.Toast("Подтвердите отправку SOS в приложении");
+                    OnSosClicked(this, EventArgs.Empty);
+                    break;
+            }
+        }
+        catch { }
     }
 
     private void OnLocationUpdated(double lat, double lng)
