@@ -343,12 +343,17 @@ function toggleMapFullscreen(force) {
   // Яндекс.Карты кэшируют размер контейнера — пересчитываем после смены раскладки.
   if (map && map.container) {
     setTimeout(function () {
-      map.container.fitToContainer();
+      try {
+        // Единственный метод пересчёта размера карты в API 2.1 — fitToViewport
+        // (fitToContainer не существует и ронял весь пересчёт, из-за чего карта
+        // оставалась маленькой на полноэкранной подложке).
+        map.container.fitToViewport();
+      } catch (e) { /* карта не инициализирована (нет API-ключа) — пропускаем */ }
       if (points.length >= 2) {
         var bounds = (typeof ymaps !== 'undefined') ? ymaps.util.bounds.fromPoints(points) : null;
         if (bounds) map.setBounds(bounds, {checkZoomRange: true, zoomMargin: 60});
       }
-    }, 80);
+    }, 120);
   }
 }
 
