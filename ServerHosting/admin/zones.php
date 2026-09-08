@@ -161,7 +161,7 @@ layout_header('Зоны и цены', 'zones');
       <?php if (api_key('yandex_maps') === ''): ?>
       <div style="height:100%;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">
         <div><div style="font-size:32px">🗺️</div><b>API-ключ Яндекс Карт не настроен</b>
-        <div class="mut" style="margin-top:7px;max-width:360px">Добавьте <code>api_key('yandex_maps')</code> в <code>config.local.php</code> и ограничьте ключ доменом <?= h($_SERVER['HTTP_HOST'] ?? '') ?>.</div></div>
+        <div class="mut" style="margin-top:7px;max-width:360px">Добавьте ключ Яндекс Карт в разделе «API-ключи» (или <code>config.local.php</code>) и ограничьте ключ доменом <?= h($_SERVER['HTTP_HOST'] ?? '') ?>.</div></div>
       </div>
       <?php endif; ?>
       </div>

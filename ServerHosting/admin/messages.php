@@ -114,7 +114,7 @@ layout_header('Сообщения', 'messages');
     </label>
     <label class="mut" style="display:block;margin-top:12px">Заголовок<input name="title" id="title" value="Сообщение от службы такси" maxlength="160"></label>
     <label class="mut" style="display:block;margin-top:12px">Текст<textarea name="message" id="message" rows="6" maxlength="1000" required></textarea></label>
-    <div class="mut" style="font-size:11px;margin-top:6px">In-app сообщение появится через `/api/notifications.php`; SMS требует `api_key('sms_ru')`.</div>
+    <div class="mut" style="font-size:11px;margin-top:6px">In-app сообщение появится через `/api/notifications.php`; SMS требует настроенный ключ sms.ru (раздел «API-ключи»).</div>
     <button class="btn" type="submit" style="width:100%;margin-top:14px" onclick="return confirm('Отправить сообщение выбранным получателям?')">Отправить</button>
   </form>
 
