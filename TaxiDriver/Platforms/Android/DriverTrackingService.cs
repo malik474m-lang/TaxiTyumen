@@ -1,5 +1,6 @@
 using Android.App;
 using Android.Content;
+using Android.Content.PM;
 using Android.Graphics;
 using Android.Graphics.Drawables;
 using Android.OS;
@@ -26,8 +27,6 @@ public class DriverTrackingService : Service
     public const string ChannelId = "taxi_driver_tracking";
     public const int NotificationId = 42001;
     public const string ActionStop = "ru.taxityumen.driver.action.STOP_TRACKING";
-    public const string ActionShowOverlay = "ru.taxityumen.driver.action.SHOW_OVERLAY";
-    public const string ActionHideOverlay = "ru.taxityumen.driver.action.HIDE_OVERLAY";
 
     // ── Плавающая панель ────────────────────────────────────────────────────
     private IWindowManager? _windowManager;
@@ -49,39 +48,60 @@ public class DriverTrackingService : Service
 
     // ── Управление из общего кода (Services/NavigatorOverlay) ───────────────
 
+    /// Живой экземпляр сервиса. Панель управляется только через него:
+    /// поднимать сервис ради оверлея нельзя — foregroundServiceType=location
+    /// без выданной геолокации роняет процесс (SecurityException, Android 14+).
+    private static DriverTrackingService? _instance;
+
+    public static bool IsRunning => _instance != null;
+
     public static void ShowOverlay(OverlayState state)
     {
+        var service = _instance;
+        if (service == null) return;   // водитель не «на линии» — панели нет
         try
         {
-            var context = global::Android.App.Application.Context;
-            var intent = new Intent(context, typeof(DriverTrackingService));
-            intent.SetAction(ActionShowOverlay);
-            intent.PutExtra("title", state.Title ?? "");
-            intent.PutExtra("subtitle", state.Subtitle ?? "");
-            intent.PutExtra("actionText", state.ActionText ?? "");
-            intent.PutExtra("actionColor", state.ActionColor ?? "#4CAF50");
-            intent.PutExtra("waitingText", state.WaitingText ?? "");
-            context.StartForegroundService(intent);
+            service.RunOnMain(() => service.ShowOrUpdateOverlay(
+                state.Title ?? "",
+                state.Subtitle ?? "",
+                state.ActionText ?? "",
+                state.ActionColor ?? "#4CAF50",
+                state.WaitingText ?? ""));
         }
         catch { }
     }
 
     public static void HideOverlay()
     {
+        var service = _instance;
+        if (service == null) return;
         try
         {
-            var context = global::Android.App.Application.Context;
-            var intent = new Intent(context, typeof(DriverTrackingService));
-            intent.SetAction(ActionHideOverlay);
-            context.StartService(intent);
+            service.RunOnMain(service.RemoveOverlay);
+        }
+        catch { }
+    }
+
+    private void RunOnMain(Action action)
+    {
+        try
+        {
+            new Handler(Looper.MainLooper!).Post(action);
         }
         catch { }
     }
 
     // ── Жизненный цикл сервиса ──────────────────────────────────────────────
 
+    public override void OnCreate()
+    {
+        base.OnCreate();
+        _instance = this;
+    }
+
     public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
     {
+        _instance = this;
         var action = intent?.Action;
 
         if (action == ActionStop)
@@ -95,33 +115,12 @@ public class DriverTrackingService : Service
             return StartCommandResult.NotSticky;
         }
 
-        EnsureChannel();
-        var notification = BuildNotification();
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
+        if (!StartForegroundSafe())
         {
-            // Тип location обязателен на Android 14+, доступен с Android 10
-            StartForeground(NotificationId, notification,
-                global::Android.Content.PM.ForegroundService.TypeLocation);
-        }
-        else
-        {
-            StartForeground(NotificationId, notification);
-        }
-
-        if (action == ActionHideOverlay)
-        {
-            RemoveOverlay();
-            return StartCommandResult.Sticky;
-        }
-
-        if (action == ActionShowOverlay && intent != null)
-        {
-            ShowOrUpdateOverlay(
-                intent.GetStringExtra("title") ?? "",
-                intent.GetStringExtra("subtitle") ?? "",
-                intent.GetStringExtra("actionText") ?? "",
-                intent.GetStringExtra("actionColor") ?? "#4CAF50",
-                intent.GetStringExtra("waitingText") ?? "");
+            // Нет разрешения геолокации — foreground с типом location запрещён.
+            // Не роняем процесс: просто не запускаем фоновый режим.
+            StopSelf();
+            return StartCommandResult.NotSticky;
         }
 
         StartLocationPolling();
@@ -132,14 +131,48 @@ public class DriverTrackingService : Service
     {
         RemoveOverlay();
         StopLocationPolling();
+        if (ReferenceEquals(_instance, this)) _instance = null;
         base.OnDestroy();
+    }
+
+    /// Перевод в foreground с защитой: на Android 14+ тип location требует
+    /// выданного ACCESS_FINE_LOCATION, иначе система бросает SecurityException.
+    private bool StartForegroundSafe()
+    {
+        try
+        {
+            EnsureChannel();
+            var notification = BuildNotification();
+            var hasLocation = CheckSelfPermission(
+                global::Android.Manifest.Permission.AccessFineLocation) == Permission.Granted
+                || CheckSelfPermission(
+                    global::Android.Manifest.Permission.AccessCoarseLocation) == Permission.Granted;
+
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.Q && hasLocation)
+            {
+                StartForeground(NotificationId, notification,
+                    global::Android.Content.PM.ForegroundService.TypeLocation);
+                return true;
+            }
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.UpsideDownCake && !hasLocation)
+            {
+                // Android 14+: без разрешения тип location недопустим
+                return false;
+            }
+            StartForeground(NotificationId, notification);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     // ── Панель поверх других приложений ─────────────────────────────────────
 
     private int Dp(int value) => (int)(value * Resources!.DisplayMetrics!.Density);
 
-    private void ShowOrUpdateOverlay(
+    internal void ShowOrUpdateOverlay(
         string title, string subtitle, string actionText, string actionColor, string waitingText)
     {
         try
@@ -310,7 +343,7 @@ public class DriverTrackingService : Service
         catch { return AColor.ParseColor(fallback); }
     }
 
-    private void RemoveOverlay()
+    internal void RemoveOverlay()
     {
         try
         {

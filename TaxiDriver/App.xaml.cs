@@ -7,8 +7,46 @@ public partial class App : Application
 {
     private readonly ApiService _api;
 
+    /// Журнал падений: доступен через «Меню → О приложении» и по пути
+    /// Android/data/ru.taxityumen.driver/files/driver-crash.log
+    public static string CrashLogPath =>
+        Path.Combine(FileSystem.AppDataDirectory, "driver-crash.log");
+
+    public static void LogCrash(string source, Exception? ex)
+    {
+        try
+        {
+            File.AppendAllText(CrashLogPath,
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {source}:\n{ex}\n\n");
+        }
+        catch { }
+    }
+
     public App(LoginPage loginPage, ApiService api)
     {
+        // Ловим необработанные исключения: приложение больше не «исчезает»
+        // молча — причина остаётся в логе и показывается всплывающей подсказкой.
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
+            LogCrash("AppDomain", args.ExceptionObject as Exception);
+            NavigatorOverlay.Toast("Сбой приложения: " +
+                ((args.ExceptionObject as Exception)?.Message ?? "неизвестная ошибка"));
+        };
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            LogCrash("Task", args.Exception);
+            args.SetObserved();
+        };
+#if ANDROID
+        global::Android.Runtime.AndroidEnvironment.UnhandledExceptionRaiser += (_, args) =>
+        {
+            LogCrash("Android", args.Exception);
+            NavigatorOverlay.Toast("Сбой: " + args.Exception.Message);
+            // Не даём среде убить процесс без следа
+            args.Handled = true;
+        };
+#endif
+
         InitializeComponent();
         _api = api;
         MainPage = new NavigationPage(loginPage);

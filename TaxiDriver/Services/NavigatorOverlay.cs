@@ -37,6 +37,14 @@ public static class NavigatorOverlay
     /// Панель сейчас показана поверх других приложений
     public static bool IsActive { get; private set; }
 
+    /// Фоновый сервис запущен (водитель «на линии») — без него панели нет
+    public static bool IsTrackingRunning =>
+#if ANDROID
+        Platforms.Android.DriverTrackingService.IsRunning;
+#else
+        false;
+#endif
+
     /// Режим включён водителем (кнопка «Навигатор поверх»)
     public static bool ModeEnabled { get; set; }
 
@@ -118,6 +126,9 @@ public static class NavigatorOverlay
     public static void Show(OverlayState state)
     {
 #if ANDROID
+        // Панель живёт внутри уже запущенного фонового сервиса («на линии»).
+        // Если его нет — молча пропускаем: поднимать сервис ради панели нельзя.
+        if (!Platforms.Android.DriverTrackingService.IsRunning) return;
         Platforms.Android.DriverTrackingService.ShowOverlay(state);
         IsActive = true;
 #else
@@ -139,6 +150,7 @@ public static class NavigatorOverlay
     /// <summary>Убрать панель с экрана.</summary>
     public static void Hide()
     {
+        if (!IsActive) return;   // нечего скрывать — не трогаем сервис
 #if ANDROID
         Platforms.Android.DriverTrackingService.HideOverlay();
 #endif

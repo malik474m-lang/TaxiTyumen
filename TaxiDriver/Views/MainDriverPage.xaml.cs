@@ -1261,8 +1261,17 @@ public partial class MainDriverPage : ContentPage
     {
         base.OnAppearing();
         _uiVisible = true;
-        SyncNavOverlayButton();
-        UpdateOverlayState();
+        // Панель навигатора — вспомогательная функция: её сбой не должен
+        // мешать открытию главного экрана после входа.
+        try
+        {
+            SyncNavOverlayButton();
+            UpdateOverlayState();
+        }
+        catch (Exception ex)
+        {
+            App.LogCrash("OnAppearing/overlay", ex);
+        }
     }
 
     protected override void OnDisappearing()
@@ -1323,6 +1332,13 @@ public partial class MainDriverPage : ContentPage
             if (install) NavigatorOverlay.OpenNavigatorInStore();
             return;
         }
+        if (!NavigatorOverlay.IsTrackingRunning)
+        {
+            await DisplayAlert("Навигатор",
+                "Панель заказа работает вместе с режимом «на линии»: включите его, "
+                + "чтобы кнопки были видны поверх Навигатора.", "OK");
+            return;
+        }
         if (!NavigatorOverlay.HasOverlayPermission())
         {
             var grant = await DisplayAlert("Нужно разрешение",
@@ -1364,6 +1380,8 @@ public partial class MainDriverPage : ContentPage
 
         if (!NavigatorOverlay.ModeEnabled || _activeOrder == null)
         {
+            // Hide() сам ничего не делает, если панель не показана —
+            // фоновый сервис при этом не трогаем.
             NavigatorOverlay.Hide();
             return;
         }
