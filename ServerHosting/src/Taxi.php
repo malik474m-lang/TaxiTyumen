@@ -34,16 +34,34 @@ final class Taxi
     {
         $centerLat ??= self::CITY_LAT;
         $centerLng ??= self::CITY_LNG;
-        $q = mb_strtolower(trim($address));
+        $q = trim($address);
+        if ($q === '') {
+            return ['lat' => $centerLat, 'lng' => $centerLng];
+        }
+
+        // 1. Полноценный серверный геокодинг: DaData -> OpenCage -> Яндекс
+        try {
+            $db = Db::pdo();
+            $results = GeocodingService::search($db, $q);
+            if (!empty($results[0]['latitude']) && !empty($results[0]['longitude'])) {
+                return [
+                    'lat' => (float) $results[0]['latitude'],
+                    'lng' => (float) $results[0]['longitude'],
+                ];
+            }
+        } catch (\Throwable) {
+        }
+
+        // 2. Предопределённые ориентиры города
+        $qLower = mb_strtolower($q);
         foreach (self::PLACES as $p) {
-            if (str_contains($q, mb_strtolower(mb_substr($p['name'], 0, 6)))) {
+            if (str_contains($qLower, mb_strtolower(mb_substr($p['name'], 0, 6)))) {
                 return ['lat' => $p['lat'], 'lng' => $p['lng']];
             }
         }
-        $hash = crc32($q) & 0x7fffffff;
-        $latJ = (($hash % 1000) / 1000 - 0.5) * 0.06;
-        $lngJ = (((($hash >> 10) % 1000) / 1000) - 0.5) * 0.1;
-        return ['lat' => $centerLat + $latJ, 'lng' => $centerLng + $lngJ];
+
+        // 3. Fallback: центр города (без псевдослучайного шума)
+        return ['lat' => $centerLat, 'lng' => $centerLng];
     }
 
     public static function getDistanceKm(float $lat1, float $lng1, float $lat2, float $lng2): float

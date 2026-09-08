@@ -310,6 +310,16 @@ public partial class MainDriverPage : ContentPage
         {
             await LoadBalanceAsync();
 
+            // Проверяем разрешение «Поверх других приложений» при выходе на линию
+            if (NavigatorOverlay.IsSupported && !NavigatorOverlay.HasOverlayPermission())
+            {
+                var ask = await DisplayAlert(
+                    "Кнопки поверх Навигатора",
+                    "Чтобы кнопки управления заказом отображались поверх Яндекс Навигатора, разрешите приложению «Поверх других приложений».\n\nОткрыть настройки сейчас?",
+                    "Открыть настройки", "Позже");
+                if (ask) NavigatorOverlay.RequestOverlayPermission();
+            }
+
             if (!_hasBalance)
             {
                 _isOnline = false;
@@ -1191,31 +1201,42 @@ public partial class MainDriverPage : ContentPage
         NavigatorOverlay.Toast(title + ": " + message);
     }
 
-    /// Точка и адрес, к которым строим маршрут. Критерий тот же, что у карты
-    /// в приложении: до посадки — подача, в поездке — назначение. Раньше здесь
-    /// использовался счётчик шагов, из-за чего в Навигатор попадал чужой адрес.
+    /// Точка и адрес, к которым строим маршрут.
+    /// До посадки водитель едет на адрес подачи, в поездке — на адрес назначения.
+    /// Если координаты не заданы или равны дефолтному центру города (57.1522),
+    /// Навигатор ищет по точному тексту адреса, чтобы не строить маршрут в случайную точку.
     private (double lat, double lng, string address) CurrentNavTarget()
     {
         if (_activeOrder == null)
-            return (_location.CurrentLat, _location.CurrentLng, "");
+            return (0, 0, "");
 
         var inProgress = NormStatus(_activeOrder.Status) == "inprogress";
-        if (inProgress
-            && _activeOrder.DestinationLatitude.HasValue
-            && _activeOrder.DestinationLongitude.HasValue)
+        if (inProgress)
         {
-            return (_activeOrder.DestinationLatitude.Value,
-                    _activeOrder.DestinationLongitude.Value,
-                    _activeOrder.DestinationAddress ?? "");
+            var destLat = _activeOrder.DestinationLatitude ?? 0;
+            var destLng = _activeOrder.DestinationLongitude ?? 0;
+            var destAddr = _activeOrder.DestinationAddress ?? "";
+
+            // Если есть реальные координаты назначения (не центр города по умолчанию)
+            if (destLat != 0 && destLng != 0 && !IsCityCenterPlaceholder(destLat, destLng))
+                return (destLat, destLng, destAddr);
+
+            return (0, 0, destAddr);
         }
-        if (inProgress && !string.IsNullOrWhiteSpace(_activeOrder.DestinationAddress))
-        {
-            // Координат назначения нет — поведём по адресу текстом
-            return (0, 0, _activeOrder.DestinationAddress!);
-        }
-        return (_activeOrder.PickupLatitude, _activeOrder.PickupLongitude,
-                _activeOrder.PickupAddress ?? "");
+
+        var pickLat = _activeOrder.PickupLatitude;
+        var pickLng = _activeOrder.PickupLongitude;
+        var pickAddr = _activeOrder.PickupAddress ?? "";
+
+        // Если есть реальные координаты подачи (не центр города по умолчанию)
+        if (pickLat != 0 && pickLng != 0 && !IsCityCenterPlaceholder(pickLat, pickLng))
+            return (pickLat, pickLng, pickAddr);
+
+        return (0, 0, pickAddr);
     }
+
+    private static bool IsCityCenterPlaceholder(double lat, double lng)
+        => Math.Abs(lat - 57.1522) < 0.0005 && Math.Abs(lng - 65.5272) < 0.0005;
 
     /// Куда сейчас ведёт Навигатор — чтобы не перестраивать маршрут на каждый тик.
     private string _lastNavTargetKey = "";
@@ -1229,10 +1250,23 @@ public partial class MainDriverPage : ContentPage
         if (!force && key == _lastNavTargetKey) return;
         _lastNavTargetKey = key;
 
-        var ok = (lat != 0 && lng != 0)
-            ? NavigatorOverlay.OpenNavigator(lat, lng)
-            : NavigatorOverlay.SearchInNavigator(address);
-        if (!ok) NavigatorOverlay.Toast("Не удалось открыть Яндекс Навигатор");
+        bool ok;
+        if (lat != 0 && lng != 0)
+        {
+            // Точные координаты дома
+            ok = NavigatorOverlay.OpenNavigator(lat, lng);
+        }
+        else if (!string.IsNullOrWhiteSpace(address))
+        {
+            // Поиск по точному тексту адреса заявки
+            ok = NavigatorOverlay.SearchInNavigator(address);
+        }
+        else
+        {
+            ok = false;
+        }
+
+        if (!ok) NavigatorOverlay.Toast("Не удалось открыть маршрут в Яндекс Навигаторе");
     }
 
     private void OnOpenNavigatorAgain(object? sender, EventArgs e)
@@ -1253,7 +1287,7 @@ public partial class MainDriverPage : ContentPage
     /// Заказ в работе → карта Яндекс Навигатора на весь экран + сервисные
     /// кнопки поверх неё. Вызывается автоматически при принятии заказа,
     /// смене этапа и возврате в приложение.
-    private void StartNavigatorGuidance(bool force = false)
+    private async void StartNavigatorGuidance(bool force = false)
     {
         if (_activeOrder == null)
         {
@@ -1273,28 +1307,27 @@ public partial class MainDriverPage : ContentPage
 
         if (!NavigatorOverlay.IsNavigatorInstalled())
         {
-            NavHintLabel.Text = "Яндекс Навигатор не установлен — нажмите, чтобы установить.";
+            NavHintLabel.Text = "Яндекс Навигатор не установлен — нажмите кнопку ниже для установки.";
             NavOpenBtn.Text = "Установить Яндекс Навигатор";
+            var install = await DisplayAlert("Яндекс Навигатор",
+                "Для ведения по маршруту требуется установленный Яндекс Навигатор.\n\nОткрыть Google Play для установки?",
+                "Установить", "Отмена");
+            if (install) NavigatorOverlay.OpenNavigatorInStore();
             return;
         }
         NavOpenBtn.Text = "Открыть карту Навигатора";
 
-        // Кнопки поверх Навигатора требуют системного разрешения
+        // Проверяем разрешение «Поверх других приложений»
         if (!NavigatorOverlay.HasOverlayPermission())
         {
-            NavHintLabel.Text = "Разрешите «Поверх других приложений», чтобы видеть кнопки заказа на карте.";
-            if (!_overlayPermissionAsked)
+            NavHintLabel.Text = "Включите «Поверх других приложений», чтобы кнопки были на карте.";
+            var go = await DisplayAlert("Кнопки поверх карты",
+                "Чтобы кнопки заказа отображались поверх Яндекс Навигатора, необходимо включить системное разрешение «Поверх других приложений».\n\nСейчас откроются настройки телефона — включите переключатель и вернитесь в приложение.",
+                "Открыть настройки", "Позже");
+            if (go)
             {
-                _overlayPermissionAsked = true;
-                MainThread.BeginInvokeOnMainThread(async () =>
-                {
-                    var go = await DisplayAlert("Нужно разрешение",
-                        "Чтобы кнопки заказа были видны поверх карты Яндекс Навигатора, "
-                        + "разрешите приложению «Поверх других приложений». "
-                        + "Сейчас откроются настройки — включите переключатель и вернитесь назад.",
-                        "Открыть настройки", "Позже");
-                    if (go) NavigatorOverlay.RequestOverlayPermission();
-                });
+                NavigatorOverlay.RequestOverlayPermission();
+                return; // Не запускаем Навигатор поверх экрана настроек
             }
         }
         else
@@ -1305,8 +1338,6 @@ public partial class MainDriverPage : ContentPage
         UpdateOverlayState();
         RouteInNavigator(force);
     }
-
-    private bool _overlayPermissionAsked;
 
     /// Синхронизация плавающей панели с текущим этапом заказа.
     private void UpdateOverlayState()
