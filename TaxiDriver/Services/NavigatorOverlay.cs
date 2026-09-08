@@ -86,22 +86,10 @@ public static class NavigatorOverlay
     }
 
     /// <summary>Выдано ли разрешение «Поверх других приложений».</summary>
-    public static bool HasOverlayPermission()
-    {
-#if ANDROID
-        return Platforms.Android.YandexNavigatorLauncher.CanDrawOverlays();
-#else
-        return false;
-#endif
-    }
+    public static bool HasOverlayPermission() => true;
 
     /// <summary>Открыть системный экран выдачи разрешения на оверлей.</summary>
-    public static void RequestOverlayPermission()
-    {
-#if ANDROID
-        Platforms.Android.YandexNavigatorLauncher.RequestOverlayPermission();
-#endif
-    }
+    public static void RequestOverlayPermission() { }
 
     /// <summary>Построить маршрут в Яндекс Навигаторе. false — приложение не установлено.</summary>
     public static bool OpenNavigator(double lat, double lng)
@@ -110,6 +98,17 @@ public static class NavigatorOverlay
         return Platforms.Android.YandexNavigatorLauncher.BuildRoute(lat, lng);
 #else
         _ = lat; _ = lng;
+        return false;
+#endif
+    }
+
+    /// <summary>Составной маршрут с промежуточными точками.</summary>
+    public static bool OpenMultiPointRoute(IReadOnlyList<TaxiDriver.Models.NavigatorPoint> points)
+    {
+#if ANDROID
+        return Platforms.Android.YandexNavigatorLauncher.BuildMultiPointRoute(points);
+#else
+        _ = points;
         return false;
 #endif
     }
@@ -125,6 +124,14 @@ public static class NavigatorOverlay
 #endif
     }
 
+    /// <summary>Поднять сервисные кнопки поверх только что открытого Навигатора.</summary>
+    public static void BringControlsToFront()
+    {
+#if ANDROID
+        Platforms.Android.NavigatorControlsActivity.BringToFront();
+#endif
+    }
+
     /// <summary>Ссылка на Яндекс Навигатор в Google Play (если не установлен).</summary>
     public static void OpenNavigatorInStore()
     {
@@ -137,8 +144,9 @@ public static class NavigatorOverlay
     public static void Show(OverlayState state)
     {
 #if ANDROID
-        // Отдельный сервис панели: запускается всегда, тип location ему не нужен
-        Platforms.Android.OrderOverlayService.Show(state);
+        // Прозрачное Android Activity запускается после Навигатора и гарантированно
+        // остаётся верхним окном; SYSTEM_ALERT_WINDOW/особые разрешения не нужны.
+        Platforms.Android.NavigatorControlsActivity.Show(state);
         IsActive = true;
 #else
         _ = state;
@@ -149,7 +157,11 @@ public static class NavigatorOverlay
     public static void Update(OverlayState state)
     {
         if (!IsActive) return;
-        Show(state);
+#if ANDROID
+        Platforms.Android.NavigatorControlsActivity.Update(state);
+#else
+        _ = state;
+#endif
     }
 
     /// <summary>Убрать панель с экрана.</summary>
@@ -157,7 +169,7 @@ public static class NavigatorOverlay
     {
         if (!IsActive) return;
 #if ANDROID
-        Platforms.Android.OrderOverlayService.Hide();
+        Platforms.Android.NavigatorControlsActivity.Hide();
 #endif
         IsActive = false;
     }

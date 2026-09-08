@@ -11,7 +11,7 @@ namespace TaxiDriver.Platforms.Android;
 // приложение свёрнуто, и дополнительно опрашивает системный GPS. Координаты
 // продолжают уходить на сервер, поэтому машину видно в админке, у оператора и в
 // приложении клиента, даже когда сверху открыт Яндекс Навигатор.
-// Плавающая панель заказа живёт в отдельном OrderOverlayService.
+// Плавающая панель заказа живёт в NavigatorControlsActivity поверх Навигатора.
 [Service(Exported = false, ForegroundServiceType = global::Android.Content.PM.ForegroundService.TypeLocation)]
 public class DriverTrackingService : Service
 {

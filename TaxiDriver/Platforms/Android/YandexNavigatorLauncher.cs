@@ -81,6 +81,42 @@ public static class YandexNavigatorLauncher
         }
     }
 
+    /// <summary>
+    /// Официальный составной маршрут Яндекс Навигатора:
+    /// первая точка — старт, последняя — финиш, между ними lat_via_N/lon_via_N.
+    /// </summary>
+    public static bool BuildMultiPointRoute(IReadOnlyList<TaxiDriver.Models.NavigatorPoint> points)
+    {
+        if (!IsInstalled() || points.Count < 2) return false;
+        try
+        {
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            var uri = new global::Android.Net.Uri.Builder()
+                .Scheme("yandexnavi")
+                .Authority("build_route_on_map")
+                .AppendQueryParameter("lat_from", points[0].Latitude.ToString(ci))
+                .AppendQueryParameter("lon_from", points[0].Longitude.ToString(ci))
+                .AppendQueryParameter("lat_to", points[^1].Latitude.ToString(ci))
+                .AppendQueryParameter("lon_to", points[^1].Longitude.ToString(ci));
+
+            for (var i = 1; i < points.Count - 1; i++)
+            {
+                uri.AppendQueryParameter($"lat_via_{i - 1}", points[i].Latitude.ToString(ci));
+                uri.AppendQueryParameter($"lon_via_{i - 1}", points[i].Longitude.ToString(ci));
+            }
+
+            var intent = new Intent(Intent.ActionView, uri.Build());
+            intent.SetPackage(NavigatorPackage);
+            intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop);
+            Context.StartActivity(intent);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>Поиск адреса в Навигаторе, когда координаты неизвестны.</summary>
     public static bool SearchAddress(string address)
     {

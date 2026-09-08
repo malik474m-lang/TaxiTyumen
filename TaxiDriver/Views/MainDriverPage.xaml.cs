@@ -668,15 +668,18 @@ public partial class MainDriverPage : ContentPage
             var accepted = await _api.AcceptOrderAsync(order.Id, _auth.DriverId!.Value);
             if (accepted != null)
             {
-                _activeOrder = order;
-                _location.ActiveOrderId = order.Id;
+                // Используем полный подтверждённый ответ сервера, а не старую карточку
+                // из списка: именно здесь раньше терялись конечные/промежуточные точки.
+                var fullOrder = await _api.GetOrderAsync(accepted.Id) ?? accepted;
+                _activeOrder = fullOrder;
+                _location.ActiveOrderId = fullOrder.Id;
                 _orderStatusStep = 0;
 
-                await _signalR.SubscribeToOrderAsync(order.Id.ToString());
+                await _signalR.SubscribeToOrderAsync(fullOrder.Id.ToString());
 
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
-                    ShowActiveOrder(order);
+                    ShowActiveOrder(fullOrder);
                     StatusLabel.Text = "Еду к клиенту";
                 });
 
@@ -1201,38 +1204,37 @@ public partial class MainDriverPage : ContentPage
         NavigatorOverlay.Toast(title + ": " + message);
     }
 
-    /// Точка и адрес, к которым строим маршрут.
-    /// До посадки водитель едет на адрес подачи, в поездке — на адрес назначения.
-    /// Если координаты не заданы или равны дефолтному центру города (57.1522),
-    /// Навигатор ищет по точному тексту адреса, чтобы не строить маршрут в случайную точку.
-    private (double lat, double lng, string address) CurrentNavTarget()
+    /// Навигационные точки всегда проверяем серверным геокодером по тексту
+    /// заявки. Это исключает старые фиктивные координаты, уже сохранённые в БД.
+    private async Task<NavigatorPoint?> ResolveNavigatorPointAsync(
+        string? address, double? fallbackLat, double? fallbackLng)
     {
-        if (_activeOrder == null)
-            return (0, 0, "");
-
-        var inProgress = NormStatus(_activeOrder.Status) == "inprogress";
-        if (inProgress)
+        if (!string.IsNullOrWhiteSpace(address))
         {
-            var destLat = _activeOrder.DestinationLatitude ?? 0;
-            var destLng = _activeOrder.DestinationLongitude ?? 0;
-            var destAddr = _activeOrder.DestinationAddress ?? "";
-
-            // Если есть реальные координаты назначения (не центр города по умолчанию)
-            if (destLat != 0 && destLng != 0 && !IsCityCenterPlaceholder(destLat, destLng))
-                return (destLat, destLng, destAddr);
-
-            return (0, 0, destAddr);
+            var resolved = await _api.GeocodeAsync(address);
+            if (resolved != null && resolved.Latitude != 0 && resolved.Longitude != 0)
+            {
+                return new NavigatorPoint
+                {
+                    Address = address,
+                    Latitude = resolved.Latitude,
+                    Longitude = resolved.Longitude,
+                };
+            }
         }
 
-        var pickLat = _activeOrder.PickupLatitude;
-        var pickLng = _activeOrder.PickupLongitude;
-        var pickAddr = _activeOrder.PickupAddress ?? "";
-
-        // Если есть реальные координаты подачи (не центр города по умолчанию)
-        if (pickLat != 0 && pickLng != 0 && !IsCityCenterPlaceholder(pickLat, pickLng))
-            return (pickLat, pickLng, pickAddr);
-
-        return (0, 0, pickAddr);
+        var lat = fallbackLat ?? 0;
+        var lng = fallbackLng ?? 0;
+        if (lat != 0 && lng != 0 && !IsCityCenterPlaceholder(lat, lng))
+        {
+            return new NavigatorPoint
+            {
+                Address = address ?? "",
+                Latitude = lat,
+                Longitude = lng,
+            };
+        }
+        return null;
     }
 
     private static bool IsCityCenterPlaceholder(double lat, double lng)
@@ -1240,33 +1242,82 @@ public partial class MainDriverPage : ContentPage
 
     /// Куда сейчас ведёт Навигатор — чтобы не перестраивать маршрут на каждый тик.
     private string _lastNavTargetKey = "";
+    private bool _navRouteBuilding;
 
-    /// Построить маршрут в Навигаторе (при смене цели — автоматически).
-    private void RouteInNavigator(bool force = false)
+    /// Построить точный маршрут. До посадки: текущая точка -> подача.
+    /// После начала поездки: текущая точка -> все промежуточные -> назначение.
+    private async void RouteInNavigator(bool force = false)
     {
-        if (!NavigatorOverlay.ModeEnabled || _activeOrder == null) return;
-        var (lat, lng, address) = CurrentNavTarget();
-        var key = $"{lat:F5},{lng:F5},{address}";
+        if (!NavigatorOverlay.ModeEnabled || _activeOrder == null || _navRouteBuilding) return;
+
+        var inProgress = NormStatus(_activeOrder.Status) == "inprogress";
+        var key = inProgress
+            ? "trip|" + _activeOrder.Id + "|" + string.Join("|", _activeOrder.IntermediatePoints
+                .OrderBy(p => p.SortOrder).Select(p => p.Address)) + "|" + _activeOrder.DestinationAddress
+            : "pickup|" + _activeOrder.Id + "|" + _activeOrder.PickupAddress;
         if (!force && key == _lastNavTargetKey) return;
-        _lastNavTargetKey = key;
 
-        bool ok;
-        if (lat != 0 && lng != 0)
+        _navRouteBuilding = true;
+        try
         {
-            // Точные координаты дома
-            ok = NavigatorOverlay.OpenNavigator(lat, lng);
-        }
-        else if (!string.IsNullOrWhiteSpace(address))
-        {
-            // Поиск по точному тексту адреса заявки
-            ok = NavigatorOverlay.SearchInNavigator(address);
-        }
-        else
-        {
-            ok = false;
-        }
+            bool ok;
+            if (!inProgress)
+            {
+                var pickup = await ResolveNavigatorPointAsync(
+                    _activeOrder.PickupAddress,
+                    _activeOrder.PickupLatitude,
+                    _activeOrder.PickupLongitude);
+                ok = pickup != null
+                    ? NavigatorOverlay.OpenNavigator(pickup.Latitude, pickup.Longitude)
+                    : NavigatorOverlay.SearchInNavigator(_activeOrder.PickupAddress);
+            }
+            else
+            {
+                var points = new List<NavigatorPoint>
+                {
+                    new()
+                    {
+                        Address = "Текущее местоположение",
+                        Latitude = _location.CurrentLat,
+                        Longitude = _location.CurrentLng,
+                    }
+                };
 
-        if (!ok) NavigatorOverlay.Toast("Не удалось открыть маршрут в Яндекс Навигаторе");
+                // Яндекс Навигатор официально поддерживает lat_via_0, lat_via_1…
+                foreach (var stop in _activeOrder.IntermediatePoints.OrderBy(p => p.SortOrder))
+                {
+                    var point = await ResolveNavigatorPointAsync(
+                        stop.Address, stop.Latitude, stop.Longitude);
+                    if (point != null) points.Add(point);
+                }
+
+                var destination = await ResolveNavigatorPointAsync(
+                    _activeOrder.DestinationAddress,
+                    _activeOrder.DestinationLatitude,
+                    _activeOrder.DestinationLongitude);
+                if (destination != null) points.Add(destination);
+
+                ok = points.Count >= 2
+                    ? NavigatorOverlay.OpenMultiPointRoute(points)
+                    : NavigatorOverlay.SearchInNavigator(_activeOrder.DestinationAddress ?? "");
+            }
+
+            if (ok)
+            {
+                _lastNavTargetKey = key;
+                // Запуск/перестроение маршрута делает Навигатор верхним Activity.
+                // Через 650 мс возвращаем сервисную панель выше него.
+                NavigatorOverlay.BringControlsToFront();
+            }
+            else
+            {
+                NavigatorOverlay.Toast("Не удалось открыть маршрут Яндекс Навигатора");
+            }
+        }
+        finally
+        {
+            _navRouteBuilding = false;
+        }
     }
 
     private void OnOpenNavigatorAgain(object? sender, EventArgs e)
@@ -1359,10 +1410,10 @@ public partial class MainDriverPage : ContentPage
             color = "#4CAF50";
         }
 
-        var (_, _, targetAddress) = CurrentNavTarget();
-        var target = string.IsNullOrWhiteSpace(targetAddress)
-            ? _activeOrder.PickupAddress
-            : targetAddress;
+        var inProgress = NormStatus(_activeOrder.Status) == "inprogress";
+        var target = inProgress
+            ? (_activeOrder.DestinationAddress ?? "Назначение не указано")
+            : _activeOrder.PickupAddress;
         try
         {
             NavTargetLabel.Text = (NormStatus(_activeOrder.Status) == "inprogress"
@@ -1399,10 +1450,14 @@ public partial class MainDriverPage : ContentPage
                 case "waiting":
                     OnToggleWaiting(this, EventArgs.Empty);
                     break;
+                case "chat":
+                    OnOpenChat(this, EventArgs.Empty);
+                    break;
+                case "cancel":
+                    OnCancelActiveOrder(this, EventArgs.Empty);
+                    break;
                 case "sos":
-                    // Тревожная кнопка требует подтверждения — поднимаем приложение,
-                    // чтобы водитель увидел диалог и не отправил SOS случайно
-                    NavigatorOverlay.Toast("Подтвердите отправку SOS в приложении");
+                    // Тревожная кнопка требует подтверждения в приложении
                     OnSosClicked(this, EventArgs.Empty);
                     break;
             }
@@ -1674,18 +1729,14 @@ public partial class MainDriverPage : ContentPage
                     return;
                 }
 
-                // Подгружаем список и сразу показываем этот заказ как активный
-                await LoadAvailableOrdersAsync();
-
-                var order = new OrderResponse
+                // Загружаем ПОЛНУЮ карточку: уведомление не содержит координат и
+                // промежуточных точек, из-за чего раньше Навигатор получал мусор.
+                var order = await _api.GetOrderAsync(notification.OrderId);
+                if (order == null)
                 {
-                    Id = notification.OrderId,
-                    OrderNumber = notification.OrderNumber,
-                    PickupAddress = notification.PickupAddress,
-                    DestinationAddress = notification.DestinationAddress,
-                    EstimatedPrice = notification.EstimatedPrice,
-                    TariffName = notification.Tariff
-                };
+                    await DisplayAlert("Заказ", "Не удалось загрузить полный маршрут заказа.", "OK");
+                    return;
+                }
 
                 _activeOrder = order;
                 _location.ActiveOrderId = order.Id;
