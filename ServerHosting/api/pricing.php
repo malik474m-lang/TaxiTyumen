@@ -53,7 +53,7 @@ $optionCodes = array_values(array_filter(
     is_array($body['options'] ?? $body['Options'] ?? null) ? ($body['options'] ?? $body['Options']) : [],
     'is_string'
 ));
-$optionsTotal = Options::total($optionCodes);
+$optionsTotal = Options::total($db, $optionCodes);
 $zs = Zones::settings($db);
 
 $routePoints = array_merge([[$fromLat, $fromLng]], $stopPoints, [[$toLat, $toLng]]);
@@ -126,7 +126,7 @@ foreach ($activeTariffs as $t) {
         'isPreorder' => $isPreorder,
         'stopsSurcharge' => $stopsSurcharge,
         'optionsTotal' => $optionsAdd,
-        'options' => Options::resolve($optionCodes),
+        'options' => Options::resolve($db, $optionCodes),
     ];
 }
 usort($estimates, fn($a, $b) => $a['price'] <=> $b['price']);

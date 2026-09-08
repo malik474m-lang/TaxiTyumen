@@ -156,7 +156,7 @@ $optionCodes = array_values(array_filter(
 ));
 // Надбавка за опции. Поверх зональной фикс-цены добавляем, только если это
 // разрешено настройкой «Добавлять опции» в разделе «Зоны и цены».
-$optionsTotal = Options::total($optionCodes);
+$optionsTotal = Options::total($db, $optionCodes);
 if ($pricingMode === 'zone' && !(int) (Zones::settings($db)['add_options'] ?? 1)) {
     $optionsTotal = 0.0;
 }
@@ -194,7 +194,7 @@ $db->prepare(
     'searching',
 ]);
 
-foreach (Options::resolve($optionCodes) as $opt) {
+foreach (Options::resolve($db, $optionCodes) as $opt) {
     $db->prepare('INSERT INTO order_options (id, order_id, code, name, price) VALUES (?,?,?,?,?)')
         ->execute([Db::uuid(), $orderId, $opt['code'], $opt['name'], $opt['price']]);
 }

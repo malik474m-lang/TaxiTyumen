@@ -204,6 +204,9 @@ if (preg_match('#^orders/([0-9a-f-]+)/(accept|reject|complete|force-assign|cance
 }
 if (preg_match('#^orders/([0-9a-f-]+)$#i',$route,$m) && $method==='GET') $dispatch($api.'/orders/item.php',[],['id'=>$m[1]]);
 
+// ── Справочник опций заказа (GET публично из пульта и приложений) ──────
+if ($routeLower === 'options') $dispatch($api . '/options.php');
+
 // ── PricingController ───────────────────────────────────────────────────────
 if ($routeLower==='pricing/estimate'||$routeLower==='pricing/estimate-all') {
     // Координаты можно передать и в query (совместимость), и в теле POST.

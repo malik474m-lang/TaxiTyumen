@@ -23,6 +23,7 @@ API Controllers/Hubs/Background Services, TaxiAdmin, TaxiClient, TaxiDriver, Tax
 | Карта автопарка в реальном времени | ✅ | admin/fleet-map.php: Яндекс Карты, только водители в сети, обновление 5 с, статус/скорость/заказ, переход в GPS-трек |
 | Автостарт простоя после бесплатного ожидания | ✅ | src/WaitingTimer.php: request-driven тик, отсчёт с момента истечения бесплатных минут, флаг waiting_auto_started исключает двойное вычитание |
 | Простой (платное ожидание пассажира) | ✅ | orders/action.php: waiting-start/stop; биллинг при complete по free_waiting_minutes/paid_waiting_per_minute; поля в admin/tariffs.php; кнопка и живой таймер в TaxiDriver |
+| Опции заказа: цены из БД, а не из кода | ✅ расширение | src/Options.php → таблица order_option_settings (сид из LIST), правка в admin/options.php, GET /api/options.php; TaxiOperator и TaxiClient грузят справочник с сервера при запуске |
 
 ## Доменная модель
 

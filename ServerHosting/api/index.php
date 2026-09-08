@@ -26,6 +26,7 @@ Response::json([
         'GET  /api/tariffs/ · PUT /api/tariffs/ (admin)',
         'GET/PUT/POST /api/zones.php (зоны и фиксированные цены)',
         'POST /api/pricing.php',
+        'GET /api/options.php (справочник опций; save/create/delete — admin)',
         'GET/POST /api/chat.php (чат + mark read)',
         'GET/POST /api/notifications.php (in-app/SMS уведомления)',
         'GET  /api/geocoding.php?q= или ?lat=&lng= (DaData/Яндекс Геокодер)',

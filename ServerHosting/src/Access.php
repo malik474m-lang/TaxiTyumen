@@ -28,6 +28,7 @@ final class Access
         'sos'       => ['label' => 'SOS-тревоги',    'file' => 'sos.php',       'superadminOnly' => false, 'locked' => false],
         'balance'   => ['label' => 'Балансы',        'file' => 'balance.php',   'superadminOnly' => false, 'locked' => false],
         'tariffs'   => ['label' => 'Тарифы',         'file' => 'tariffs.php',   'superadminOnly' => false, 'locked' => false],
+        'options'   => ['label' => 'Опции заказа',   'file' => 'options.php',   'superadminOnly' => false, 'locked' => false],
         'zones'     => ['label' => 'Зоны и цены',    'file' => 'zones.php',     'superadminOnly' => false, 'locked' => false],
         'stats'     => ['label' => 'Статистика',     'file' => 'stats.php',     'superadminOnly' => false, 'locked' => false],
         'export'    => ['label' => 'Экспорт CSV',    'file' => 'export.php',    'superadminOnly' => false, 'locked' => false],

@@ -60,6 +60,7 @@ define('YANDEX_MAPS_API_KEY', 'ваш-ключ');
 | `GET /api/drivers/track.php` | driver/operator/admin | GPS-история водителя/заказа, расчёт километража |
 | `GET /api/tariffs/` | все | Тарифы; `PUT` — редактирование (admin) |
 | `POST /api/pricing.php` | все | Оценка цены всех тарифов + геометрия маршрута |
+| `GET /api/options.php` | все | Справочник опций заказа с ценами (правится в админке «Опции заказа») |
 | `GET/POST /api/chat.php` | участники | Чат по заказу + `action=read`, уведомление второго участника |
 | `GET/POST /api/notifications.php` | Bearer/admin | Лента/прочтение; admin: user/role/all, in-app/SMS |
 | `GET /api/geocoding.php` | все | Server-side DaData + Яндекс Геокодер: search и reverse geocode |
