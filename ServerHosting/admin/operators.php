@@ -264,7 +264,7 @@ layout_header('Операторы', 'operators');
           $end = $shift['ended_at'] ? strtotime($shift['ended_at'] . ' UTC') : time();
           $duration = max(0, $end - strtotime($shift['started_at'] . ' UTC')) / 3600;
       ?>
-      <span class="chip info"><?= h(date('d.m', strtotime($shift['started_at'] . ' UTC'))) ?> · <?= number_format($duration, 1) ?> ч<?= !$shift['ended_at'] ? ' · идёт' : '' ?></span>
+      <span class="chip info"><?= h(fmt_date($shift['started_at'])) ?> · <?= number_format($duration, 1) ?> ч<?= !$shift['ended_at'] ? ' · идёт' : '' ?></span>
       <?php endforeach; ?>
     </div>
     <?php endif; ?>

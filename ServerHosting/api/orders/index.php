@@ -232,9 +232,15 @@ switch ($view) {
     }
 
     case 'today':
-        $rows = $db->query(
-            "SELECT * FROM orders WHERE created_at >= CURDATE() ORDER BY created_at DESC LIMIT 200"
-        )->fetchAll();
+        // «Сегодня» — местные сутки города, а не UTC-сутки сервера
+        $offSec = (int) (ServiceSettings::get($db)['utc_offset'] ?? 5) * 3600;
+        $localDate = gmdate('Y-m-d', time() + $offSec);
+        $todayStartUtc = gmdate('Y-m-d H:i:s', strtotime($localDate . ' 00:00:00') - $offSec);
+        $stmt = $db->prepare(
+            'SELECT * FROM orders WHERE created_at >= ? ORDER BY created_at DESC LIMIT 200'
+        );
+        $stmt->execute([$todayStartUtc]);
+        $rows = $stmt->fetchAll();
         Response::json($serializeMany($rows));
 
     default:

@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     if(($cmd==='check_all'||$cmd==='check_zvonok')&&$zConfigured){
         $r=ZvonokService::checkBalance($db);$checks['zvonok']=['ok'=>$r['ok'],'detail'=>$r['message'].' · баланс '.money((float)($r['balance']??0)),'ms'=>$r['durationMs']??null];
     }
-    $message='Проверка выполнена в '.date('H:i:s');
+    $message='Проверка выполнена в '.city_now('H:i:s');
 }
 
 $logs=$db->query('SELECT * FROM service_call_logs ORDER BY created_at DESC LIMIT 100')->fetchAll();

@@ -127,12 +127,34 @@ function money(?float $v): string
     return $v === null ? '—' : round($v) . ' ₽';
 }
 
+/** Смещение города в секундах (UTC+5 Тюмень = 18000). */
+function city_offset_seconds(): int
+{
+    global $serviceSettings;
+    return (int) ($serviceSettings['utc_offset'] ?? (int) CITY_UTC_OFFSET) * 3600;
+}
+
 function fmt_date(?string $d): string
 {
     if (!$d) {
         return '—';
     }
-    return date('d.m H:i', strtotime($d . ' UTC'));
+    // Метки в базе — UTC, в админке показываем местное время города
+    return gmdate('d.m H:i', strtotime($d . ' UTC') + city_offset_seconds());
+}
+
+/** Текущая дата/время в поясе города (для подписей вида «проверено в …»). */
+function city_now(string $format = 'H:i'): string
+{
+    return gmdate($format, time() + city_offset_seconds());
+}
+
+/** Начало сегодняшних суток города, переведённое в UTC для сравнения с базой. */
+function city_today_start_utc(): string
+{
+    $offset = city_offset_seconds();
+    $localDate = gmdate('Y-m-d', time() + $offset);
+    return gmdate('Y-m-d H:i:s', strtotime($localDate . ' 00:00:00') - $offset);
 }
 
 // ── Фирменный лэйаут ────────────────────────────────────────────────────────

@@ -11,35 +11,38 @@ $scalar = function (string $sql, array $params = []) use ($db) {
     return $stmt->fetchColumn();
 };
 $activeIn = "'" . implode("','", Taxi::ACTIVE_STATUSES) . "'";
+// «Сегодня» — местные сутки города (вся база хранит UTC)
+$todayStartUtc = city_today_start_utc();
+$cityOffsetHours = (int) (($serviceSettings['utc_offset'] ?? 5) + 0);
 
-$todayRevenue   = (int) round((float) $scalar("SELECT COALESCE(SUM(final_price),0) FROM orders WHERE status='completed' AND completed_at >= UTC_DATE()"));
-$todayOrders    = (int) $scalar("SELECT COUNT(*) FROM orders WHERE created_at >= UTC_DATE()");
+$todayRevenue   = (int) round((float) $scalar("SELECT COALESCE(SUM(final_price),0) FROM orders WHERE status='completed' AND completed_at >= '$todayStartUtc'"));
+$todayOrders    = (int) $scalar("SELECT COUNT(*) FROM orders WHERE created_at >= '$todayStartUtc'");
 $activeOrders   = (int) $scalar("SELECT COUNT(*) FROM orders WHERE status IN ($activeIn)");
 $onlineDrivers  = (int) $scalar("SELECT COUNT(*) FROM drivers d JOIN users u ON u.id=d.user_id WHERE d.status != 'offline' AND u.is_archived=0");
 $totalDrivers   = (int) $scalar('SELECT COUNT(*) FROM drivers d JOIN users u ON u.id=d.user_id WHERE u.is_archived=0');
 $totalClients   = (int) $scalar("SELECT COUNT(*) FROM users WHERE role='client' AND is_archived=0");
-$completedToday = (int) $scalar("SELECT COUNT(*) FROM orders WHERE status='completed' AND completed_at >= UTC_DATE()");
-$cancelledToday = (int) $scalar("SELECT COUNT(*) FROM orders WHERE status='cancelled' AND cancelled_at >= UTC_DATE()");
+$completedToday = (int) $scalar("SELECT COUNT(*) FROM orders WHERE status='completed' AND completed_at >= '$todayStartUtc'");
+$cancelledToday = (int) $scalar("SELECT COUNT(*) FROM orders WHERE status='cancelled' AND cancelled_at >= '$todayStartUtc'");
 $avgCheck       = (int) round((float) $scalar("SELECT COALESCE(AVG(final_price),0) FROM orders WHERE status='completed'"));
 
 // Выручка по дням (7 суток)
 $dailyRows = $db->query(
-    "SELECT DATE(completed_at) AS day, COALESCE(SUM(final_price),0) AS revenue
-     FROM orders WHERE status='completed' AND completed_at >= DATE_SUB(UTC_DATE(), INTERVAL 6 DAY)
-     GROUP BY DATE(completed_at)"
+    "SELECT DATE(completed_at + INTERVAL $cityOffsetHours HOUR) AS day, COALESCE(SUM(final_price),0) AS revenue
+     FROM orders WHERE status='completed' AND completed_at >= DATE_SUB('$todayStartUtc', INTERVAL 6 DAY)
+     GROUP BY DATE(completed_at + INTERVAL $cityOffsetHours HOUR)"
 )->fetchAll();
 $dailyMap = [];
 foreach ($dailyRows as $r) { $dailyMap[$r['day']] = (int) round((float) $r['revenue']); }
 $revenueByDay = [];
 for ($i = 6; $i >= 0; $i--) {
-    $day = gmdate('Y-m-d', time() - $i * 86400);
+    $day = gmdate('Y-m-d', time() + city_offset_seconds() - $i * 86400);
     $revenueByDay[] = ['day' => $day, 'revenue' => $dailyMap[$day] ?? 0];
 }
 $maxRevenue = max(1, ...array_column($revenueByDay, 'revenue'));
 
 // Заказы по часам (Тюмень UTC+5)
 $hourlyRows = $db->query(
-    'SELECT HOUR(created_at + INTERVAL 5 HOUR) AS h, COUNT(*) AS cnt FROM orders GROUP BY h'
+    'SELECT HOUR(created_at + INTERVAL ' . $cityOffsetHours . ' HOUR) AS h, COUNT(*) AS cnt FROM orders GROUP BY h'
 )->fetchAll();
 $hourlyMap = [];
 foreach ($hourlyRows as $r) { $hourlyMap[(int) $r['h']] = (int) $r['cnt']; }
@@ -59,7 +62,7 @@ $latestOrders = $db->query(
 layout_header('Обзор', 'index');
 ?>
 <h1>Сводка сервиса</h1>
-<p class="mut"><?= h(date('d.m.Y')) ?> · Тюмень (UTC+5)</p>
+<p class="mut"><?= h(gmdate('d.m.Y', time() + city_offset_seconds())) ?> · <?= h($serviceSettings['city_name']) ?> (UTC<?= (int) ($serviceSettings['utc_offset'] ?? 5) >= 0 ? '+' : '' ?><?= (int) ($serviceSettings['utc_offset'] ?? 5) ?>)</p>
 
 <?php if ($escalated > 0): ?>
 <div class="flash" style="border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);color:#fca5a5;margin-top:14px">
