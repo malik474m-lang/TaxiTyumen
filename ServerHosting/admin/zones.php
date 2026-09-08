@@ -151,12 +151,12 @@ layout_header('Зоны и цены', 'zones');
       body.map-lock{overflow:hidden}
       #mapWrap.map-full{position:fixed;inset:0;z-index:10050;background:#0a0a0c}
       #mapWrap.map-full #map{height:100% !important;border-radius:0}
-      #mapWrap .map-float{position:absolute;z-index:6;display:flex;gap:8px;align-items:center}
+      #mapWrap .map-float{position:absolute;z-index:10;display:flex;gap:8px;align-items:center}
       #mapFsHint{background:rgba(10,10,12,.82);border:1px solid var(--line);border-radius:10px;
         padding:8px 12px;font-size:12px;color:#d4d4d8;backdrop-filter:blur(8px)}
     </style>
     <div id="mapWrap" style="position:relative">
-      <div id="map" style="height:340px;border-radius:12px;overflow:hidden;background:#0f0f13">
+      <div id="map" style="position:relative;z-index:1;height:340px;border-radius:12px;overflow:hidden;background:#0f0f13">
       <?php if (YANDEX_MAPS_API_KEY === ''): ?>
       <div style="height:100%;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">
         <div><div style="font-size:32px">🗺️</div><b>API-ключ Яндекс Карт не настроен</b>
@@ -295,6 +295,7 @@ ymaps.ready(function () {
   });
 
   redraw();
+  setTimeout(fitMapSoon, 50);
 });
 
 function redraw() {
@@ -330,6 +331,17 @@ function clearPoints() {
   redraw();
 }
 
+// Яндекс.Карты кэшируют размер контейнера: пересчитываем несколько раз
+// с нарастающей задержкой — раскладка браузера успевает примениться.
+function fitMapSoon() {
+  if (!map || !map.container || !map.container.fitToViewport) return;
+  [60, 180, 420].forEach(function (ms) {
+    setTimeout(function () {
+      try { map.container.fitToViewport(); } catch (e) {}
+    }, ms);
+  });
+}
+
 // Развернуть карту на весь экран для удобной расстановки точек зоны.
 function toggleMapFullscreen(force) {
   var wrap = document.getElementById('mapWrap');
@@ -340,21 +352,13 @@ function toggleMapFullscreen(force) {
   document.body.classList.toggle('map-lock', on);
   hint.style.display = on ? 'flex' : 'none';
   btn.textContent = on ? '✕ Свернуть' : '⤢ Развернуть';
-  // Яндекс.Карты кэшируют размер контейнера — пересчитываем после смены раскладки.
-  if (map && map.container) {
-    setTimeout(function () {
-      try {
-        // Единственный метод пересчёта размера карты в API 2.1 — fitToViewport
-        // (fitToContainer не существует и ронял весь пересчёт, из-за чего карта
-        // оставалась маленькой на полноэкранной подложке).
-        map.container.fitToViewport();
-      } catch (e) { /* карта не инициализирована (нет API-ключа) — пропускаем */ }
-      if (points.length >= 2) {
-        var bounds = (typeof ymaps !== 'undefined') ? ymaps.util.bounds.fromPoints(points) : null;
-        if (bounds) map.setBounds(bounds, {checkZoomRange: true, zoomMargin: 60});
-      }
-    }, 120);
-  }
+  fitMapSoon();
+  setTimeout(function () {
+    if (map && points.length >= 2) {
+      var bounds = (typeof ymaps !== 'undefined') ? ymaps.util.bounds.fromPoints(points) : null;
+      if (bounds) map.setBounds(bounds, {checkZoomRange: true, zoomMargin: 60});
+    }
+  }, 250);
 }
 
 document.addEventListener('keydown', function (e) {
