@@ -33,7 +33,15 @@ https://developer.tech.yandex.ru/services/
 
 ```php
 define('YANDEX_MAPS_API_KEY', 'ваш-ключ');
+
+// (опционально) независимый резервный геокодер OpenCage (OSM):
+define('OPENCAGE_API_KEY', 'ваш-ключ');
 ```
+
+OpenCage (бесплатный триал: 2500 запросов/сутки, https://opencagedata.com/)
+работает вторым источником после DaData: цепочка **DaData → OpenCage → Яндекс**
+с дедупликацией результатов по координатам. Если ключ не задан — провайдер
+просто пропускается, остальная система не меняется.
 
 В кабинете Яндекса ограничьте ключ доменом `taxi.event72.ru`. JS API-ключ
 передаётся браузеру по архитектуре Яндекса — это не серверный секрет.
@@ -63,7 +71,7 @@ define('YANDEX_MAPS_API_KEY', 'ваш-ключ');
 | `GET /api/options.php` | все | Справочник опций заказа с ценами (правится в админке «Опции заказа») |
 | `GET/POST /api/chat.php` | участники | Чат по заказу + `action=read`, уведомление второго участника |
 | `GET/POST /api/notifications.php` | Bearer/admin | Лента/прочтение; admin: user/role/all, in-app/SMS |
-| `GET /api/geocoding.php` | все | Server-side DaData + Яндекс Геокодер: search и reverse geocode |
+| `GET /api/geocoding.php` | все | Server-side DaData / OpenCage / Яндекс Геокодер: search и reverse geocode |
 | `GET /api/services.php` | admin | Диагностика MySQL, OSRM, sms.ru, Zvonok, DaData, storage, realtime |
 | `GET/PUT /api/branding.php` | app=… публично, список/PUT — admin | Серверный брендинг 3 приложений (`logoUrl` входит в DTO) |
 | `GET/POST /api/branding-logo.php` | GET публично, POST admin | Выдача/загрузка/удаление логотипа, PNG/JPEG/WebP ≤ 2 МБ |

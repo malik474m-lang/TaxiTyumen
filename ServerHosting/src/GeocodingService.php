@@ -1,5 +1,5 @@
 <?php
-// Серверный геокодинг для РФ: DaData + HTTP Геокодер Яндекс Карт.
+// Серверный геокодинг для РФ: DaData + OpenCage (OSM) + HTTP Геокодер Яндекс Карт.
 // Поиск и reverse geocode; все ключи хранятся только на сервере.
 declare(strict_types=1);
 
@@ -8,6 +8,7 @@ final class GeocodingService
     private const DADATA_SUGGEST = 'https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address';
     private const DADATA_GEOLOCATE = 'https://suggestions.dadata.ru/suggestions/api/4_1/rs/geolocate/address';
     private const YANDEX_GEOCODER = 'https://geocode-maps.yandex.ru/1.x/';
+    private const OPENCAGE_GEOCODE = 'https://api.opencagedata.com/geocode/v1/json';
 
     public static function search(\PDO $db, string $query): array
     {
@@ -50,9 +51,36 @@ final class GeocodingService
                 $code >= 200 && $code < 300 ? 'success' : 'failed', $code, $raw, $ms);
         }
 
+        // OpenCage Data (OSM) — независимый резервный геокодер:
+        // подхватывает адреса, которых нет в DaData/ФИАС
+        $queryLower = mb_strtolower($query);
+        if (count($results) < 3 && OPENCAGE_API_KEY !== '') {
+            $searchQuery = str_contains($queryLower, mb_strtolower($city))
+                || str_contains($queryLower, mb_strtolower($region))
+                ? $query
+                : $query . ', ' . $city . ', ' . $region;
+            $url = self::OPENCAGE_GEOCODE . '?' . http_build_query([
+                'key' => OPENCAGE_API_KEY,
+                'q' => $searchQuery,
+                'countrycode' => 'ru',
+                'language' => 'ru',
+                'limit' => 7,
+                'no_annotations' => 1,
+                'proximity' => $svc['center_longitude'] . ',' . $svc['center_latitude'],
+                'bounds' => ($svc['center_longitude'] - 0.9) . ',' . ($svc['center_latitude'] - 0.6) . ','
+                    . ($svc['center_longitude'] + 0.9) . ',' . ($svc['center_latitude'] + 0.6),
+            ]);
+            [$code, $raw, $ms] = self::request($url, 'GET', null, [
+                'User-Agent: TaxiService/1.0',
+                'Accept: application/json',
+            ]);
+            $results = self::mergeUnique($results, self::parseOpenCage($raw));
+            self::log($db, 'opencage', 'search', $query,
+                $code >= 200 && $code < 300 ? 'success' : 'failed', $code, $raw, $ms);
+        }
+
         // Яндекс HTTP Геокодер — fallback и адреса, которых нет в DaData
         if (count($results) < 3 && YANDEX_MAPS_API_KEY !== '') {
-            $queryLower = mb_strtolower($query);
             $searchQuery = str_contains($queryLower, mb_strtolower($city))
                 || str_contains($queryLower, mb_strtolower($region))
                 ? $query
@@ -73,17 +101,7 @@ final class GeocodingService
                 'Accept: application/json',
             ]);
             $items = self::parseYandex($raw);
-            foreach ($items as $item) {
-                $duplicate = false;
-                foreach ($results as $current) {
-                    if (abs($current['latitude'] - $item['latitude']) < 0.001
-                        && abs($current['longitude'] - $item['longitude']) < 0.001) {
-                        $duplicate = true;
-                        break;
-                    }
-                }
-                if (!$duplicate) $results[] = $item;
-            }
+            $results = self::mergeUnique($results, $items);
             self::log($db, 'yandex-geocoder', 'search', $query,
                 $code >= 200 && $code < 300 ? 'success' : 'failed', $code, $raw, $ms);
         }
@@ -113,6 +131,25 @@ final class GeocodingService
                     'source' => 'dadata',
                 ];
             }
+        }
+
+        // OpenCage — резервный reverse (OSM)
+        if (OPENCAGE_API_KEY !== '') {
+            $url = self::OPENCAGE_GEOCODE . '?' . http_build_query([
+                'key' => OPENCAGE_API_KEY,
+                'q' => $lat . ',' . $lng,
+                'language' => 'ru',
+                'limit' => 1,
+                'no_annotations' => 1,
+            ]);
+            [$code, $raw, $ms] = self::request($url, 'GET', null, [
+                'User-Agent: TaxiService/1.0',
+                'Accept: application/json',
+            ]);
+            $items = self::parseOpenCage($raw);
+            self::log($db, 'opencage', 'reverse', "$lat,$lng",
+                $items ? 'success' : 'failed', $code, $raw, $ms);
+            if ($items) return $items[0];
         }
 
         // Яндекс — reverse fallback
@@ -149,14 +186,51 @@ final class GeocodingService
         $svc = ServiceSettings::get($db);
         $items = self::search($db, (string) $svc['city_name']);
         return [
-            'configured' => DADATA_API_KEY !== '' || YANDEX_MAPS_API_KEY !== '',
+            'configured' => DADATA_API_KEY !== '' || OPENCAGE_API_KEY !== '' || YANDEX_MAPS_API_KEY !== '',
             'ok' => count($items) > 0,
             'results' => count($items),
             'sources' => array_values(array_unique(array_column($items, 'source'))),
             'message' => count($items) > 0
                 ? 'Геокодинг РФ доступен'
-                : 'Настройте DADATA_API_KEY или YANDEX_MAPS_API_KEY',
+                : 'Настройте DADATA_API_KEY, OPENCAGE_API_KEY или YANDEX_MAPS_API_KEY',
         ];
+    }
+
+    private static function parseOpenCage(string $raw): array
+    {
+        $json = json_decode($raw, true);
+        $result = [];
+        foreach ($json['results'] ?? [] as $r) {
+            $lat = (float) ($r['geometry']['lat'] ?? 0);
+            $lng = (float) ($r['geometry']['lng'] ?? 0);
+            if (!$lat || !$lng) continue;
+            $name = (string) ($r['formatted'] ?? '');
+            $result[] = [
+                'displayName' => $name,
+                'fullAddress' => $name,
+                'latitude' => $lat,
+                'longitude' => $lng,
+                'source' => 'opencage',
+            ];
+        }
+        return $result;
+    }
+
+    /** Слияние результатов провайдеров без координатных дублей (~100 м). */
+    private static function mergeUnique(array $results, array $items): array
+    {
+        foreach ($items as $item) {
+            $duplicate = false;
+            foreach ($results as $current) {
+                if (abs($current['latitude'] - $item['latitude']) < 0.001
+                    && abs($current['longitude'] - $item['longitude']) < 0.001) {
+                    $duplicate = true;
+                    break;
+                }
+            }
+            if (!$duplicate) $results[] = $item;
+        }
+        return $results;
     }
 
     private static function parseYandex(string $raw): array

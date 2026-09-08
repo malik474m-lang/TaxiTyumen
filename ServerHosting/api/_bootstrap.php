@@ -7,6 +7,7 @@ require_once dirname(__DIR__) . '/config.php';
 // Совместимость с прежним config.php на хостинге после deploy.sh
 if (!defined('DADATA_API_KEY')) define('DADATA_API_KEY', getenv('DADATA_API_KEY') ?: '');
 if (!defined('YANDEX_MAPS_API_KEY')) define('YANDEX_MAPS_API_KEY', getenv('YANDEX_MAPS_API_KEY') ?: '');
+if (!defined('OPENCAGE_API_KEY')) define('OPENCAGE_API_KEY', getenv('OPENCAGE_API_KEY') ?: '');
 foreach (glob(dirname(__DIR__) . '/src/*.php') as $file) {
     require_once $file;
 }

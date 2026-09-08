@@ -66,6 +66,8 @@ API Controllers/Hubs/Background Services, TaxiAdmin, TaxiClient, TaxiDriver, Tax
 - TaxiClient/TaxiDriver SignalRService заменён polling уведомлений PHP с теми же событиями.
 - TaxiOperator получает обновления заказов и сообщения через polling.
 - DaData и HTTP Геокодер Яндекс Карт перенесены на сервер (`geocoding.php`), ключи удалены из приложений.
+- OpenCage (opencagedata.com, OSM) подключён как независимый резервный геокодер:
+  `OPENCAGE_API_KEY`, цепочка DaData -> OpenCage -> Яндекс с дедупликацией по координатам.
 
 ## Осознанные инфраструктурные адаптации
 
