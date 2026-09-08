@@ -1204,57 +1204,45 @@ public partial class MainDriverPage : ContentPage
         NavigatorOverlay.Toast(title + ": " + message);
     }
 
-    /// Навигационные точки всегда проверяем серверным геокодером по тексту
-    /// заявки. Это исключает старые фиктивные координаты, уже сохранённые в БД.
-    private async Task<NavigatorPoint?> ResolveNavigatorPointAsync(
-        string? address, double? fallbackLat, double? fallbackLng)
+    /// Навигация работает через УСТАНОВЛЕННЫЙ Яндекс Навигатор и его офлайн-карты.
+    /// Перед запуском никаких HTTP-запросов нет: используем координаты из полного
+    /// объекта заказа. Для старых заказов без координат адрес передаётся самому
+    /// Навигатору через map_search — его поиск использует скачанные карты.
+    private static NavigatorPoint? PointFromOrder(
+        string? address, double? latitude, double? longitude)
     {
-        if (!string.IsNullOrWhiteSpace(address))
+        var lat = latitude ?? 0;
+        var lng = longitude ?? 0;
+        if (lat == 0 || lng == 0 || IsCityCenterPlaceholder(lat, lng)) return null;
+        return new NavigatorPoint
         {
-            var resolved = await _api.GeocodeAsync(address);
-            if (resolved != null && resolved.Latitude != 0 && resolved.Longitude != 0)
-            {
-                return new NavigatorPoint
-                {
-                    Address = address,
-                    Latitude = resolved.Latitude,
-                    Longitude = resolved.Longitude,
-                };
-            }
-        }
-
-        var lat = fallbackLat ?? 0;
-        var lng = fallbackLng ?? 0;
-        if (lat != 0 && lng != 0 && !IsCityCenterPlaceholder(lat, lng))
-        {
-            return new NavigatorPoint
-            {
-                Address = address ?? "",
-                Latitude = lat,
-                Longitude = lng,
-            };
-        }
-        return null;
+            Address = address ?? string.Empty,
+            Latitude = lat,
+            Longitude = lng,
+        };
     }
 
     private static bool IsCityCenterPlaceholder(double lat, double lng)
         => Math.Abs(lat - 57.1522) < 0.0005 && Math.Abs(lng - 65.5272) < 0.0005;
 
     /// Куда сейчас ведёт Навигатор — чтобы не перестраивать маршрут на каждый тик.
-    private string _lastNavTargetKey = "";
+    private string _lastNavTargetKey = string.Empty;
     private bool _navRouteBuilding;
 
-    /// Построить точный маршрут. До посадки: текущая точка -> подача.
-    /// После начала поездки: текущая точка -> все промежуточные -> назначение.
-    private async void RouteInNavigator(bool force = false)
+    /// До посадки: текущее положение → подача.
+    /// После начала поездки: текущее положение → все промежуточные → назначение.
+    /// Составной маршрут передаётся установленному Навигатору официальными
+    /// параметрами lat_via_N/lon_via_N и работает по его офлайн-картам.
+    private void RouteInNavigator(bool force = false)
     {
         if (!NavigatorOverlay.ModeEnabled || _activeOrder == null || _navRouteBuilding) return;
 
         var inProgress = NormStatus(_activeOrder.Status) == "inprogress";
         var key = inProgress
             ? "trip|" + _activeOrder.Id + "|" + string.Join("|", _activeOrder.IntermediatePoints
-                .OrderBy(p => p.SortOrder).Select(p => p.Address)) + "|" + _activeOrder.DestinationAddress
-            : "pickup|" + _activeOrder.Id + "|" + _activeOrder.PickupAddress;
+                .OrderBy(p => p.SortOrder).Select(p => $"{p.Latitude:F6},{p.Longitude:F6}"))
+                + "|" + _activeOrder.DestinationLatitude + "," + _activeOrder.DestinationLongitude
+            : $"pickup|{_activeOrder.Id}|{_activeOrder.PickupLatitude:F6},{_activeOrder.PickupLongitude:F6}";
         if (!force && key == _lastNavTargetKey) return;
 
         _navRouteBuilding = true;
@@ -1263,7 +1251,7 @@ public partial class MainDriverPage : ContentPage
             bool ok;
             if (!inProgress)
             {
-                var pickup = await ResolveNavigatorPointAsync(
+                var pickup = PointFromOrder(
                     _activeOrder.PickupAddress,
                     _activeOrder.PickupLatitude,
                     _activeOrder.PickupLongitude);
@@ -1273,25 +1261,24 @@ public partial class MainDriverPage : ContentPage
             }
             else
             {
-                var points = new List<NavigatorPoint>
+                var points = new List<NavigatorPoint>();
+                if (_location.CurrentLat != 0 && _location.CurrentLng != 0)
                 {
-                    new()
+                    points.Add(new NavigatorPoint
                     {
                         Address = "Текущее местоположение",
                         Latitude = _location.CurrentLat,
                         Longitude = _location.CurrentLng,
-                    }
-                };
+                    });
+                }
 
-                // Яндекс Навигатор официально поддерживает lat_via_0, lat_via_1…
                 foreach (var stop in _activeOrder.IntermediatePoints.OrderBy(p => p.SortOrder))
                 {
-                    var point = await ResolveNavigatorPointAsync(
-                        stop.Address, stop.Latitude, stop.Longitude);
+                    var point = PointFromOrder(stop.Address, stop.Latitude, stop.Longitude);
                     if (point != null) points.Add(point);
                 }
 
-                var destination = await ResolveNavigatorPointAsync(
+                var destination = PointFromOrder(
                     _activeOrder.DestinationAddress,
                     _activeOrder.DestinationLatitude,
                     _activeOrder.DestinationLongitude);
@@ -1299,14 +1286,14 @@ public partial class MainDriverPage : ContentPage
 
                 ok = points.Count >= 2
                     ? NavigatorOverlay.OpenMultiPointRoute(points)
-                    : NavigatorOverlay.SearchInNavigator(_activeOrder.DestinationAddress ?? "");
+                    : NavigatorOverlay.SearchInNavigator(_activeOrder.DestinationAddress ?? string.Empty);
             }
 
             if (ok)
             {
                 _lastNavTargetKey = key;
-                // Запуск/перестроение маршрута делает Навигатор верхним Activity.
-                // Через 650 мс возвращаем сервисную панель выше него.
+                // Яндекс Навигатор стал верхним Activity. Через небольшую задержку
+                // возвращаем прозрачную сервисную панель поверх его карты.
                 NavigatorOverlay.BringControlsToFront();
             }
             else

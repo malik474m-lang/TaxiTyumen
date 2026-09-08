@@ -108,15 +108,21 @@ public class NavigatorControlsActivity : Activity
             | WindowManagerFlags.LayoutInScreen);
         Window?.SetBackgroundDrawable(new ColorDrawable(AColor.Transparent));
         Window?.SetDimAmount(0f);
+
+        SetContentView(BuildPanel());
+
+        // После создания DecorView: floating-theme больше не перезапишет размеры.
         Window?.SetLayout(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
         Window?.SetGravity(GravityFlags.Bottom | GravityFlags.CenterHorizontal);
         if (Window?.Attributes is { } attrs)
         {
+            attrs.Width = ViewGroup.LayoutParams.MatchParent;
+            attrs.Height = ViewGroup.LayoutParams.WrapContent;
+            attrs.Gravity = GravityFlags.Bottom | GravityFlags.CenterHorizontal;
             attrs.Y = Dp(28);
             Window.Attributes = attrs;
         }
 
-        SetContentView(BuildPanel());
         ApplyState(_pendingState ?? new OverlayState { ActionText = "Заказ" });
     }
 
@@ -146,7 +152,7 @@ public class NavigatorControlsActivity : Activity
 
         _title = new TextView(this) { TextSize = 15f };
         _title.SetTextColor(AColor.White);
-        _title.SetTypeface(Android.Graphics.Typeface.Default, Android.Graphics.TypefaceStyle.Bold);
+        _title.SetTypeface(global::Android.Graphics.Typeface.Default, global::Android.Graphics.TypefaceStyle.Bold);
         _title.SetMaxLines(1);
         root.AddView(_title);
 

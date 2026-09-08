@@ -73,20 +73,6 @@ public class ApiService
         return await response.Content.ReadFromJsonAsync<List<OrderResponse>>(_json) ?? new();
     }
 
-    /// Геокодировать точный текст адреса на сервере (DaData/OpenCage/Яндекс).
-    public async Task<GeocodingResult?> GeocodeAsync(string address)
-    {
-        if (string.IsNullOrWhiteSpace(address)) return null;
-        try
-        {
-            var encoded = Uri.EscapeDataString(address);
-            var items = await _http.GetFromJsonAsync<List<GeocodingResult>>(
-                $"geocoding?q={encoded}", _json);
-            return items?.FirstOrDefault();
-        }
-        catch { return null; }
-    }
-
     /// Полная карточка заказа: координаты, промежуточные точки, актуальный статус.
     public async Task<OrderResponse?> GetOrderAsync(Guid orderId)
     {
