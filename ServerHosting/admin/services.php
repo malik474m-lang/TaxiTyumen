@@ -34,7 +34,7 @@ $checks['yandex_maps']=[
     'ok'=>api_key('yandex_maps')!=='' ? true : false,
     'detail'=>api_key('yandex_maps')!==''
         ? 'JS API 2.1 настроен · ключ должен быть ограничен доменом'
-        : 'Добавьте api_key('yandex_maps') в config.local.php',
+        : 'Задайте ключ в разделе «API-ключи» или в config.local.php',
     'ms'=>null,
 ];
 $zConfigured=!empty($settings['zvonok_api_key'])&&!empty($settings['zvonok_campaign_id']);
