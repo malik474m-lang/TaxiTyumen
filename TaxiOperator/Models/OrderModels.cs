@@ -112,6 +112,8 @@ public class PriceEstimate
 {
     public decimal PreorderSurcharge { get; set; }
     public decimal StopsSurcharge { get; set; }
+    /// Суммарная надбавка за опции заказа (сервер уже включил её в Price).
+    public decimal OptionsTotal { get; set; }
     public decimal Price { get; set; }
     public double DistanceKm { get; set; }
     public int DurationMinutes { get; set; }
