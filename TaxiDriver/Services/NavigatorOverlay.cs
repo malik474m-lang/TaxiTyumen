@@ -175,6 +175,14 @@ public static class NavigatorOverlay
     }
 
     /// <summary>Короткое системное уведомление (когда приложение свёрнуто).</summary>
+    /// Поднимает приложение водителя на передний план (только Android).
+    public static void BringAppToFront()
+    {
+#if ANDROID
+        Platforms.Android.YandexNavigatorLauncher.BringAppToFront();
+#endif
+    }
+
     public static void Toast(string text)
     {
 #if ANDROID
