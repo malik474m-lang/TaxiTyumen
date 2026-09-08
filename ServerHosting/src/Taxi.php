@@ -39,10 +39,15 @@ final class Taxi
             return ['lat' => $centerLat, 'lng' => $centerLng];
         }
 
-        // 1. Полноценный серверный геокодинг: DaData -> OpenCage -> Яндекс
+        // 1. Геокодинг по городу: DaData -> OpenCage -> Яндекс
         try {
             $db = Db::pdo();
             $results = GeocodingService::search($db, $q);
+            if (empty($results)) {
+                // 1b. Адрес за пределами города/зоны — повторяем без рамки города,
+                // иначе координаты назначения подменялись центром Тюмени.
+                $results = GeocodingService::searchWide($db, $q);
+            }
             if (!empty($results[0]['latitude']) && !empty($results[0]['longitude'])) {
                 return [
                     'lat' => (float) $results[0]['latitude'],

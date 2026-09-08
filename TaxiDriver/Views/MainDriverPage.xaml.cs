@@ -1278,7 +1278,10 @@ public partial class MainDriverPage : ContentPage
                 _activeOrder.DestinationLongitude);
             if (destination != null) navPoints.Add(destination);
 
-            ok = navPoints.Count >= 2
+            // Финиш обязателен: без него составной маршрут привёл бы к остановке,
+            // а не к адресу назначения (заметно на дальних адресах вне зоны).
+            var hasDestination = destination != null;
+            ok = hasDestination && navPoints.Count >= 2
                 ? NavigatorOverlay.OpenMultiPointRoute(navPoints)
                 : NavigatorOverlay.SearchInNavigator(_activeOrder.DestinationAddress ?? string.Empty);
         }
@@ -1344,24 +1347,26 @@ public partial class MainDriverPage : ContentPage
         }
         NavOpenBtn.Text = "Открыть карту Навигатора";
 
-        // Проверяем разрешение «Поверх других приложений»
+        // Без системного разрешения кнопки поверх ЧУЖОГО приложения показать
+        // невозможно — это ограничение Android, а не приложения.
         if (!NavigatorOverlay.HasOverlayPermission())
         {
-            NavHintLabel.Text = "Включите «Поверх других приложений», чтобы кнопки были на карте.";
+            NavHintLabel.Text = "Нужно разрешение «Поверх других приложений» — нажмите кнопку ниже.";
+            NavOpenBtn.Text = "Разрешить кнопки поверх карты";
             var go = await DisplayAlert("Кнопки поверх карты",
-                "Чтобы кнопки заказа отображались поверх Яндекс Навигатора, необходимо включить системное разрешение «Поверх других приложений».\n\nСейчас откроются настройки телефона — включите переключатель и вернитесь в приложение.",
+                "Android разрешает рисовать кнопки поверх Яндекс Навигатора только с разрешением "
+                + "«Поверх других приложений».\n\nСейчас откроются настройки телефона: включите переключатель "
+                + "для «Такси Тюмень — Водитель» и вернитесь назад. Навигатор запустится сразу после этого.",
                 "Открыть настройки", "Позже");
-            if (go)
-            {
-                NavigatorOverlay.RequestOverlayPermission();
-                return; // Не запускаем Навигатор поверх экрана настроек
-            }
-        }
-        else
-        {
-            NavHintLabel.Text = "Кнопки заказа показаны поверх карты Навигатора.";
+            if (go) NavigatorOverlay.RequestOverlayPermission();
+            return;   // Навигатор не запускаем: иначе кнопок не будет видно
         }
 
+        NavHintLabel.Text = "Кнопки заказа показаны поверх карты Навигатора.";
+        NavOpenBtn.Text = "Открыть карту Навигатора";
+
+        // Сначала поднимаем окно-оверлей (приложение ещё на экране — Android
+        // разрешает старт сервиса), только потом отдаём экран Навигатору.
         UpdateOverlayState();
         RouteInNavigator(force);
     }

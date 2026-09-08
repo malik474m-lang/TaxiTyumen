@@ -103,6 +103,80 @@ final class GeocodingService
         return array_slice($results, 0, 7);
     }
 
+    /**
+     * Поиск БЕЗ ограничения рамкой города: адреса в области, пригороде и
+     * соседних населённых пунктах (заказ «дальше зоны») иначе не находятся,
+     * и координаты ошибочно подменялись центром города.
+     */
+    public static function searchWide(\PDO $db, string $query): array
+    {
+        $query = trim($query);
+        if (mb_strlen($query) < 2) return [];
+        $results = [];
+
+        if (api_key('dadata') !== '') {
+            $body = json_encode(['query' => $query, 'count' => 5], JSON_UNESCAPED_UNICODE);
+            [$code, $raw, $ms] = self::request(self::DADATA_SUGGEST, 'POST', $body, [
+                'Authorization: Token ' . api_key('dadata'),
+                'Content-Type: application/json',
+                'Accept: application/json',
+            ]);
+            $json = json_decode($raw, true);
+            foreach ($json['suggestions'] ?? [] as $s) {
+                $lat = (float) ($s['data']['geo_lat'] ?? 0);
+                $lng = (float) ($s['data']['geo_lon'] ?? 0);
+                if (!$lat || !$lng) continue;
+                $results[] = [
+                    'displayName' => $s['value'] ?? '',
+                    'fullAddress' => $s['unrestricted_value'] ?? $s['value'] ?? '',
+                    'latitude' => $lat,
+                    'longitude' => $lng,
+                    'source' => 'dadata-wide',
+                ];
+            }
+            self::log($db, 'dadata', 'search-wide', $query,
+                $results ? 'success' : 'failed', $code, $raw, $ms);
+        }
+
+        if (!$results && api_key('opencage') !== '') {
+            $url = self::OPENCAGE_GEOCODE . '?' . http_build_query([
+                'key' => api_key('opencage'),
+                'q' => $query,
+                'countrycode' => 'ru',
+                'language' => 'ru',
+                'limit' => 5,
+                'no_annotations' => 1,
+            ]);
+            [$code, $raw, $ms] = self::request($url, 'GET', null, [
+                'User-Agent: TaxiService/1.0',
+                'Accept: application/json',
+            ]);
+            $results = self::mergeUnique($results, self::parseOpenCage($raw));
+            self::log($db, 'opencage', 'search-wide', $query,
+                $results ? 'success' : 'failed', $code, $raw, $ms);
+        }
+
+        if (!$results && api_key('yandex_maps') !== '') {
+            // rspn=0: без обрезания результатов рамкой города
+            $url = self::YANDEX_GEOCODER . '?' . http_build_query([
+                'apikey' => api_key('yandex_maps'),
+                'geocode' => $query,
+                'format' => 'json',
+                'lang' => 'ru_RU',
+                'results' => 5,
+            ]);
+            [$code, $raw, $ms] = self::request($url, 'GET', null, [
+                'User-Agent: TaxiService/1.0',
+                'Accept: application/json',
+            ]);
+            $results = self::mergeUnique($results, self::parseYandex($raw));
+            self::log($db, 'yandex-geocoder', 'search-wide', $query,
+                $results ? 'success' : 'failed', $code, $raw, $ms);
+        }
+
+        return $results;
+    }
+
     public static function reverse(\PDO $db, float $lat, float $lng): array
     {
         // DaData geolocate — сначала

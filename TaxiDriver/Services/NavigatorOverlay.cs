@@ -86,10 +86,22 @@ public static class NavigatorOverlay
     }
 
     /// <summary>Выдано ли разрешение «Поверх других приложений».</summary>
-    public static bool HasOverlayPermission() => true;
+    public static bool HasOverlayPermission()
+    {
+#if ANDROID
+        return Platforms.Android.YandexNavigatorLauncher.CanDrawOverlays();
+#else
+        return false;
+#endif
+    }
 
     /// <summary>Открыть системный экран выдачи разрешения на оверлей.</summary>
-    public static void RequestOverlayPermission() { }
+    public static void RequestOverlayPermission()
+    {
+#if ANDROID
+        Platforms.Android.YandexNavigatorLauncher.RequestOverlayPermission();
+#endif
+    }
 
     /// <summary>Построить маршрут в Яндекс Навигаторе. false — приложение не установлено.</summary>
     public static bool OpenNavigator(double lat, double lng)
@@ -124,13 +136,13 @@ public static class NavigatorOverlay
 #endif
     }
 
-    /// <summary>Поднять сервисные кнопки поверх только что открытого Навигатора.</summary>
+    /// <summary>Обновить окно-оверлей после запуска Навигатора.</summary>
     public static void BringControlsToFront()
     {
-#if ANDROID
-        Platforms.Android.NavigatorControlsActivity.BringToFront();
-#endif
+        if (_lastState != null) Show(_lastState);
     }
+
+    private static OverlayState? _lastState;
 
     /// <summary>Ссылка на Яндекс Навигатор в Google Play (если не установлен).</summary>
     public static void OpenNavigatorInStore()
@@ -144,9 +156,10 @@ public static class NavigatorOverlay
     public static void Show(OverlayState state)
     {
 #if ANDROID
-        // Прозрачное Android Activity запускается после Навигатора и гарантированно
-        // остаётся верхним окном; SYSTEM_ALERT_WINDOW/особые разрешения не нужны.
-        Platforms.Android.NavigatorControlsActivity.Show(state);
+        // Кнопки поверх ЧУЖОГО приложения (Яндекс Навигатора) может рисовать только
+        // системное окно-оверлей. Его показывает foreground-сервис.
+        _lastState = state;
+        Platforms.Android.OrderOverlayService.Show(state);
         IsActive = true;
 #else
         _ = state;
@@ -157,11 +170,7 @@ public static class NavigatorOverlay
     public static void Update(OverlayState state)
     {
         if (!IsActive) return;
-#if ANDROID
-        Platforms.Android.NavigatorControlsActivity.Update(state);
-#else
-        _ = state;
-#endif
+        Show(state);
     }
 
     /// <summary>Убрать панель с экрана.</summary>
@@ -169,7 +178,7 @@ public static class NavigatorOverlay
     {
         if (!IsActive) return;
 #if ANDROID
-        Platforms.Android.NavigatorControlsActivity.Hide();
+        Platforms.Android.OrderOverlayService.Hide();
 #endif
         IsActive = false;
     }

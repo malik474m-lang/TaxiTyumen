@@ -20,6 +20,12 @@
 	<!-- Заготовка под фоновый GPS-трекинг (foreground service из дорожной карты) -->
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+	<!-- Сервис панели кнопок поверх Навигатора (геолокация ему не нужна) -->
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+	<!-- ЕДИНСТВЕННЫЙ способ рисовать кнопки поверх чужого приложения (Навигатора).
+	     Обычное Activity нашего приложения поверх другого приложения показать нельзя. -->
+	<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
 	<!-- Геолокация водителя (приложение запрашивает в рантайме при выходе «на линию») -->
 	<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
