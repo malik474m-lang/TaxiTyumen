@@ -342,6 +342,13 @@ function fitMapSoon() {
   });
 }
 
+// Высоту контейнера выставляем явно в пикселях, а не надеемся на CSS-каскад:
+// так разворот гарантированно работает вне зависимости от приоритетов стилей.
+function applyMapHeight(px) {
+  var d = document.getElementById('map');
+  if (d) d.style.height = px;
+}
+
 // Развернуть карту на весь экран для удобной расстановки точек зоны.
 function toggleMapFullscreen(force) {
   var wrap = document.getElementById('mapWrap');
@@ -352,6 +359,7 @@ function toggleMapFullscreen(force) {
   document.body.classList.toggle('map-lock', on);
   hint.style.display = on ? 'flex' : 'none';
   btn.textContent = on ? '✕ Свернуть' : '⤢ Развернуть';
+  applyMapHeight(on ? window.innerHeight + 'px' : '340px');
   fitMapSoon();
   setTimeout(function () {
     if (map && points.length >= 2) {
@@ -360,6 +368,15 @@ function toggleMapFullscreen(force) {
     }
   }, 250);
 }
+
+// Поворот экрана/изменение окна в полноэкранном режиме — пересчитываем высоту.
+window.addEventListener('resize', function () {
+  var wrap = document.getElementById('mapWrap');
+  if (wrap && wrap.classList.contains('map-full')) {
+    applyMapHeight(window.innerHeight + 'px');
+    fitMapSoon();
+  }
+});
 
 document.addEventListener('keydown', function (e) {
   if (e.key === 'Escape') toggleMapFullscreen(false);
