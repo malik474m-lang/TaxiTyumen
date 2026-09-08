@@ -166,8 +166,8 @@
                                           Checked="OnOptionChanged" Unchecked="OnOptionChanged">
                                     <CheckBox.Content>
                                         <TextBlock>
-                                            <Run Text="{Binding Name}"/>
-                                            <Run Text="{Binding PriceText}" Foreground="#9ca3af"/>
+                                            <Run Text="{Binding Name, Mode=OneWay}"/>
+                                            <Run Text="{Binding PriceText, Mode=OneWay}" Foreground="#9ca3af"/>
                                         </TextBlock>
                                     </CheckBox.Content>
                                 </CheckBox>
