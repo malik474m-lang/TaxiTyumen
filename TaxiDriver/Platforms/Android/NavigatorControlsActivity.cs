@@ -62,7 +62,11 @@ public class NavigatorControlsActivity : Activity
                 try
                 {
                     var intent = new Intent(context, typeof(NavigatorControlsActivity));
-                    intent.AddFlags(ActivityFlags.ReorderToFront
+                    // NewTask обязателен для StartActivity из контекста приложения.
+                    // Дублей не будет: TaskAffinity общий, а сама activity SingleTop
+                    // и исключается из Recent Apps.
+                    intent.AddFlags(ActivityFlags.NewTask
+                        | ActivityFlags.ReorderToFront
                         | ActivityFlags.NoAnimation);
                     context.StartActivity(intent);
                 }
