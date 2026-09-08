@@ -108,49 +108,9 @@
 
                 <BoxView HeightRequest="1" Color="#444"/>
 
-                <!-- Опции -->
+                <!-- Опции: справочник и цены приходят с сервера (админка → «Опции заказа») -->
                 <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
-                    <HorizontalStackLayout Spacing="16">
-                        <HorizontalStackLayout Spacing="6">
-                            <CheckBox x:Name="ChildSeatCheck" Color="#FFD700" CheckedChanged="OnOptionChanged"/>
-                            <Label Text=" Кресло +50₽"
-                                   TextColor="White"
-                                   FontSize="13"
-                                   VerticalOptions="Center"/>
-                        </HorizontalStackLayout>
-
-                        <HorizontalStackLayout Spacing="6">
-                            <CheckBox x:Name="PetCheck" Color="#FFD700" CheckedChanged="OnOptionChanged"/>
-                            <Label Text=" Животное +70₽"
-                                   TextColor="White"
-                                   FontSize="13"
-                                   VerticalOptions="Center"/>
-                        </HorizontalStackLayout>
-
-                        <HorizontalStackLayout Spacing="6">
-                            <CheckBox x:Name="LuggageCheck" Color="#FFD700" CheckedChanged="OnOptionChanged"/>
-                            <Label Text=" Багаж +30₽"
-                                   TextColor="White"
-                                   FontSize="13"
-                                   VerticalOptions="Center"/>
-                        </HorizontalStackLayout>
-
-                        <HorizontalStackLayout Spacing="6">
-                            <CheckBox x:Name="NonSmokingCheck" Color="#FFD700" CheckedChanged="OnOptionChanged"/>
-                            <Label Text=" Некурящий"
-                                   TextColor="White"
-                                   FontSize="13"
-                                   VerticalOptions="Center"/>
-                        </HorizontalStackLayout>
-
-                        <HorizontalStackLayout Spacing="6">
-                            <CheckBox x:Name="AcCheck" Color="#FFD700"/>
-                            <Label Text=" Кондиционер"
-                                   TextColor="White"
-                                   FontSize="13"
-                                   VerticalOptions="Center"/>
-                        </HorizontalStackLayout>
-                    </HorizontalStackLayout>
+                    <HorizontalStackLayout x:Name="OptionsContainer" Spacing="16"/>
                 </ScrollView>
 
                 <HorizontalStackLayout Spacing="12">

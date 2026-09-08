@@ -120,6 +120,31 @@ public class PriceEstimate
     public string TariffName { get; set; } = string.Empty;
 }
 
+/// Опция заказа из серверного справочника (админка → «Опции заказа»).
+/// Список и цены приходят с сервера — не зашиты в интерфейсе.
+public class OrderOptionInfo : System.ComponentModel.INotifyPropertyChanged
+{
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public decimal Price { get; set; }
+
+    private bool _isSelected;
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value) return;
+            _isSelected = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsSelected)));
+        }
+    }
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    /// Подпись цены у галочки: (+50 ₽) либо (бесплатно)
+    public string PriceText => Price > 0 ? $"(+{Price:F0} ₽)" : "(бесплатно)";
+}
+
 public class OnlineDriver
 {
     public Guid Id { get; set; }

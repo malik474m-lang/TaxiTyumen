@@ -85,6 +85,16 @@ public class ApiService
         return await resp.Content.ReadFromJsonAsync<List<PriceEstimate>>(_json) ?? new();
     }
 
+    /// Справочник опций заказа с актуальными ценами (GET /api/options).
+    public async Task<List<OrderOptionInfo>> GetOrderOptionsAsync()
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<List<OrderOptionInfo>>("options", _json) ?? new();
+        }
+        catch { return new(); }
+    }
+
     public async Task<OrderResponse?> CreateOrderAsync(CreateOrderRequest request)
     {
         var resp = await _http.PostAsJsonAsync("orders", request);

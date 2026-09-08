@@ -201,6 +201,7 @@ public partial class MainWindow : Window
 
     private async void OnWindowLoaded(object sender, RoutedEventArgs e)
     {
+        _ = LoadOrderOptionsAsync();
         await RefreshAsync();
     }
 
@@ -484,15 +485,32 @@ public partial class MainWindow : Window
         _ = UpdatePriceAsync();
     }
 
-    /// Галочки опций заказа (значения синхронизированы с Options::LIST на сервере).
-    private System.Windows.Controls.CheckBox[] OptionCheckBoxes() => new[]
-    {
-        OptChildSeat, OptPet, OptMeetingSign, OptExtraLuggage, OptNonSmoking
-    };
+    /// Опции заказа приходят с сервера: цены редактируются в админке
+    /// («Опции заказа») и подтягиваются при старте пульта. Fallback — дефолт,
+    /// чтобы пульт работал и при недоступном сервере.
+    private List<OrderOptionInfo> _optionItems = new();
 
-    private List<string> SelectedOptionCodes() => OptionCheckBoxes()
-        .Where(c => c.IsChecked == true)
-        .Select(c => (string)c.Tag)
+    private async Task LoadOrderOptionsAsync()
+    {
+        var items = await _api.GetOrderOptionsAsync();
+        if (items.Count == 0)
+        {
+            items = new List<OrderOptionInfo>
+            {
+                new() { Code = "child_seat",    Name = "Детское кресло",      Price = 50 },
+                new() { Code = "pet",           Name = "Перевозка животного", Price = 70 },
+                new() { Code = "meeting_sign",  Name = "Встреча с табличкой", Price = 100 },
+                new() { Code = "extra_luggage", Name = "Крупный багаж",       Price = 30 },
+                new() { Code = "non_smoking",   Name = "Некурящий салон",     Price = 0 },
+            };
+        }
+        _optionItems = items;
+        OptionsControl.ItemsSource = _optionItems;
+    }
+
+    private List<string> SelectedOptionCodes() => _optionItems
+        .Where(o => o.IsSelected)
+        .Select(o => o.Code)
         .ToList();
 
     private void OnOptionChanged(object sender, RoutedEventArgs e)
@@ -1176,7 +1194,7 @@ public partial class MainWindow : Window
         _destLng = 0;
         _pickupConfirmedText = "";
         _destConfirmedText = "";
-        foreach (var box in OptionCheckBoxes()) box.IsChecked = false;
+        foreach (var o in _optionItems) o.IsSelected = false;
         EntranceBox.Text = "";
         DestEntranceBox.Text = "";
         ClientHintText.Text = "";

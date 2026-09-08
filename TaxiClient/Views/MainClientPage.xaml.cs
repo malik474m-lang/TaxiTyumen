@@ -56,6 +56,7 @@ public partial class MainClientPage : ContentPage
 
         SafeLoadMap();
         BuildTariffButtons();
+        _ = LoadOrderOptionsAsync();
 
         PickupEntry.Text = "г. Тюмень, ул. Республики, 52";
     }
@@ -649,15 +650,54 @@ function clearRoute() {
         catch { }
     }
 
-    /// Выбранные опции заказа (коды синхронизированы с Options::LIST на сервере).
-    private List<string> SelectedOptionCodes()
+    /// Опции заказа: чекбоксы строятся из серверного справочника
+    /// (цены редактируются в админке «Опции заказа»). Fallback — дефолт.
+    private readonly Dictionary<string, CheckBox> _optionChecks = new();
+
+    private List<string> SelectedOptionCodes() => _optionChecks
+        .Where(kv => kv.Value.IsChecked)
+        .Select(kv => kv.Key)
+        .ToList();
+
+    private async Task LoadOrderOptionsAsync()
     {
-        var codes = new List<string>();
-        if (ChildSeatCheck.IsChecked) codes.Add("child_seat");
-        if (PetCheck.IsChecked) codes.Add("pet");
-        if (LuggageCheck.IsChecked) codes.Add("extra_luggage");
-        if (NonSmokingCheck.IsChecked) codes.Add("non_smoking");
-        return codes;
+        try
+        {
+            var items = await _api.GetOrderOptionsAsync();
+            if (items.Count == 0)
+            {
+                items = new List<OrderOptionInfo>
+                {
+                    new() { Code = "child_seat",    Name = "Кресло",    Price = 50 },
+                    new() { Code = "pet",           Name = "Животное",  Price = 70 },
+                    new() { Code = "extra_luggage", Name = "Багаж",     Price = 30 },
+                    new() { Code = "non_smoking",   Name = "Некурящий", Price = 0 },
+                };
+            }
+            MainThread.BeginInvokeOnMainThread(() => BuildOptionChecks(items));
+        }
+        catch { }
+    }
+
+    private void BuildOptionChecks(List<OrderOptionInfo> items)
+    {
+        OptionsContainer.Children.Clear();
+        _optionChecks.Clear();
+        foreach (var opt in items)
+        {
+            var check = new CheckBox { Color = Microsoft.Maui.Graphics.Color.FromArgb("#FFD700") };
+            check.CheckedChanged += OnOptionChanged;
+            _optionChecks[opt.Code] = check;
+            var label = new Label
+            {
+                Text = opt.Price > 0 ? $" {opt.Name} +{opt.Price:F0}₽" : $" {opt.Name}",
+                TextColor = Microsoft.Maui.Graphics.Colors.White,
+                FontSize = 13,
+                VerticalOptions = LayoutOptions.Center
+            };
+            OptionsContainer.Children.Add(
+                new HorizontalStackLayout { Spacing = 6, Children = { check, label } });
+        }
     }
 
     private void OnOptionChanged(object? sender, CheckedChangedEventArgs e)
@@ -769,12 +809,6 @@ function clearRoute() {
             }
 
             var comment = CommentEntry.Text ?? "";
-
-            if (ChildSeatCheck.IsChecked)
-                comment += " [Детское кресло]";
-
-            if (AcCheck.IsChecked)
-                comment += " [Кондиционер]";
 
             foreach (var stop in _stopEntries)
             {

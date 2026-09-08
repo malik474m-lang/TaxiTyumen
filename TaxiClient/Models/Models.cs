@@ -105,6 +105,14 @@ public class PriceEstimate
     public string TariffName { get; set; } = string.Empty;
 }
 
+/// Опция заказа из серверного справочника (админка → «Опции заказа»).
+public class OrderOptionInfo
+{
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public decimal Price { get; set; }
+}
+
 public class CancelRequest
 {
     public string Reason { get; set; } = string.Empty;

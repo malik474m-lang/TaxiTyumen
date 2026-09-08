@@ -120,6 +120,18 @@ public class ApiService
                ?? new List<PriceEstimate>();
     }
 
+    // ===== ОПЦИИ ЗАКАЗА =====
+    /// Справочник опций с актуальными ценами из админки (GET /api/options).
+    public async Task<List<OrderOptionInfo>> GetOrderOptionsAsync()
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<List<OrderOptionInfo>>("options", _jsonOptions)
+                   ?? new List<OrderOptionInfo>();
+        }
+        catch { return new List<OrderOptionInfo>(); }
+    }
+
     // ===== ВОДИТЕЛИ =====
     /// Поиск клиента по телефону для автоподстановки имени в форме заказа.
     public async Task<ClientLookupResult?> LookupClientAsync(string phone)

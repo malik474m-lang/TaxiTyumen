@@ -158,23 +158,22 @@
                               Checked="OnRoundTripChanged" Unchecked="OnRoundTripChanged"/>
 
                     <TextBlock Text="Опции:" Foreground="LightGray" Margin="0,0,0,3"/>
-                    <StackPanel Margin="0,0,0,10">
-                        <CheckBox x:Name="OptChildSeat" Content="Детское кресло (+50 ₽)" Tag="child_seat"
-                                  Foreground="LightGray" Margin="0,0,0,4"
-                                  Checked="OnOptionChanged" Unchecked="OnOptionChanged"/>
-                        <CheckBox x:Name="OptPet" Content="Перевозка животного (+70 ₽)" Tag="pet"
-                                  Foreground="LightGray" Margin="0,0,0,4"
-                                  Checked="OnOptionChanged" Unchecked="OnOptionChanged"/>
-                        <CheckBox x:Name="OptMeetingSign" Content="Встреча с табличкой (+100 ₽)" Tag="meeting_sign"
-                                  Foreground="LightGray" Margin="0,0,0,4"
-                                  Checked="OnOptionChanged" Unchecked="OnOptionChanged"/>
-                        <CheckBox x:Name="OptExtraLuggage" Content="Крупный багаж (+30 ₽)" Tag="extra_luggage"
-                                  Foreground="LightGray" Margin="0,0,0,4"
-                                  Checked="OnOptionChanged" Unchecked="OnOptionChanged"/>
-                        <CheckBox x:Name="OptNonSmoking" Content="Некурящий салон" Tag="non_smoking"
-                                  Foreground="LightGray"
-                                  Checked="OnOptionChanged" Unchecked="OnOptionChanged"/>
-                    </StackPanel>
+                    <ItemsControl x:Name="OptionsControl" Margin="0,0,0,10">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                          Foreground="LightGray" Margin="0,0,0,4"
+                                          Checked="OnOptionChanged" Unchecked="OnOptionChanged">
+                                    <CheckBox.Content>
+                                        <TextBlock>
+                                            <Run Text="{Binding Name}"/>
+                                            <Run Text="{Binding PriceText}" Foreground="#9ca3af"/>
+                                        </TextBlock>
+                                    </CheckBox.Content>
+                                </CheckBox>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
 
                     <CheckBox x:Name="PreorderCheck" Content="Предварительный заказ"
                               Foreground="LightGray" Margin="0,0,0,6"
