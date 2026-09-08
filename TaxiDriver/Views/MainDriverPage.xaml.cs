@@ -742,6 +742,17 @@ public partial class MainDriverPage : ContentPage
     {
         try
         {
+            // Режим «Навигатор»: встроенная карта не нужна — маршрут ведёт
+            // Яндекс Навигатор, а её место занимает компактная плашка.
+            if (NavigatorOverlay.ModeEnabled)
+            {
+                MapContainer.IsVisible = false;
+                NavPanel.IsVisible = true;
+                UpdateOverlayState();
+                RouteInNavigator();
+                return;
+            }
+            NavPanel.IsVisible = false;
             MapContainer.IsVisible = true;
 
             var apiKey = await MapHtml.GetApiKeyAsync();
@@ -984,8 +995,9 @@ public partial class MainDriverPage : ContentPage
         MapStatusBtn.Text = label;
         MapStatusBtn.BackgroundColor = Color.FromArgb(color);
         if (_mapFullscreen) SyncFullscreenButtons();
-        // И на плавающей панели поверх Яндекс Навигатора
+        // Панель поверх Навигатора и, при смене цели, сам маршрут
         UpdateOverlayState();
+        RouteInNavigator();
     }
 
     /// Останавливает платное ожидание, не меняя этап заказа.
@@ -1193,10 +1205,11 @@ public partial class MainDriverPage : ContentPage
         HideRouteMap();
         _location.ActiveOrderId = null;
         _orderStatusStep = 0;
-        // Плавающая панель поверх Навигатора больше не нужна
-        NavigatorOverlay.ModeEnabled = false;
+        // Панель поверх Навигатора больше не нужна (режим остаётся включённым
+        // и сработает на следующем заказе автоматически)
         NavigatorOverlay.Hide();
-        SyncNavOverlayButton();
+        _lastNavTargetKey = "";
+        NavPanel.IsVisible = false;
 
         await LoadBalanceAsync();
         await LoadBalanceHistoryAsync();
@@ -1265,6 +1278,9 @@ public partial class MainDriverPage : ContentPage
         // мешать открытию главного экрана после входа.
         try
         {
+            // Режим запомнен с прошлого запуска
+            if (NavigatorOverlay.IsSupported && Preferences.Get(NavModePref, false))
+                NavigatorOverlay.ModeEnabled = true;
             SyncNavOverlayButton();
             UpdateOverlayState();
         }
@@ -1290,27 +1306,56 @@ public partial class MainDriverPage : ContentPage
         NavigatorOverlay.Toast(title + ": " + message);
     }
 
-    /// Точка, к которой строим маршрут: подача, а после посадки — назначение.
-    private (double lat, double lng) CurrentNavTarget()
+    /// Точка и адрес, к которым строим маршрут. Критерий тот же, что у карты
+    /// в приложении: до посадки — подача, в поездке — назначение. Раньше здесь
+    /// использовался счётчик шагов, из-за чего в Навигатор попадал чужой адрес.
+    private (double lat, double lng, string address) CurrentNavTarget()
     {
-        if (_activeOrder == null) return (_location.CurrentLat, _location.CurrentLng);
-        if (_orderStatusStep >= 2 &&
-            _activeOrder.DestinationLatitude.HasValue &&
-            _activeOrder.DestinationLongitude.HasValue)
+        if (_activeOrder == null)
+            return (_location.CurrentLat, _location.CurrentLng, "");
+
+        var inProgress = NormStatus(_activeOrder.Status) == "inprogress";
+        if (inProgress
+            && _activeOrder.DestinationLatitude.HasValue
+            && _activeOrder.DestinationLongitude.HasValue)
         {
-            return (_activeOrder.DestinationLatitude.Value, _activeOrder.DestinationLongitude.Value);
+            return (_activeOrder.DestinationLatitude.Value,
+                    _activeOrder.DestinationLongitude.Value,
+                    _activeOrder.DestinationAddress ?? "");
         }
-        return (_activeOrder.PickupLatitude, _activeOrder.PickupLongitude);
+        if (inProgress && !string.IsNullOrWhiteSpace(_activeOrder.DestinationAddress))
+        {
+            // Координат назначения нет — поведём по адресу текстом
+            return (0, 0, _activeOrder.DestinationAddress!);
+        }
+        return (_activeOrder.PickupLatitude, _activeOrder.PickupLongitude,
+                _activeOrder.PickupAddress ?? "");
+    }
+
+    /// Куда сейчас ведёт Навигатор — чтобы не перестраивать маршрут на каждый тик.
+    private string _lastNavTargetKey = "";
+
+    /// Построить маршрут в Навигаторе (при смене цели — автоматически).
+    private void RouteInNavigator(bool force = false)
+    {
+        if (!NavigatorOverlay.ModeEnabled || _activeOrder == null) return;
+        var (lat, lng, address) = CurrentNavTarget();
+        var key = $"{lat:F5},{lng:F5},{address}";
+        if (!force && key == _lastNavTargetKey) return;
+        _lastNavTargetKey = key;
+
+        var ok = (lat != 0 && lng != 0)
+            ? NavigatorOverlay.OpenNavigator(lat, lng)
+            : NavigatorOverlay.SearchInNavigator(address);
+        if (!ok) NavigatorOverlay.Toast("Не удалось открыть Яндекс Навигатор");
     }
 
     private async void OnNavOverlayClicked(object? sender, EventArgs e)
     {
-        // Повторное нажатие выключает режим и убирает панель
+        // Повторное нажатие возвращает встроенную карту
         if (NavigatorOverlay.ModeEnabled)
         {
-            NavigatorOverlay.ModeEnabled = false;
-            NavigatorOverlay.Hide();
-            SyncNavOverlayButton();
+            DisableNavigatorMode();
             return;
         }
 
@@ -1350,13 +1395,34 @@ public partial class MainDriverPage : ContentPage
         }
 
         NavigatorOverlay.ModeEnabled = true;
+        Preferences.Set(NavModePref, true);
         SyncNavOverlayButton();
-        UpdateOverlayState();
 
-        var (lat, lng) = CurrentNavTarget();
-        if (!NavigatorOverlay.OpenNavigator(lat, lng))
-            await SafeAlertAsync("Навигатор", "Не удалось открыть Яндекс Навигатор.");
+        // Встроенная карта уступает место Навигатору
+        MapContainer.IsVisible = false;
+        NavPanel.IsVisible = _activeOrder != null;
+
+        UpdateOverlayState();
+        RouteInNavigator(force: true);
+        await Task.CompletedTask;
     }
+
+    /// Режим запоминается между запусками: водитель настраивает его один раз.
+    private const string NavModePref = "nav_overlay_mode";
+
+    private void DisableNavigatorMode()
+    {
+        NavigatorOverlay.ModeEnabled = false;
+        Preferences.Set(NavModePref, false);
+        NavigatorOverlay.Hide();
+        _lastNavTargetKey = "";
+        NavPanel.IsVisible = false;
+        SyncNavOverlayButton();
+        // Возвращаем встроенную карту, если заказ ещё в работе
+        if (_activeOrder != null) _ = ShowRouteMapAsync(_activeOrder);
+    }
+
+    private void OnOpenNavigatorAgain(object? sender, EventArgs e) => RouteInNavigator(force: true);
 
     private void SyncNavOverlayButton()
     {
@@ -1395,9 +1461,16 @@ public partial class MainDriverPage : ContentPage
             color = "#4CAF50";
         }
 
-        var target = _orderStatusStep >= 2
-            ? (_activeOrder.DestinationAddress ?? _activeOrder.PickupAddress)
-            : _activeOrder.PickupAddress;
+        var (_, _, targetAddress) = CurrentNavTarget();
+        var target = string.IsNullOrWhiteSpace(targetAddress)
+            ? _activeOrder.PickupAddress
+            : targetAddress;
+        try
+        {
+            NavTargetLabel.Text = (NormStatus(_activeOrder.Status) == "inprogress"
+                ? "Назначение: " : "Подача: ") + target;
+        }
+        catch { }
 
         var price = _activeOrder.EstimatedPrice.ToString("F0");
         var subtitle = $"№{_activeOrder.OrderNumber} · {price} ₽";

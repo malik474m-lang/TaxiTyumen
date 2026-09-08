@@ -37,7 +37,7 @@ public static class NavigatorOverlay
     /// Панель сейчас показана поверх других приложений
     public static bool IsActive { get; private set; }
 
-    /// Фоновый сервис запущен (водитель «на линии») — без него панели нет
+    /// Трекинг «на линии» запущен (для диагностики в интерфейсе)
     public static bool IsTrackingRunning =>
 #if ANDROID
         Platforms.Android.DriverTrackingService.IsRunning;
@@ -114,6 +114,17 @@ public static class NavigatorOverlay
 #endif
     }
 
+    /// <summary>Маршрут по текстовому адресу (когда координат в заказе нет).</summary>
+    public static bool SearchInNavigator(string address)
+    {
+#if ANDROID
+        return Platforms.Android.YandexNavigatorLauncher.SearchAddress(address);
+#else
+        _ = address;
+        return false;
+#endif
+    }
+
     /// <summary>Ссылка на Яндекс Навигатор в Google Play (если не установлен).</summary>
     public static void OpenNavigatorInStore()
     {
@@ -126,10 +137,8 @@ public static class NavigatorOverlay
     public static void Show(OverlayState state)
     {
 #if ANDROID
-        // Панель живёт внутри уже запущенного фонового сервиса («на линии»).
-        // Если его нет — молча пропускаем: поднимать сервис ради панели нельзя.
-        if (!Platforms.Android.DriverTrackingService.IsRunning) return;
-        Platforms.Android.DriverTrackingService.ShowOverlay(state);
+        // Отдельный сервис панели: запускается всегда, тип location ему не нужен
+        Platforms.Android.OrderOverlayService.Show(state);
         IsActive = true;
 #else
         _ = state;
@@ -140,19 +149,15 @@ public static class NavigatorOverlay
     public static void Update(OverlayState state)
     {
         if (!IsActive) return;
-#if ANDROID
-        Platforms.Android.DriverTrackingService.ShowOverlay(state);
-#else
-        _ = state;
-#endif
+        Show(state);
     }
 
     /// <summary>Убрать панель с экрана.</summary>
     public static void Hide()
     {
-        if (!IsActive) return;   // нечего скрывать — не трогаем сервис
+        if (!IsActive) return;
 #if ANDROID
-        Platforms.Android.DriverTrackingService.HideOverlay();
+        Platforms.Android.OrderOverlayService.Hide();
 #endif
         IsActive = false;
     }

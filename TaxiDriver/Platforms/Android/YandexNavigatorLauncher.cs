@@ -81,6 +81,25 @@ public static class YandexNavigatorLauncher
         }
     }
 
+    /// <summary>Поиск адреса в Навигаторе, когда координаты неизвестны.</summary>
+    public static bool SearchAddress(string address)
+    {
+        if (!IsInstalled() || string.IsNullOrWhiteSpace(address)) return false;
+        try
+        {
+            var uri = "yandexnavi://map_search?text=" + global::Android.Net.Uri.Encode(address);
+            var intent = new Intent(Intent.ActionView, global::Android.Net.Uri.Parse(uri));
+            intent.SetPackage(NavigatorPackage);
+            intent.AddFlags(ActivityFlags.NewTask);
+            Context.StartActivity(intent);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>Открыть карточку Навигатора в Google Play.</summary>
     public static void OpenStore()
     {

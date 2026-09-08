@@ -20,6 +20,8 @@
 	<!-- Заготовка под фоновый GPS-трекинг (foreground service из дорожной карты) -->
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+	<!-- Сервис плавающей панели заказа (не требует геолокации) -->
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
 	<!-- Геолокация водителя (приложение запрашивает в рантайме при выходе «на линию») -->
 	<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
