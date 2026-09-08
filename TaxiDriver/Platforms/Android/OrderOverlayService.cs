@@ -253,16 +253,23 @@ public class OrderOverlayService : Service
         };
         row.AddView(app);
 
+        var flags = WindowManagerFlags.NotFocusable
+                  | WindowManagerFlags.LayoutNoLimits
+                  | WindowManagerFlags.WatchOutsideTouch;
+
         _overlayParams = new WindowManagerLayoutParams(
             ViewGroup.LayoutParams.MatchParent,
             ViewGroup.LayoutParams.WrapContent,
             WindowManagerTypes.ApplicationOverlay,
-            WindowManagerFlags.NotFocusable | WindowManagerFlags.NotTouchModal,
+            flags,
             Format.Translucent)
         {
             Gravity = GravityFlags.Bottom | GravityFlags.CenterHorizontal,
             Y = Dp(110),   // выше панели маршрута Навигатора
         };
+
+        // Тап в пустое место фона панели пропускаем вниз, в Навигатор
+        root.SetOnTouchListener(new PassThroughTouchListener());
 
         AttachDragHandler(handle, root);
 
@@ -339,6 +346,11 @@ public class OrderOverlayService : Service
         try { return AColor.ParseColor(value); }
         catch { return AColor.ParseColor(fallback); }
     }
+
+internal sealed class PassThroughTouchListener : Java.Lang.Object, AView.IOnTouchListener
+{
+    public bool OnTouch(AView? v, MotionEvent? e) => false; // не перехватываем — тап уйдёт нижним окнам
+}
 
     internal void RemoveOverlay()
     {

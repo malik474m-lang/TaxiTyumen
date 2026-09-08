@@ -87,7 +87,13 @@ public static class YandexNavigatorLauncher
         if (!IsInstalled() || string.IsNullOrWhiteSpace(address)) return false;
         try
         {
-            var uri = "yandexnavi://map_search?text=" + global::Android.Net.Uri.Encode(address);
+            // Если в адресе нет названия города — поисковый запрос Навигатора
+            // ищет в текущем видимом участке карты и сваливается куда угодно.
+            // Дописываем город и область (город берём из бренда приложения).
+            var query = address;
+            if (!address.Contains("Тюмень", StringComparison.OrdinalIgnoreCase))
+                query = address + ", Тюмень, Тюменская область";
+            var uri = "yandexnavi://map_search?text=" + global::Android.Net.Uri.Encode(query);
             var intent = new Intent(Intent.ActionView, global::Android.Net.Uri.Parse(uri));
             intent.SetPackage(NavigatorPackage);
             intent.AddFlags(ActivityFlags.NewTask);
