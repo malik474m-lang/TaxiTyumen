@@ -264,9 +264,15 @@ footer{margin-top:40px;font-size:11px;color:#52525b;text-align:center}
 
 function layout_footer(): void
 {
+    // В шапке $service/$utcOffset локальны — футер сам знаёт источник данных
+    global $serviceSettings, $db;
+    $service = $serviceSettings ?? ServiceSettings::get($db);
+    $utcOffset = (int) ($service['utc_offset'] ?? 5);
+    $serviceName = (string) ($service['service_name'] ?? 'Сервис такси');
+    $cityName = (string) ($service['city_name'] ?? '');
     ?>
 <div class="checker"></div>
-<footer><?= h($service['service_name']) ?> · <?= h($service['city_name']) ?> · UTC<?= $utcOffset >= 0 ? '+' : '' ?><?= $utcOffset ?> · PHP + MySQL</footer>
+<footer><?= h($serviceName) ?> · <?= h($cityName) ?> · UTC<?= $utcOffset >= 0 ? '+' : '' ?><?= $utcOffset ?> · PHP + MySQL</footer>
 </main>
 <script>
 // CSRF-токен добавляется ко всем POST-формам централизованно
