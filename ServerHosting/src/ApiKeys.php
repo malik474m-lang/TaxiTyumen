@@ -26,8 +26,11 @@ final class ApiKeys
         'opencage' => [
             'label' => 'OpenCage Data (резервный геокодер, OSM)',
             'const' => 'OPENCAGE_API_KEY',
-            'hint' => 'opencagedata.com — бесплатный триал 2500 запросов/сутки.',
+            'hint' => 'opencagedata.com — 2500 запросов/сутки на аккаунт. Можно указать несколько '
+                . 'ключей от разных аккаунтов (по одному в строке): при исчерпании квоты система '
+                . 'сама переключится на следующий, а в полночь UTC вернёт исчерпанные в работу.',
             'public' => false,
+            'multi' => true,
         ],
         'sms_ru' => [
             'label' => 'sms.ru (SMS-коды и рассылки)',
@@ -111,9 +114,20 @@ final class ApiKeys
         self::$cache = null;   // сбрасываем кеш процесса
     }
 
+    /** Сколько ключей указано в поле (мульти-ключевые сервисы). */
+    public static function count(string $value): int
+    {
+        return count(KeyPool::parse($value));
+    }
+
     /** Маскировка для показа в интерфейсе: MjA1…c4f2 */
     public static function mask(string $value): string
     {
+        $keys = KeyPool::parse($value);
+        if (count($keys) > 1) {
+            return implode(', ', array_map(static fn(string $k) => KeyPool::tail($k), $keys));
+        }
+        $value = $keys[0] ?? $value;
         $len = mb_strlen($value);
         if ($len === 0) return '';
         if ($len <= 8) return str_repeat('•', $len);

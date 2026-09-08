@@ -20,6 +20,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
+        if ($cmd === 'reset_pool') {
+            KeyPool::reset($db, (string) ($_POST['service'] ?? ''));
+            header('Location: api-keys.php?ok=' . urlencode('Блокировки ключей сняты — все ключи снова в работе'));
+            exit;
+        }
+
         if ($cmd === 'clear') {
             $name = (string) ($_POST['key_name'] ?? '');
             ApiKeys::set($db, $name, '', (string) $admin['id']);
@@ -96,13 +102,59 @@ layout_header('API-ключи', 'apikeys');
     <div class="mut" style="margin-top:6px;font-size:12px"><?= h($meta['hint']) ?></div>
     <?php if ($current !== ''): ?>
       <div class="mut" style="margin-top:8px;font-size:12px">
-        Текущее значение: <code><?= h(ApiKeys::mask($current)) ?></code>
+        <?= !empty($meta['multi']) ? 'Ключей в пуле: <b>' . ApiKeys::count($current) . '</b> · ' : 'Текущее значение: ' ?>
+        <code><?= h(ApiKeys::mask($current)) ?></code>
       </div>
     <?php endif; ?>
     <?php if (!empty($meta['public'])): ?>
       <div class="chip warn" style="margin-top:8px">публичный ключ — ограничьте домен в кабинете сервиса</div>
     <?php endif; ?>
 
+    <?php if (!empty($meta['multi'])):
+        $pool = KeyPool::status($db, $name, $current);
+        $freeCount = count(array_filter($pool, fn($k) => !$k['blocked'])); ?>
+      <?php if ($pool): ?>
+      <table style="margin-top:12px">
+        <thead><tr><th>#</th><th>Ключ</th><th>Статус</th><th>Успешных</th><th>Ошибок</th></tr></thead>
+        <tbody>
+        <?php foreach ($pool as $k): ?>
+          <tr>
+            <td><?= (int) $k['index'] ?></td>
+            <td><code><?= h($k['tail']) ?></code></td>
+            <td>
+              <?php if ($k['blocked']): ?>
+                <span class="chip warn"><?= $k['lastStatus'] === 'quota_exceeded' ? 'квота исчерпана' : ($k['lastStatus'] === 'invalid_key' ? 'отклонён' : 'пауза') ?></span>
+                <div class="mut" style="font-size:11px">до <?= fmt_date($k['blockedUntil']) ?></div>
+              <?php else: ?>
+                <span class="chip ok">в работе</span>
+              <?php endif; ?>
+            </td>
+            <td><?= (int) $k['requestsOk'] ?></td>
+            <td><?= (int) $k['requestsFailed'] ?></td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+      <div class="flex between" style="margin-top:8px">
+        <span class="mut" style="font-size:12px">Доступно сейчас: <b><?= $freeCount ?></b> из <?= count($pool) ?> · суммарный лимит ≈ <?= count($pool) * 2500 ?> запросов/сутки</span>
+        <form method="post" class="inline">
+          <input type="hidden" name="cmd" value="reset_pool">
+          <input type="hidden" name="service" value="<?= h($name) ?>">
+          <button class="btn ghost sm">Снять блокировки</button>
+        </form>
+      </div>
+      <?php endif; ?>
+
+      <form method="post" style="margin-top:12px">
+        <input type="hidden" name="cmd" value="save">
+        <input type="hidden" name="key_name" value="<?= h($name) ?>">
+        <textarea name="key_value" rows="4" autocomplete="off" spellcheck="false"
+                  placeholder="Один ключ в строке — можно несколько аккаунтов"
+                  style="width:100%;font-family:ui-monospace,monospace;font-size:12px"></textarea>
+        <div class="mut" style="font-size:11px;margin-top:4px">Сохранение заменяет весь список ключей.</div>
+        <button class="btn sm" style="margin-top:8px">Сохранить список</button>
+      </form>
+    <?php else: ?>
     <form method="post" class="flex" style="margin-top:12px;flex-wrap:nowrap;gap:8px">
       <input type="hidden" name="cmd" value="save">
       <input type="hidden" name="key_name" value="<?= h($name) ?>">
@@ -110,6 +162,7 @@ layout_header('API-ключи', 'apikeys');
              autocomplete="off" spellcheck="false" style="flex:1;font-family:ui-monospace,monospace">
       <button class="btn sm">Сохранить</button>
     </form>
+    <?php endif; ?>
     <?php if ($src === 'db'): ?>
       <form method="post" style="margin-top:8px" onsubmit="return confirm('Удалить ключ из базы? Останется значение из config.local.php, если оно задано.')">
         <input type="hidden" name="cmd" value="clear">

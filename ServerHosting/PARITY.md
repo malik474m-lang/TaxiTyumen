@@ -68,6 +68,8 @@ API Controllers/Hubs/Background Services, TaxiAdmin, TaxiClient, TaxiDriver, Tax
 - DaData и HTTP Геокодер Яндекс Карт перенесены на сервер (`geocoding.php`), ключи удалены из приложений.
 - Ключи внешних сервисов (Яндекс, DaData, OpenCage, sms.ru) редактируются в админке
   («API-ключи», `src/ApiKeys.php` + таблица `api_settings`); БД приоритетнее config.local.php.
+- Пул ключей OpenCage (`src/KeyPool.php`, таблица `api_key_pool_state`): несколько аккаунтов,
+  автопереключение при 402/429/401, разблокировка в полночь UTC, статус в админке.
 - OpenCage (opencagedata.com, OSM) подключён как независимый резервный геокодер:
   `OPENCAGE_API_KEY`, цепочка DaData -> OpenCage -> Яндекс с дедупликацией по координатам.
 

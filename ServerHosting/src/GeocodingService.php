@@ -59,8 +59,7 @@ final class GeocodingService
                 || str_contains($queryLower, mb_strtolower($region))
                 ? $query
                 : $query . ', ' . $city . ', ' . $region;
-            $url = self::OPENCAGE_GEOCODE . '?' . http_build_query([
-                'key' => api_key('opencage'),
+            $params = [
                 'q' => $searchQuery,
                 'countrycode' => 'ru',
                 'language' => 'ru',
@@ -69,14 +68,9 @@ final class GeocodingService
                 'proximity' => $svc['center_longitude'] . ',' . $svc['center_latitude'],
                 'bounds' => ($svc['center_longitude'] - 0.9) . ',' . ($svc['center_latitude'] - 0.6) . ','
                     . ($svc['center_longitude'] + 0.9) . ',' . ($svc['center_latitude'] + 0.6),
-            ]);
-            [$code, $raw, $ms] = self::request($url, 'GET', null, [
-                'User-Agent: TaxiService/1.0',
-                'Accept: application/json',
-            ]);
-            $results = self::mergeUnique($results, self::parseOpenCage($raw));
-            self::log($db, 'opencage', 'search', $query,
-                $code >= 200 && $code < 300 ? 'success' : 'failed', $code, $raw, $ms);
+            ];
+            $items = self::openCageRequest($db, $params, 'search', $query);
+            $results = self::mergeUnique($results, $items);
         }
 
         // Яндекс HTTP Геокодер — fallback и адреса, которых нет в DaData
@@ -133,22 +127,14 @@ final class GeocodingService
             }
         }
 
-        // OpenCage — резервный reverse (OSM)
+        // OpenCage — резервный reverse (OSM), пул ключей с автопереключением
         if (api_key('opencage') !== '') {
-            $url = self::OPENCAGE_GEOCODE . '?' . http_build_query([
-                'key' => api_key('opencage'),
+            $items = self::openCageRequest($db, [
                 'q' => $lat . ',' . $lng,
                 'language' => 'ru',
                 'limit' => 1,
                 'no_annotations' => 1,
-            ]);
-            [$code, $raw, $ms] = self::request($url, 'GET', null, [
-                'User-Agent: TaxiService/1.0',
-                'Accept: application/json',
-            ]);
-            $items = self::parseOpenCage($raw);
-            self::log($db, 'opencage', 'reverse', "$lat,$lng",
-                $items ? 'success' : 'failed', $code, $raw, $ms);
+            ], 'reverse', "$lat,$lng");
             if ($items) return $items[0];
         }
 
@@ -194,6 +180,55 @@ final class GeocodingService
                 ? 'Геокодинг РФ доступен'
                 : 'Добавьте ключ DaData, OpenCage или Яндекс в админке → «API-ключи»',
         ];
+    }
+
+    /**
+     * Запрос к OpenCage по пулу ключей: при исчерпании суточной квоты (402)
+     * или превышении частоты (429) ключ временно исключается и запрос
+     * автоматически повторяется следующим ключом аккаунта.
+     */
+    private static function openCageRequest(\PDO $db, array $params, string $action, string $summary): array
+    {
+        $keys = KeyPool::available($db, 'opencage', api_key('opencage'));
+        foreach ($keys as $key) {
+            $url = self::OPENCAGE_GEOCODE . '?' . http_build_query($params + ['key' => $key]);
+            [$code, $raw, $ms] = self::request($url, 'GET', null, [
+                'User-Agent: TaxiService/1.0',
+                'Accept: application/json',
+            ]);
+            $tail = KeyPool::tail($key);
+
+            // 402 — суточная квота исчерпана: OpenCage сбрасывает счётчик в полночь UTC
+            if ($code === 402) {
+                KeyPool::block($db, 'opencage', $key, KeyPool::secondsUntilUtcMidnight(), 'quota_exceeded');
+                self::log($db, 'opencage', $action, $summary . ' · ключ ' . $tail . ': квота исчерпана, переключение',
+                    'failed', $code, $raw, $ms);
+                continue;
+            }
+            // 429 — слишком часто: короткая пауза для этого ключа
+            if ($code === 429) {
+                KeyPool::block($db, 'opencage', $key, 120, 'rate_limited');
+                self::log($db, 'opencage', $action, $summary . ' · ключ ' . $tail . ': лимит частоты, переключение',
+                    'failed', $code, $raw, $ms);
+                continue;
+            }
+            // 401/403 — ключ неверен или заблокирован в кабинете: исключаем надолго
+            if ($code === 401 || $code === 403) {
+                KeyPool::block($db, 'opencage', $key, 3600, 'invalid_key');
+                self::log($db, 'opencage', $action, $summary . ' · ключ ' . $tail . ': отклонён сервисом',
+                    'failed', $code, $raw, $ms);
+                continue;
+            }
+
+            $items = ($code >= 200 && $code < 300) ? self::parseOpenCage($raw) : [];
+            if ($code >= 200 && $code < 300) {
+                KeyPool::success($db, 'opencage', $key);
+            }
+            self::log($db, 'opencage', $action, $summary . ' · ключ ' . $tail,
+                $code >= 200 && $code < 300 ? 'success' : 'failed', $code, $raw, $ms);
+            return $items;
+        }
+        return [];
     }
 
     private static function parseOpenCage(string $raw): array
