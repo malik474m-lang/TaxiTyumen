@@ -9,83 +9,6 @@
 
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
 
-        <!-- ПОЛНОЭКРАННАЯ КАРТА: оверлей поверх всего экрана -->
-        <Grid x:Name="FullscreenMapOverlay"
-              Grid.RowSpan="5"
-              IsVisible="False"
-              BackgroundColor="#1E1E2E"
-              ZIndex="99">
-            <WebView x:Name="FullscreenMap" BackgroundColor="#1E1E2E"/>
-
-            <Button Text="✕"
-                    FontSize="20"
-                    BackgroundColor="#CC252536"
-                    TextColor="White"
-                    CornerRadius="24"
-                    HeightRequest="48"
-                    WidthRequest="48"
-                    Margin="12"
-                    HorizontalOptions="End"
-                    VerticalOptions="Start"
-                    Clicked="OnToggleMapFullscreen"/>
-
-            <Label x:Name="FullscreenWaitingLabel"
-                   Text=""
-                   TextColor="White"
-                   BackgroundColor="#CC0EA5E9"
-                   FontAttributes="Bold"
-                   FontSize="15"
-                   Padding="12,7"
-                   Margin="12"
-                   HorizontalOptions="Start"
-                   VerticalOptions="Start"
-                   IsVisible="False"/>
-
-            <!-- Кнопки управления заказом поверх полноэкранной карты -->
-            <!-- SOS поверх полноэкранной карты — всегда доступен -->
-            <Button Text="SOS"
-                    BackgroundColor="#DC2626"
-                    TextColor="White"
-                    FontAttributes="Bold"
-                    FontSize="14"
-                    CornerRadius="24"
-                    HeightRequest="48"
-                    WidthRequest="72"
-                    Margin="12,12,72,0"
-                    HorizontalOptions="End"
-                    VerticalOptions="Start"
-                    Clicked="OnSosClicked"/>
-
-            <Grid VerticalOptions="End" Margin="12"
-                  ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-                <Button Grid.Column="0" x:Name="FsStatusBtn"
-                        Text="Я на месте"
-                        BackgroundColor="#FF9800"
-                        TextColor="White"
-                        FontAttributes="Bold"
-                        FontSize="16"
-                        CornerRadius="12"
-                        HeightRequest="54"
-                        Clicked="OnStatusButtonClick"/>
-                <Button Grid.Column="1" x:Name="FsWaitingBtn"
-                        Text="Простой"
-                        BackgroundColor="#0EA5E9"
-                        TextColor="White"
-                        CornerRadius="12"
-                        HeightRequest="54"
-                        WidthRequest="104"
-                        Clicked="OnToggleWaiting"/>
-                <Button Grid.Column="2"
-                        Text="Навиг."
-                        BackgroundColor="#2196F3"
-                        TextColor="White"
-                        CornerRadius="12"
-                        HeightRequest="54"
-                        WidthRequest="92"
-                        Clicked="OnYandexNavClicked"/>
-            </Grid>
-        </Grid>
-
         <!-- Шапка -->
         <Border x:Name="HeaderBorder" Grid.Row="0" BackgroundColor="#252536" Padding="15,12">
             <Grid ColumnDefinitions="*,Auto,Auto">
@@ -270,9 +193,9 @@
 
                         <BoxView HeightRequest="1" Color="#333"/>
 
-                        <!-- КАРТА МАРШРУТА с кнопками поверх -->
-                        <!-- Режим Навигатора: вместо встроенной карты — плашка,
-                             маршрут ведёт Яндекс Навигатор поверх приложения -->
+                        <!-- Ведение ведёт установленный Яндекс Навигатор:
+                             его карта открывается на весь экран автоматически,
+                             сервисные кнопки показываются поверх неё. -->
                         <Border x:Name="NavPanel"
                                 IsVisible="False"
                                 BackgroundColor="#1B1B24"
@@ -281,7 +204,7 @@
                                 Margin="0,0,0,10">
                             <Border.StrokeShape><RoundRectangle CornerRadius="12"/></Border.StrokeShape>
                             <VerticalStackLayout Spacing="8">
-                                <Label Text="🧭 Ведение в Яндекс Навигаторе"
+                                <Label Text="🧭 Ведёт Яндекс Навигатор"
                                        TextColor="#FFCC00"
                                        FontAttributes="Bold"
                                        FontSize="15"/>
@@ -289,97 +212,23 @@
                                        Text=""
                                        TextColor="White"
                                        FontSize="13"/>
-                                <Label Text="Кнопки заказа показаны поверх карты Навигатора."
+                                <Label x:Name="NavHintLabel"
+                                       Text="Кнопки заказа показаны поверх карты Навигатора."
                                        TextColor="#A1A1AA"
                                        FontSize="12"/>
-                                <Button Text="Открыть Навигатор"
+                                <Button x:Name="NavOpenBtn"
+                                        Text="Открыть карту Навигатора"
                                         BackgroundColor="#FFCC00"
                                         TextColor="#1A1A1A"
                                         FontAttributes="Bold"
                                         CornerRadius="8"
-                                        HeightRequest="42"
+                                        HeightRequest="44"
                                         Clicked="OnOpenNavigatorAgain"/>
                             </VerticalStackLayout>
                         </Border>
 
-                        <Grid x:Name="MapContainer" HeightRequest="340" IsVisible="False">
-                            <WebView x:Name="RouteMap"
-                                     BackgroundColor="#1E1E2E"/>
-
-                            <Button Text="SOS"
-                                    BackgroundColor="#CCDC2626"
-                                    TextColor="White"
-                                    FontAttributes="Bold"
-                                    FontSize="13"
-                                    CornerRadius="21"
-                                    HeightRequest="42"
-                                    WidthRequest="64"
-                                    Margin="60,8,0,0"
-                                    HorizontalOptions="Start"
-                                    VerticalOptions="Start"
-                                    Clicked="OnSosClicked"/>
-
-                            <Button x:Name="MapExpandBtn"
-                                    Text="⛶"
-                                    FontSize="18"
-                                    BackgroundColor="#CC252536"
-                                    TextColor="White"
-                                    CornerRadius="10"
-                                    HeightRequest="42"
-                                    WidthRequest="42"
-                                    Margin="8"
-                                    HorizontalOptions="Start"
-                                    VerticalOptions="Start"
-                                    Clicked="OnToggleMapFullscreen"/>
-
-                            <!-- Кнопки этапов поверх карты -->
-                            <Grid VerticalOptions="End" Margin="8"
-                                  ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
-                                <Button Grid.Column="0" x:Name="MapStatusBtn"
-                                        Text="Я на месте"
-                                        BackgroundColor="#FF9800"
-                                        TextColor="White"
-                                        FontAttributes="Bold"
-                                        CornerRadius="10"
-                                        HeightRequest="46"
-                                        Opacity="0.96"
-                                        Clicked="OnStatusButtonClick"/>
-                                <Button Grid.Column="1" x:Name="MapWaitingBtn"
-                                        Text="Простой"
-                                        BackgroundColor="#0EA5E9"
-                                        TextColor="White"
-                                        CornerRadius="10"
-                                        HeightRequest="46"
-                                        WidthRequest="92"
-                                        Opacity="0.96"
-                                        Clicked="OnToggleWaiting"/>
-                                <Button Grid.Column="2"
-                                        Text="Навиг."
-                                        BackgroundColor="#2196F3"
-                                        TextColor="White"
-                                        CornerRadius="10"
-                                        HeightRequest="46"
-                                        WidthRequest="80"
-                                        Opacity="0.96"
-                                        Clicked="OnYandexNavClicked"/>
-                            </Grid>
-
-                            <!-- Таймер простоя поверх карты -->
-                            <Label x:Name="MapWaitingLabel"
-                                   Text=""
-                                   TextColor="White"
-                                   BackgroundColor="#CC0EA5E9"
-                                   FontAttributes="Bold"
-                                   FontSize="14"
-                                   Padding="10,6"
-                                   Margin="8"
-                                   HorizontalOptions="End"
-                                   VerticalOptions="Start"
-                                   IsVisible="False"/>
-                        </Grid>
-
                         <Grid ColumnDefinitions="20,*">
-                            <Label Grid.Column="0" Text="" FontSize="16" VerticalOptions="Center"/>
+                            <Label Grid.Column="0" Text="🅰" FontSize="16" VerticalOptions="Center"/>
                             <Label Grid.Column="1" x:Name="ActivePickupLabel" TextColor="White" FontSize="14"/>
                         </Grid>
 
@@ -390,7 +239,7 @@
                         </StackLayout>
 
                         <Grid ColumnDefinitions="20,*">
-                            <Label Grid.Column="0" Text="" FontSize="16" VerticalOptions="Center"/>
+                            <Label Grid.Column="0" Text="🅱" FontSize="16" VerticalOptions="Center"/>
                             <Label Grid.Column="1" x:Name="ActiveDestLabel" TextColor="LightGray" FontSize="14"/>
                         </Grid>
 
@@ -434,7 +283,7 @@
                                    Margin="10,0,4,0"/>
                         </Grid>
 
-                        <Button Text=" Чат с клиентом"
+                        <Button Text="💬 Чат с клиентом"
                                 BackgroundColor="#2196F3"
                                 TextColor="White"
                                 CornerRadius="8"
@@ -443,50 +292,6 @@
                                 Margin="0,4,0,4"
                                 Clicked="OnOpenChat"/>
 
-                        <Label Text="Навигация:" TextColor="LightGray" FontSize="12" Margin="0,6,0,2"/>
-
-                        <Grid ColumnDefinitions="*,*,*">
-                            <Button Grid.Column="0"
-                                    Text=" Яндекс"
-                                    BackgroundColor="#FF0000"
-                                    TextColor="White"
-                                    CornerRadius="8"
-                                    FontSize="12"
-                                    Margin="0,0,4,0"
-                                    HeightRequest="36"
-                                    Clicked="OnYandexNavClicked"/>
-                            <Button Grid.Column="1"
-                                    Text=" 2GIS"
-                                    BackgroundColor="#1A7F3C"
-                                    TextColor="White"
-                                    CornerRadius="8"
-                                    FontSize="12"
-                                    Margin="2,0,2,0"
-                                    HeightRequest="36"
-                                    Clicked="OnDgisNavClicked"/>
-                            <Button Grid.Column="2"
-                                    Text=" Google"
-                                    BackgroundColor="#4285F4"
-                                    TextColor="White"
-                                    CornerRadius="8"
-                                    FontSize="12"
-                                    Margin="4,0,0,0"
-                                    HeightRequest="36"
-                                    Clicked="OnGoogleNavClicked"/>
-                        </Grid>
-
-                        <!-- Ведение в Яндекс Навигаторе: карта Навигатора на весь
-                             экран, кнопки заказа — плавающей панелью поверх него -->
-                        <Button x:Name="NavOverlayBtn"
-                                Text="🧭 Вести в Яндекс Навигаторе"
-                                BackgroundColor="#FFCC00"
-                                TextColor="#1A1A1A"
-                                FontAttributes="Bold"
-                                CornerRadius="8"
-                                FontSize="13"
-                                Margin="0,8,0,0"
-                                HeightRequest="42"
-                                Clicked="OnNavOverlayClicked"/>
                     </StackLayout>
                 </Border>
 
