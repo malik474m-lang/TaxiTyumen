@@ -149,13 +149,14 @@ layout_header('Зоны и цены', 'zones');
       Карту можно развернуть на весь экран — так точки ставить удобнее.</p>
     <style>
       body.map-lock{overflow:hidden}
+      #mapWrap{position:relative}
       #mapWrap.map-full{position:fixed;inset:0;z-index:10050;background:#0a0a0c}
       #mapWrap.map-full #map{height:100% !important;border-radius:0}
       #mapWrap .map-float{position:absolute;z-index:10;display:flex;gap:8px;align-items:center}
       #mapFsHint{background:rgba(10,10,12,.82);border:1px solid var(--line);border-radius:10px;
         padding:8px 12px;font-size:12px;color:#d4d4d8;backdrop-filter:blur(8px)}
     </style>
-    <div id="mapWrap" style="position:relative">
+    <div id="mapWrap">
       <div id="map" style="position:relative;z-index:1;height:340px;border-radius:12px;overflow:hidden;background:#0f0f13">
       <?php if (YANDEX_MAPS_API_KEY === ''): ?>
       <div style="height:100%;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">
