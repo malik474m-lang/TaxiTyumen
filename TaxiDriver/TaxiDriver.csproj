@@ -12,8 +12,8 @@
 
     <ApplicationTitle>Такси Тюмень - Водитель</ApplicationTitle>
     <ApplicationId>ru.taxityumen.driver</ApplicationId>
-    <ApplicationDisplayVersion>2.8</ApplicationDisplayVersion>
-    <ApplicationVersion>27</ApplicationVersion>
+    <ApplicationDisplayVersion>2.9</ApplicationDisplayVersion>
+    <ApplicationVersion>28</ApplicationVersion>
 
     <!-- Android: минимум Android 8.0 (API 26) -->
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
@@ -30,7 +30,7 @@
     <!-- Иконка приложения: такси-жёлтая плашка + тёмный глиф (генерирует mipmap/appicon[_round]) -->
     <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#FFD700" />
     <!-- Карта MapLibre и её стили: работают офлайн из пакета приложения -->
-    <MauiAsset Include="Resources\Raw\map\**" LogicalName="map\%(Filename)%(Extension)" />
+    <MauiAsset Include="Resources\Raw\map\**" LogicalName="map/%(Filename)%(Extension)" />
     <MauiSplash Include="Resources\Splash\splash.svg" Color="#0A0A0C" BaseSize="200,200" />
   </ItemGroup>
 

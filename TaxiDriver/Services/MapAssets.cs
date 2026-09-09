@@ -21,7 +21,7 @@ public static class MapAssets
     private static readonly string[] Files = { "map.html", "maplibre-gl.js", "maplibre-gl.css" };
     private static string? _indexPath;
 
-    /// Путь file:// к странице карты. Ассеты копируются один раз.
+    /// URL страницы карты (локальный HTTP-сервер). Ассеты копируются один раз.
     public static async Task<string> EnsureAsync()
     {
         if (_indexPath != null) return _indexPath;
@@ -47,7 +47,9 @@ public static class MapAssets
             }
         }
 
-        _indexPath = "file://" + Path.Combine(dir, "map.html");
+        // Android 10+ не даёт WebView грузить скрипты с file:// — отдаём страницу
+        // с собственного сервера на 127.0.0.1 (заодно работает IndexedDB-кеш тайлов)
+        _indexPath = LocalWebServer.Start(dir);
         return _indexPath;
     }
 

@@ -6,6 +6,7 @@
 		android:roundIcon="@mipmap/appicon_round"
 		android:label="Такси Тюмень — Водитель"
 		android:usesCleartextTraffic="false"
+		android:networkSecurityConfig="@xml/network_security_config"
 		android:supportsRtl="true"></application>
 
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />

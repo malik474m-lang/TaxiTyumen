@@ -18,6 +18,10 @@ html,body{margin:0;padding:0;height:100%;width:100%;background:#12121c;overflow:
 </style></head>
 <body>
 <div id="map"></div>
+<div id="fatal" style="position:absolute;inset:0;display:none;z-index:9;
+  color:#fca5a5;font:600 14px sans-serif;padding:26px;text-align:center">
+  Не удалось загрузить карту MapLibre.<br>Перезапустите приложение.
+</div>
 <div id="badge">Офлайн · карта из памяти</div>
 <button id="dl" onclick="downloadCity()">⬇ Скачать карту города</button>
 <script src="maplibre-gl.js"></script>
@@ -219,6 +223,20 @@ window.downloadCity = async function(minLat, maxLat, minLng, maxLng, zMin, zMax)
   setTimeout(function(){ btn.textContent = '⬇ Обновить карту города'; }, 4000);
 };
 
-map.on('load', function(){ if (lastData) window.setRoute(lastData); });
+map.on('error', function(e){
+  // Ошибки отдельного тайла при офлайне — норма, не трогаем интерфейс
+  if (e && e.error && /Failed to load|network/i.test(String(e.error.message || ''))) return;
+});
+map.on('load', function(){
+  document.getElementById('fatal').style.display = 'none';
+  if (lastData) window.setRoute(lastData);
+});
+
+/* Явная проверка: если движок не загрузился — показываем причину, а не тёмный экран */
+if (typeof maplibregl === 'undefined'){
+  document.getElementById('fatal').style.display = 'block';
+  document.getElementById('fatal').innerHTML =
+    'Файлы карты не найдены в пакете приложения.<br>Обновите приложение до новой версии.';
+}
 window.mapReady = true;
 </script></body></html>
