@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<link rel="stylesheet" href="maplibre-gl.css">
+<style>
+html,body{margin:0;padding:0;height:100%;width:100%;background:#12121c;overflow:hidden}
+#map{position:absolute;inset:0}
+.maplibregl-ctrl-attrib{font-size:9px;opacity:.55}
+#badge{position:absolute;left:8px;top:8px;z-index:5;display:none;
+  background:rgba(220,38,38,.92);color:#fff;font:600 12px sans-serif;
+  padding:5px 9px;border-radius:8px;pointer-events:none}
+#dl{position:absolute;left:8px;bottom:8px;z-index:6;border:none;border-radius:9px;
+  background:rgba(37,37,54,.94);color:#FFD700;font:600 12px sans-serif;padding:9px 12px}
+#dl.busy{color:#a1a1aa}
+.mk{width:18px;height:18px;border-radius:50%;border:3px solid #111;box-shadow:0 1px 6px rgba(0,0,0,.6)}
+.mk.me{background:#FFD700;width:20px;height:20px}
+.mk.a{background:#FF9800}.mk.b{background:#4CAF50}.mk.s{background:#38BDF8}
+</style></head>
+<body>
+<div id="map"></div>
+<div id="badge">Офлайн · карта из памяти</div>
+<button id="dl" onclick="downloadCity()">⬇ Скачать карту города</button>
+<script src="maplibre-gl.js"></script>
+<script>
+/* ---------- Кеш тайлов в IndexedDB: работает без интернета ---------- */
+var DB = null;
+function idb(){
+  return new Promise(function(res){
+    if (DB) return res(DB);
+    var r = indexedDB.open('tiles', 1);
+    r.onupgradeneeded = function(){ r.result.createObjectStore('t'); };
+    r.onsuccess = function(){ DB = r.result; res(DB); };
+    r.onerror = function(){ res(null); };
+  });
+}
+function idbGet(k){
+  return idb().then(function(db){
+    if (!db) return null;
+    return new Promise(function(res){
+      var rq = db.transaction('t').objectStore('t').get(k);
+      rq.onsuccess = function(){ res(rq.result || null); };
+      rq.onerror = function(){ res(null); };
+    });
+  });
+}
+function idbPut(k, v){
+  return idb().then(function(db){
+    if (!db) return;
+    try { db.transaction('t', 'readwrite').objectStore('t').put(v, k); } catch(e){}
+  });
+}
+
+/* Протокол tiles:// — сначала кеш, затем сеть с сохранением в кеш */
+maplibregl.addProtocol('tiles', function(params, cb){
+  var url = params.url.replace('tiles://', 'https://');
+  var cancelled = false;
+  idbGet(url).then(function(hit){
+    if (cancelled) return;
+    if (hit) return cb(null, hit, null, null);
+    fetch(url, {headers: {'Accept': 'image/*'}})
+      .then(function(r){ if (!r.ok) throw new Error('http'); return r.arrayBuffer(); })
+      .then(function(buf){ idbPut(url, buf); if (!cancelled) cb(null, buf, null, null); })
+      .catch(function(){ if (!cancelled) cb(new Error('offline'), null, null, null); });
+  });
+  return { cancel: function(){ cancelled = true; } };
+});
+
+/* ---------- Карта ---------- */
+var TILE = 'tiles://tile.openstreetmap.org/{z}/{x}/{y}.png';
+var map = new maplibregl.Map({
+  container: 'map',
+  style: {
+    version: 8,
+    sources: { osm: { type: 'raster', tiles: [TILE], tileSize: 256, maxzoom: 19,
+      attribution: '© OpenStreetMap' } },
+    layers: [
+      { id: 'bg', type: 'background', paint: { 'background-color': '#12121c' } },
+      { id: 'osm', type: 'raster', source: 'osm' }
+    ]
+  },
+  center: [65.5272, 57.1522], zoom: 12, attributionControl: { compact: true }
+});
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+
+var meMarker = null, markers = [], routeReady = false, lastData = null;
+
+function el(cls){ var d = document.createElement('div'); d.className = 'mk ' + cls; return d; }
+
+function clearMarkers(){ markers.forEach(function(m){ m.remove(); }); markers = []; }
+
+/* Приложение вызывает это при каждом изменении маршрута — БЕЗ перезагрузки */
+window.setRoute = function(json){
+  try{
+    var d = typeof json === 'string' ? JSON.parse(json) : json;
+    lastData = d;
+    if (!map.isStyleLoaded()) { map.once('idle', function(){ window.setRoute(d); }); return 'wait'; }
+
+    clearMarkers();
+    var pts = [];
+
+    if (d.stops) d.stops.forEach(function(s, i){
+      markers.push(new maplibregl.Marker({ element: el('s') })
+        .setLngLat([s.lng, s.lat])
+        .setPopup(new maplibregl.Popup().setText((i + 1) + '. ' + (s.label || '')))
+        .addTo(map));
+      pts.push([s.lng, s.lat]);
+    });
+    if (d.target){
+      markers.push(new maplibregl.Marker({ element: el('a') })
+        .setLngLat([d.target.lng, d.target.lat])
+        .setPopup(new maplibregl.Popup().setText(d.target.label || 'Точка')).addTo(map));
+      pts.push([d.target.lng, d.target.lat]);
+    }
+    if (d.finish){
+      markers.push(new maplibregl.Marker({ element: el('b') })
+        .setLngLat([d.finish.lng, d.finish.lat])
+        .setPopup(new maplibregl.Popup().setText('Финиш')).addTo(map));
+      pts.push([d.finish.lng, d.finish.lat]);
+    }
+
+    /* Линия маршрута по дорогам (геометрия пришла вместе с заказом → офлайн) */
+    var line = (d.geometry || []).map(function(p){ return [p[1], p[0]]; });
+    if (line.length < 2 && d.driver && d.target)
+      line = [[d.driver.lng, d.driver.lat], [d.target.lng, d.target.lat]];
+    var gj = { type: 'Feature', geometry: { type: 'LineString', coordinates: line } };
+    if (map.getSource('route')) map.getSource('route').setData(gj);
+    else {
+      map.addSource('route', { type: 'geojson', data: gj });
+      map.addLayer({ id: 'route-line', type: 'line', source: 'route',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#FFD700', 'line-width': 6, 'line-opacity': .95 } });
+    }
+    line.forEach(function(c){ pts.push(c); });
+
+    if (d.driver) window.updateDriver(d.driver.lat, d.driver.lng, false);
+
+    if (pts.length){
+      var b = pts.reduce(function(acc, c){ return acc.extend(c); },
+        new maplibregl.LngLatBounds(pts[0], pts[0]));
+      map.fitBounds(b, { padding: 60, maxZoom: 16, duration: 0 });
+    }
+    routeReady = true;
+    return 'ok';
+  }catch(e){ return 'err:' + e.message; }
+};
+
+window.updateDriver = function(lat, lng, follow){
+  try{
+    var ll = [Number(lng), Number(lat)];
+    if (!meMarker) meMarker = new maplibregl.Marker({ element: el('me') }).setLngLat(ll).addTo(map);
+    else meMarker.setLngLat(ll);
+    if (routeReady && lastData && lastData.geometry && lastData.geometry.length > 1){
+      /* стартовая точка линии следует за водителем */
+      var src = map.getSource('route');
+      if (src && src._data && src._data.geometry.coordinates.length){
+        src._data.geometry.coordinates[0] = ll;
+        src.setData(src._data);
+      }
+    }
+    if (follow) map.easeTo({ center: ll, duration: 300 });
+    return 'ok';
+  }catch(e){ return 'err:' + e.message; }
+};
+
+window.mapCenter = function(lat, lng){
+  try{ map.easeTo({ center: [Number(lng), Number(lat)], zoom: 15, duration: 300 }); }catch(e){}
+};
+window.mapResize = function(){ try{ map.resize(); }catch(e){} };
+
+/* ---------- Офлайн-индикатор ---------- */
+function setOffline(v){ document.getElementById('badge').style.display = v ? 'block' : 'none'; }
+window.addEventListener('offline', function(){ setOffline(true); });
+window.addEventListener('online',  function(){ setOffline(false); });
+if (navigator.onLine === false) setOffline(true);
+
+/* ---------- Предзагрузка тайлов города ---------- */
+function tileRange(z, minLat, maxLat, minLng, maxLng){
+  function x(lng){ return Math.floor((lng + 180) / 360 * Math.pow(2, z)); }
+  function y(lat){
+    var r = lat * Math.PI / 180;
+    return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * Math.pow(2, z));
+  }
+  return { x0: x(minLng), x1: x(maxLng), y0: y(maxLat), y1: y(minLat) };
+}
+
+window.downloadCity = async function(minLat, maxLat, minLng, maxLng, zMin, zMax){
+  var btn = document.getElementById('dl');
+  if (btn.classList.contains('busy')) return;
+  minLat = minLat || 57.05; maxLat = maxLat || 57.26;
+  minLng = minLng || 65.36; maxLng = maxLng || 65.75;
+  zMin = zMin || 11; zMax = zMax || 15;
+
+  var list = [];
+  for (var z = zMin; z <= zMax; z++){
+    var r = tileRange(z, minLat, maxLat, minLng, maxLng);
+    for (var x = r.x0; x <= r.x1; x++)
+      for (var y = r.y0; y <= r.y1; y++)
+        list.push('https://tile.openstreetmap.org/' + z + '/' + x + '/' + y + '.png');
+  }
+
+  btn.classList.add('busy');
+  var done = 0, saved = 0;
+  for (var i = 0; i < list.length; i++){
+    var url = list[i];
+    try{
+      var hit = await idbGet(url);
+      if (!hit){
+        var resp = await fetch(url);
+        if (resp.ok){ await idbPut(url, await resp.arrayBuffer()); saved++; }
+        await new Promise(function(r){ setTimeout(r, 60); });  /* бережно к серверу тайлов */
+      }
+    }catch(e){}
+    done++;
+    if (done % 10 === 0 || done === list.length)
+      btn.textContent = '⬇ ' + done + ' / ' + list.length;
+  }
+  btn.classList.remove('busy');
+  btn.textContent = '✓ Карта города сохранена (' + saved + ')';
+  setTimeout(function(){ btn.textContent = '⬇ Обновить карту города'; }, 4000);
+};
+
+map.on('load', function(){ if (lastData) window.setRoute(lastData); });
+window.mapReady = true;
+</script></body></html>

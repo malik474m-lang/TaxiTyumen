@@ -9,74 +9,6 @@
 
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
 
-        <!-- ПОЛНОЭКРАННАЯ КАРТА: оверлей поверх всего экрана -->
-        <Grid x:Name="FullscreenMapOverlay"
-              Grid.RowSpan="5"
-              IsVisible="False"
-              BackgroundColor="#1E1E2E"
-              ZIndex="99">
-            <WebView x:Name="FullscreenMap" BackgroundColor="#1E1E2E"/>
-
-            <Button Text="✕"
-                    FontSize="20"
-                    BackgroundColor="#CC252536"
-                    TextColor="White"
-                    CornerRadius="24"
-                    HeightRequest="48"
-                    WidthRequest="48"
-                    Margin="12"
-                    HorizontalOptions="End"
-                    VerticalOptions="Start"
-                    Clicked="OnToggleMapFullscreen"/>
-
-            <Label x:Name="FullscreenWaitingLabel"
-                   Text=""
-                   TextColor="White"
-                   BackgroundColor="#CC0EA5E9"
-                   FontAttributes="Bold"
-                   FontSize="15"
-                   Padding="12,7"
-                   Margin="12"
-                   HorizontalOptions="Start"
-                   VerticalOptions="Start"
-                   IsVisible="False"/>
-
-            <!-- Кнопки управления заказом поверх полноэкранной карты -->
-            <!-- SOS поверх полноэкранной карты — всегда доступен -->
-            <Button Text="SOS"
-                    BackgroundColor="#DC2626"
-                    TextColor="White"
-                    FontAttributes="Bold"
-                    FontSize="14"
-                    CornerRadius="24"
-                    HeightRequest="48"
-                    WidthRequest="72"
-                    Margin="12,12,72,0"
-                    HorizontalOptions="End"
-                    VerticalOptions="Start"
-                    Clicked="OnSosClicked"/>
-
-            <Grid VerticalOptions="End" Margin="12"
-                  ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-                <Button Grid.Column="0" x:Name="FsStatusBtn"
-                        Text="Я на месте"
-                        BackgroundColor="#FF9800"
-                        TextColor="White"
-                        FontAttributes="Bold"
-                        FontSize="16"
-                        CornerRadius="12"
-                        HeightRequest="54"
-                        Clicked="OnStatusButtonClick"/>
-                <Button Grid.Column="1" x:Name="FsWaitingBtn"
-                        Text="Простой"
-                        BackgroundColor="#0EA5E9"
-                        TextColor="White"
-                        CornerRadius="12"
-                        HeightRequest="54"
-                        WidthRequest="104"
-                        Clicked="OnToggleWaiting"/>
-            </Grid>
-        </Grid>
         <Border x:Name="HeaderBorder" Grid.Row="0" BackgroundColor="#252536" Padding="15,12">
             <Grid ColumnDefinitions="*,Auto,Auto">
                 <StackLayout Grid.Column="0" Spacing="2">
@@ -207,7 +139,7 @@
         </Border>
 
         <!-- Контент -->
-        <ScrollView Grid.Row="3">
+        <ScrollView Grid.Row="3" x:Name="MainScroll">
             <StackLayout Padding="15" Spacing="12">
 
                 <!-- Баннер нового сообщения чата -->
@@ -327,70 +259,72 @@
                                    IsVisible="False"/>
                         </Grid>
 
-                        <Grid ColumnDefinitions="20,*">
-                            <Label Grid.Column="0" Text="🅰" FontSize="16" VerticalOptions="Center"/>
-                            <Label Grid.Column="1" x:Name="ActivePickupLabel" TextColor="White" FontSize="14"/>
-                        </Grid>
+                        <VerticalStackLayout x:Name="OrderDetailsPanel" Spacing="8">
+                            <Grid ColumnDefinitions="20,*">
+                                <Label Grid.Column="0" Text="🅰" FontSize="16" VerticalOptions="Center"/>
+                                <Label Grid.Column="1" x:Name="ActivePickupLabel" TextColor="White" FontSize="14"/>
+                            </Grid>
 
-                        <StackLayout x:Name="ActiveStopsPanel" IsVisible="False" Spacing="2">
-                            <Label Text="Промежуточные адреса:" TextColor="#FFD700"
-                                   FontSize="12" FontAttributes="Bold"/>
-                            <Label x:Name="ActiveStopsLabel" TextColor="White" FontSize="13"/>
-                        </StackLayout>
+                            <StackLayout x:Name="ActiveStopsPanel" IsVisible="False" Spacing="2">
+                                <Label Text="Промежуточные адреса:" TextColor="#FFD700"
+                                       FontSize="12" FontAttributes="Bold"/>
+                                <Label x:Name="ActiveStopsLabel" TextColor="White" FontSize="13"/>
+                            </StackLayout>
 
-                        <Grid ColumnDefinitions="20,*">
-                            <Label Grid.Column="0" Text="🅱" FontSize="16" VerticalOptions="Center"/>
-                            <Label Grid.Column="1" x:Name="ActiveDestLabel" TextColor="LightGray" FontSize="14"/>
-                        </Grid>
+                            <Grid ColumnDefinitions="20,*">
+                                <Label Grid.Column="0" Text="🅱" FontSize="16" VerticalOptions="Center"/>
+                                <Label Grid.Column="1" x:Name="ActiveDestLabel" TextColor="LightGray" FontSize="14"/>
+                            </Grid>
 
-                        <Grid ColumnDefinitions="*,*">
-                            <Label Grid.Column="0" x:Name="ActivePriceLabel" TextColor="#FFD700" FontSize="20" FontAttributes="Bold"/>
-                            <Label Grid.Column="1" x:Name="ActiveTariffLabel" TextColor="Gray" FontSize="14" HorizontalOptions="End"/>
-                        </Grid>
+                            <Grid ColumnDefinitions="*,*">
+                                <Label Grid.Column="0" x:Name="ActivePriceLabel" TextColor="#FFD700" FontSize="20" FontAttributes="Bold"/>
+                                <Label Grid.Column="1" x:Name="ActiveTariffLabel" TextColor="Gray" FontSize="14" HorizontalOptions="End"/>
+                            </Grid>
 
-                        <Grid ColumnDefinitions="*,*">
-                            <Button Grid.Column="0" x:Name="StatusBtn"
-                                    Text="На месте"
-                                    BackgroundColor="#FF9800"
+                            <Grid ColumnDefinitions="*,*">
+                                <Button Grid.Column="0" x:Name="StatusBtn"
+                                        Text="На месте"
+                                        BackgroundColor="#FF9800"
+                                        TextColor="White"
+                                        CornerRadius="8"
+                                        Margin="0,0,4,0"
+                                        Clicked="OnStatusButtonClick"/>
+                                <Button Grid.Column="1"
+                                        Text="Отменить"
+                                        BackgroundColor="#555"
+                                        TextColor="White"
+                                        CornerRadius="8"
+                                        Margin="4,0,0,0"
+                                        Clicked="OnCancelActiveOrder"/>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
+                                <Button Grid.Column="0" x:Name="WaitingBtn"
+                                        Text="Простой"
+                                        BackgroundColor="#333"
+                                        TextColor="White"
+                                        CornerRadius="8"
+                                        HeightRequest="40"
+                                        IsVisible="False"
+                                        Clicked="OnToggleWaiting"/>
+                                <Label Grid.Column="1" x:Name="WaitingLabel"
+                                       Text=""
+                                       TextColor="#7dd3fc"
+                                       FontSize="14"
+                                       FontAttributes="Bold"
+                                       VerticalOptions="Center"
+                                       Margin="10,0,4,0"/>
+                            </Grid>
+
+                            <Button Text="💬 Чат с клиентом"
+                                    BackgroundColor="#2196F3"
                                     TextColor="White"
                                     CornerRadius="8"
-                                    Margin="0,0,4,0"
-                                    Clicked="OnStatusButtonClick"/>
-                            <Button Grid.Column="1"
-                                    Text="Отменить"
-                                    BackgroundColor="#555"
-                                    TextColor="White"
-                                    CornerRadius="8"
-                                    Margin="4,0,0,0"
-                                    Clicked="OnCancelActiveOrder"/>
-                        </Grid>
-
-                        <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
-                            <Button Grid.Column="0" x:Name="WaitingBtn"
-                                    Text="Простой"
-                                    BackgroundColor="#333"
-                                    TextColor="White"
-                                    CornerRadius="8"
-                                    HeightRequest="40"
-                                    IsVisible="False"
-                                    Clicked="OnToggleWaiting"/>
-                            <Label Grid.Column="1" x:Name="WaitingLabel"
-                                   Text=""
-                                   TextColor="#7dd3fc"
-                                   FontSize="14"
-                                   FontAttributes="Bold"
-                                   VerticalOptions="Center"
-                                   Margin="10,0,4,0"/>
-                        </Grid>
-
-                        <Button Text="💬 Чат с клиентом"
-                                BackgroundColor="#2196F3"
-                                TextColor="White"
-                                CornerRadius="8"
-                                HeightRequest="36"
-                                FontSize="13"
-                                Margin="0,4,0,4"
-                                Clicked="OnOpenChat"/>
+                                    HeightRequest="36"
+                                    FontSize="13"
+                                    Margin="0,4,0,4"
+                                    Clicked="OnOpenChat"/>
+                        </VerticalStackLayout>
 
                     </StackLayout>
                 </Border>

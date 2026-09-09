@@ -961,7 +961,6 @@ public partial class MainDriverPage : ContentPage
         StatusBtn.BackgroundColor = Color.FromArgb(color);
         MapStatusBtn.Text = label;
         MapStatusBtn.BackgroundColor = Color.FromArgb(color);
-        if (_mapFullscreen) SyncFullscreenButtons();
         // Дублируем текущий этап на кнопке поверх карты
         // Панель поверх Навигатора и, при смене цели, сам маршрут
         // Маршрут в Навигаторе перестраиваем, только если водитель им пользуется
@@ -1345,146 +1344,98 @@ public partial class MainDriverPage : ContentPage
         });
     }
 
-    // ── Встроенная карта маршрута в карточке заказа ────────────────────────
+    // ── Карта маршрута (MapLibre в WebView) ────────────────────────────────
+    // Страница карты загружается ОДИН раз. Дальше — только JS-вызовы, поэтому
+    // WebView не пересоздаётся и карта не моргает.
     private bool _mapFullscreen;
-    private string? _lastMapHtml;
+    private bool _mapLoaded;
+    private string _mapRouteJson = string.Empty;
     private DateTime _lastMapPush = DateTime.MinValue;
 
-    /// Карта маршрута в приложении: водитель → подача → (финиш)
-    /// Ключ текущего маршрута: пока он не меняется, WebView не пересоздаём.
-    private string _mapRouteKey = string.Empty;
-
+    /// Показ карты: первый раз грузим страницу, затем только обновляем маршрут.
     private async Task ShowRouteMapAsync(OrderResponse order)
     {
         try
         {
             MapContainer.IsVisible = true;
 
-            // Перерисовка WebView — дорогая операция: карта «моргает» и теряет
-            // текущий вид. Делаем её только когда действительно сменился маршрут.
-            var toPickupStage = NormStatus(order.Status) != "inprogress";
-            var routeKey = string.Join("|",
-                order.Id,
-                toPickupStage ? "pickup" : "trip",
-                order.PickupLatitude.ToString("F5"), order.PickupLongitude.ToString("F5"),
-                order.DestinationLatitude?.ToString("F5") ?? "-",
-                order.DestinationLongitude?.ToString("F5") ?? "-",
-                order.IntermediatePoints.Count.ToString(),
-                (order.RouteGeometry?.Count ?? 0).ToString());
-            if (routeKey == _mapRouteKey && !string.IsNullOrEmpty(_lastMapHtml))
+            if (!_mapLoaded)
             {
-                // Маршрут тот же — просто двигаем маркер водителя.
-                PushDriverPositionToMaps(_location.CurrentLat, _location.CurrentLng);
-                return;
+                var url = await MapAssets.EnsureAsync();
+                RouteMap.Source = new UrlWebViewSource { Url = url };
+                _mapLoaded = true;
+                // Даём странице подняться, затем передаём маршрут
+                await Task.Delay(700);
             }
-            _mapRouteKey = routeKey;
 
-            var apiKey = await MapHtml.GetApiKeyAsync();
-            // До посадки ведём к точке подачи, в поездке — к точке назначения
             var toPickup = NormStatus(order.Status) != "inprogress";
-            double? toLat = toPickup ? order.PickupLatitude : order.DestinationLatitude;
-            double? toLng = toPickup ? order.PickupLongitude : order.DestinationLongitude;
+            var json = MapAssets.BuildRouteJson(order, _location.CurrentLat, _location.CurrentLng, toPickup);
+            if (json == _mapRouteJson) return;   // маршрут не изменился — не трогаем карту
+            _mapRouteJson = json;
 
-            // Геометрия дороги и промежуточные адреса — чтобы карта рисовалась
-            // и без интернета (офлайн-режим внутри WebView).
-            var stops = order.IntermediatePoints
-                .OrderBy(p => p.SortOrder)
-                .Select((p, i) => (p.Latitude, p.Longitude, $"{i + 1}. {p.Address}"))
-                .ToList();
-
-            var html = MapHtml.Build(
-                apiKey,
-                _location.CurrentLat, _location.CurrentLng,
-                toLat, toLng,
-                toPickup ? "Подача" : "Назначение",
-                toPickup ? order.DestinationLatitude : null,
-                toPickup ? order.DestinationLongitude : null,
-                order.RouteGeometry,
-                stops);
-
-            _lastMapHtml = html;
-            RouteMap.Source = new HtmlWebViewSource { Html = html };
-            if (_mapFullscreen)
-                FullscreenMap.Source = new HtmlWebViewSource { Html = html };
+            await RouteMap.EvaluateJavaScriptAsync($"window.setRoute && window.setRoute('{MapAssets.JsArg(json)}')");
         }
         catch
         {
-            MapContainer.IsVisible = false;
+            // Карта — вспомогательный элемент: её сбой не ломает работу с заказом
         }
     }
 
-    /// Карта на весь экран: отдельный оверлей поверх страницы (не «окно» в списке).
-    private void OnToggleMapFullscreen(object? sender, EventArgs e)
+    /// Позиция водителя двигается без перерисовки карты.
+    private void PushDriverPositionToMaps(double lat, double lng)
     {
         try
         {
-            _mapFullscreen = !_mapFullscreen;
-            FullscreenMapOverlay.IsVisible = _mapFullscreen;
+            if (!_mapLoaded || !MapContainer.IsVisible) return;
+            if ((DateTime.UtcNow - _lastMapPush).TotalSeconds < 2) return;
+            _lastMapPush = DateTime.UtcNow;
 
-            if (_mapFullscreen)
-            {
-                // Переносим текущую карту в полноэкранный WebView
-                if (!string.IsNullOrEmpty(_lastMapHtml))
-                    FullscreenMap.Source = new HtmlWebViewSource { Html = _lastMapHtml };
-                SyncFullscreenButtons();
-            }
+            var follow = _mapFullscreen ? "true" : "false";
+            _ = RouteMap.EvaluateJavaScriptAsync(
+                $"window.updateDriver && window.updateDriver({MapAssets.N(lat)},{MapAssets.N(lng)},{follow})");
         }
         catch { }
     }
 
-    /// Кнопки полноэкранной карты повторяют состояние основных
-    private void SyncFullscreenButtons()
+    /// Разворот карты: увеличиваем ТОТ ЖЕ WebView, ничего не пересоздавая.
+    private async void OnToggleMapFullscreen(object? sender, EventArgs e)
     {
         try
         {
-            FsStatusBtn.Text = MapStatusBtn.Text;
-            FsStatusBtn.BackgroundColor = MapStatusBtn.BackgroundColor;
-            FsWaitingBtn.Text = MapWaitingBtn.Text;
-            FsWaitingBtn.BackgroundColor = MapWaitingBtn.BackgroundColor;
-            FsWaitingBtn.IsEnabled = MapWaitingBtn.IsEnabled;
-            FsWaitingBtn.IsVisible = MapWaitingBtn.IsVisible;
-            FullscreenWaitingLabel.Text = MapWaitingLabel.Text;
-            FullscreenWaitingLabel.IsVisible = MapWaitingLabel.IsVisible;
+            _mapFullscreen = !_mapFullscreen;
+
+            HeaderBorder.IsVisible = !_mapFullscreen;
+            StatsGrid.IsVisible = !_mapFullscreen;
+            OrderDetailsPanel.IsVisible = !_mapFullscreen;
+
+            MapContainer.HeightRequest = _mapFullscreen
+                ? Math.Max(420, Height - 40)
+                : 340;
+            MapExpandBtn.Text = _mapFullscreen ? "✕" : "⛶";
+
+            if (_mapFullscreen)
+                await MainScroll.ScrollToAsync(MapContainer, ScrollToPosition.Start, false);
+
+            // Сообщаем карте о новом размере окна
+            await Task.Delay(120);
+            await RouteMap.EvaluateJavaScriptAsync("window.mapResize && window.mapResize()");
         }
         catch { }
     }
 
     private void HideRouteMap()
     {
-        _mapRouteKey = string.Empty;
         try
         {
             MapContainer.IsVisible = false;
             MapWaitingLabel.IsVisible = false;
-            FullscreenMapOverlay.IsVisible = false;
-            _mapFullscreen = false;
+            _mapRouteJson = string.Empty;
+            if (_mapFullscreen) OnToggleMapFullscreen(null, EventArgs.Empty);
         }
         catch { }
     }
 
-    private void PushDriverPositionToMaps(double lat, double lng)
-    {
-        try
-        {
-            // Обновляем не чаще раза в 2 секунды: GPS тикает каждые 5 с,
-            // а частые перерисовки маршрута нагружают WebView.
-            if ((DateTime.UtcNow - _lastMapPush).TotalSeconds < 2) return;
-            _lastMapPush = DateTime.UtcNow;
-
-            var latText = lat.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
-            var lngText = lng.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
-            var script = $"window.updateDriver && window.updateDriver({latText},{lngText},{(_mapFullscreen ? "true" : "false")});";
-
-            if (MapContainer.IsVisible)
-                RouteMap.Eval(script);
-            if (_mapFullscreen)
-                FullscreenMap.Eval(script);
-        }
-        catch
-        {
-            // WebView ещё грузится — обновление применится на следующем тике GPS
-        }
-    }
+    /// Карта маршрута в приложении: водитель → подача → (финиш)
 
     /// Аппаратная кнопка «Назад» сначала закрывает полноэкранную карту.
     protected override bool OnBackButtonPressed()

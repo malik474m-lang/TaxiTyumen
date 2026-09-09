@@ -40,6 +40,13 @@ public static class MauiProgram
                 settings.DatabaseEnabled = true;
                 settings.CacheMode = global::Android.Webkit.CacheModes.Default;
                 settings.SetGeolocationEnabled(true);
+                // Карта MapLibre лежит локально: нужен доступ к file:// и хранилищу
+                settings.AllowFileAccess = true;
+                settings.AllowContentAccess = true;
+#pragma warning disable CA1422 // нужно для загрузки maplibre-gl.js рядом с map.html
+                settings.AllowFileAccessFromFileURLs = true;
+                settings.AllowUniversalAccessFromFileURLs = true;
+#pragma warning restore CA1422
 
                 // При обрыве связи переключаемся на кеш вместо ошибки сети
                 var connectivity = Connectivity.Current;
