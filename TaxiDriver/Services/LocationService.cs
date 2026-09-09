@@ -7,8 +7,11 @@ public class LocationService
     private readonly SignalRService _signalR;
     private bool _tracking;
 
-    public double CurrentLat { get; private set; } = 57.1522; // Тюмень центр
-    public double CurrentLng { get; private set; } = 65.5272;
+    // До первой реальной GPS-точки координаты = 0. Раньше здесь был центр
+    // Тюмени, и карта считала его местоположением машины за городом.
+    public double CurrentLat { get; private set; }
+    public double CurrentLng { get; private set; }
+    public bool HasFix { get; private set; }
     public Guid? ActiveOrderId { get; set; }
     public Guid? DriverId { get; set; }
 
@@ -162,6 +165,7 @@ public class LocationService
     {
         CurrentLat = location.Latitude;
         CurrentLng = location.Longitude;
+        HasFix = true;
 
         LocationUpdated?.Invoke(CurrentLat, CurrentLng);
 

@@ -21,33 +21,10 @@
 	<!-- Заготовка под фоновый GPS-трекинг (foreground service из дорожной карты) -->
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-	<!-- Сервис панели кнопок поверх Навигатора (геолокация ему не нужна) -->
-	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-
-	<!-- ЕДИНСТВЕННЫЙ способ рисовать кнопки поверх чужого приложения (Навигатора).
-	     Обычное Activity нашего приложения поверх другого приложения показать нельзя. -->
-	<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
 	<!-- Геолокация водителя (приложение запрашивает в рантайме при выходе «на линию») -->
 	<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 	<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-
-	<!-- Android 11+: видимость сторонних навигаторов для проверки «установлен ли»
-	     и запуска маршрута. Без этой секции GetLaunchIntentForPackage всегда null. -->
-	<queries>
-		<package android:name="ru.yandex.yandexnavi" />
-		<package android:name="ru.yandex.yandexmaps" />
-		<package android:name="ru.dublgis.dgismobile" />
-		<package android:name="com.google.android.apps.maps" />
-		<intent>
-			<action android:name="android.intent.action.VIEW" />
-			<data android:scheme="yandexnavi" />
-		</intent>
-		<intent>
-			<action android:name="android.intent.action.VIEW" />
-			<data android:scheme="geo" />
-		</intent>
-	</queries>
 
 	<!-- GPS желателен, но приложение ставится и на устройства без него -->
 	<uses-feature android:name="android.hardware.location.gps" android:required="false" />

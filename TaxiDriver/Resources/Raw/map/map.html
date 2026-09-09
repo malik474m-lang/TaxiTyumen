@@ -9,9 +9,6 @@ html,body{margin:0;padding:0;height:100%;width:100%;background:#12121c;overflow:
 #badge{position:absolute;left:8px;top:8px;z-index:5;display:none;
   background:rgba(220,38,38,.92);color:#fff;font:600 12px sans-serif;
   padding:5px 9px;border-radius:8px;pointer-events:none}
-#prog{position:absolute;left:50%;transform:translateX(-50%);bottom:10px;z-index:1000;
-  display:none;border-radius:10px;background:rgba(37,37,54,.97);color:#FFD700;
-  font:600 13px sans-serif;padding:10px 15px;box-shadow:0 2px 10px rgba(0,0,0,.6)}
 #dl.busy{color:#a1a1aa}
 .mk{width:18px;height:18px;border-radius:50%;border:3px solid #111;box-shadow:0 1px 6px rgba(0,0,0,.6)}
 .mk.me{background:#FFD700;width:20px;height:20px}
@@ -24,87 +21,13 @@ html,body{margin:0;padding:0;height:100%;width:100%;background:#12121c;overflow:
   Не удалось загрузить карту MapLibre.<br>Перезапустите приложение.
 </div>
 <div id="badge">Офлайн · карта из памяти</div>
-<div id="prog"></div>
 <script src="maplibre-gl.js"></script>
 <script>
-/* ---------- Кеш тайлов в IndexedDB: работает без интернета ---------- */
-var DB = null;
-function idb(){
-  return new Promise(function(res){
-    if (DB) return res(DB);
-    var r = indexedDB.open('tiles', 1);
-    r.onupgradeneeded = function(){ r.result.createObjectStore('t'); };
-    r.onsuccess = function(){ DB = r.result; res(DB); };
-    r.onerror = function(){ res(null); };
-  });
-}
-function idbGet(k){
-  return idb().then(function(db){
-    if (!db) return null;
-    return new Promise(function(res){
-      var rq = db.transaction('t').objectStore('t').get(k);
-      rq.onsuccess = function(){ res(rq.result || null); };
-      rq.onerror = function(){ res(null); };
-    });
-  });
-}
-function idbPut(k, v){
-  return idb().then(function(db){
-    if (!db) return;
-    try { db.transaction('t', 'readwrite').objectStore('t').put(v, k); } catch(e){}
-  });
-}
-
-/* Протокол tiles:// — сначала кеш, затем сеть с сохранением в кеш.
-   ВАЖНО: в MapLibre 4.x addProtocol работает через Promise (в 3.x был callback).
-   Из-за старой сигнатуры тайлы не загружались и карта оставалась тёмной. */
-/* Прозрачный тайл 1x1: показываем вместо ошибки, когда нет ни кеша, ни сети.
-   Иначе MapLibre в офлайне сыпет ошибками на каждый квадрат. */
-var BLANK = Uint8Array.from(atob(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
-), function(c){ return c.charCodeAt(0); }).buffer;
-
-var tilesOk = 0, tilesFail = 0;
-
-maplibregl.addProtocol('tiles', async function(params, abortController){
-  var url = params.url.replace('tiles://', 'https://');
-
-  try {
-    var hit = await idbGet(url);
-    if (hit) { tilesOk++; return { data: hit }; }
-  } catch (e) { /* кеш недоступен — идём в сеть */ }
-
-  try {
-    var resp = await fetch(url, {
-      signal: abortController ? abortController.signal : undefined,
-      headers: { 'Accept': 'image/png,image/*' }
-    });
-    if (!resp.ok) throw new Error('tile ' + resp.status);
-
-    var buf = await resp.arrayBuffer();
-    idbPut(url, buf);
-    tilesOk++; showTileHint();
-    return { data: buf };
-  } catch (e) {
-    tilesFail++; showTileHint();
-    return { data: BLANK };   // карта продолжает работать: маршрут и метки видны
-  }
-});
-
-/* Подсказка, если тайлов нет вообще: чаще всего карта города не скачана */
-function showTileHint(){
-  var el = document.getElementById('badge');
-  if (!el) return;
-  if (tilesOk === 0 && tilesFail > 4){
-    el.textContent = 'Нет карты офлайн · нажмите «Скачать карту города»';
-    el.style.display = 'block';
-  } else if (tilesOk > 0 && navigator.onLine !== false){
-    el.style.display = 'none';
-  }
-}
+/* Тайлы отдаёт локальный C#-сервер: сначала файл офлайн-кеша,
+   затем сеть с сохранением. JavaScript-кеш больше не участвует. */
 
 /* ---------- Карта ---------- */
-var TILE = 'tiles://tile.openstreetmap.org/{z}/{x}/{y}.png';
+var TILE = location.origin + '/tile/{z}/{x}/{y}.png';
 var map = new maplibregl.Map({
   container: 'map',
   style: {
@@ -166,6 +89,15 @@ window.setRoute = function(json){
   try{
     var d = typeof json === 'string' ? JSON.parse(json) : json;
     lastData = d;
+
+    if (d.tilesVersion && d.tilesVersion !== window._tilesVersion){
+      window._tilesVersion = d.tilesVersion;
+      try {
+        var osm = map.getSource('osm');
+        if (osm && osm.setTiles)
+          osm.setTiles([TILE + '?v=' + d.tilesVersion]);
+      } catch(e){}
+    }
     if (!map.isStyleLoaded()) { map.once('idle', function(){ window.setRoute(d); }); return 'wait'; }
 
     clearMarkers();
@@ -254,63 +186,8 @@ window.addEventListener('offline', function(){ setOffline(true); });
 window.addEventListener('online',  function(){ setOffline(false); });
 if (navigator.onLine === false) setOffline(true);
 
-/* ---------- Предзагрузка тайлов города ---------- */
-function tileRange(z, minLat, maxLat, minLng, maxLng){
-  function x(lng){ return Math.floor((lng + 180) / 360 * Math.pow(2, z)); }
-  function y(lat){
-    var r = lat * Math.PI / 180;
-    return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * Math.pow(2, z));
-  }
-  return { x0: x(minLng), x1: x(maxLng), y0: y(maxLat), y1: y(minLat) };
-}
+/* Скачивание города выполняется нативным C# с прогрессом под картой. */
 
-var downloading = false;
-window.downloadCity = async function(minLat, maxLat, minLng, maxLng, zMin, zMax){
-  var btn = document.getElementById('prog');
-  if (downloading) return;
-  if (navigator.onLine === false){
-    btn.style.display = 'block';
-    btn.textContent = 'Нет интернета для скачивания';
-    setTimeout(function(){ btn.style.display = 'none'; }, 3000);
-    return;
-  }
-  downloading = true;
-  btn.style.display = 'block';
-  minLat = minLat || 57.05; maxLat = maxLat || 57.26;
-  minLng = minLng || 65.36; maxLng = maxLng || 65.75;
-  zMin = zMin || 11; zMax = zMax || 15;
-
-  var list = [];
-  for (var z = zMin; z <= zMax; z++){
-    var r = tileRange(z, minLat, maxLat, minLng, maxLng);
-    for (var x = r.x0; x <= r.x1; x++)
-      for (var y = r.y0; y <= r.y1; y++)
-        list.push('https://tile.openstreetmap.org/' + z + '/' + x + '/' + y + '.png');
-  }
-
-  var done = 0, saved = 0;
-  for (var i = 0; i < list.length; i++){
-    var url = list[i];
-    try{
-      var hit = await idbGet(url);
-      if (!hit){
-        var resp = await fetch(url);
-        if (resp.ok){ await idbPut(url, await resp.arrayBuffer()); saved++; }
-        await new Promise(function(r){ setTimeout(r, 60); });  /* бережно к серверу тайлов */
-      }
-    }catch(e){}
-    done++;
-    if (done % 5 === 0 || done === list.length)
-      btn.textContent = 'Скачивание карты: ' + done + ' / ' + list.length;
-  }
-  downloading = false;
-  btn.textContent = '✓ Карта города сохранена (' + saved + ' тайлов)';
-  setTimeout(function(){ btn.style.display = 'none'; }, 5000);
-};
-
-
-
-var tileErrors = 0;
 map.on('error', function(e){
   var msg = (e && e.error && e.error.message) ? String(e.error.message) : '';
   if (/tile|Failed to fetch|network/i.test(msg)){
@@ -343,11 +220,6 @@ function startStatePolling(){
           lastStateHash = txt;
           var st = JSON.parse(txt);
           window.setRoute(st);
-          // Нативная кнопка под картой просит скачать тайлы
-          if (st.downloadAt && st.downloadAt !== window._lastDownloadAt){
-            window._lastDownloadAt = st.downloadAt;
-            window.downloadCity();
-          }
         }
       }
     }catch(e){}

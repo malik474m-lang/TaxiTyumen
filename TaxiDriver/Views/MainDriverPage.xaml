@@ -225,8 +225,32 @@
                                    IsVisible="False"/>
                         </Grid>
 
+                        <!-- Явный статус: видно, получил ли клиент дорожную геометрию -->
+                        <Label x:Name="MapRouteStatusLabel"
+                               Text="Построение маршрута…"
+                               TextColor="#FACC15"
+                               FontSize="12"
+                               FontAttributes="Bold"
+                               Margin="2,6,2,0"/>
+
                         <!-- Скачивание карты города: нативная кнопка под картой,
                              её не перекрывают элементы управления MapLibre -->
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,4,0,0">
+                            <Label Grid.Column="0" x:Name="GpsStatusLabel"
+                                   Text="GPS: определение местоположения…"
+                                   TextColor="#FACC15"
+                                   FontSize="12"
+                                   VerticalOptions="Center"/>
+                            <Button Grid.Column="1"
+                                    Text="Настройки GPS"
+                                    BackgroundColor="#333340"
+                                    TextColor="White"
+                                    FontSize="11"
+                                    CornerRadius="8"
+                                    HeightRequest="38"
+                                    Clicked="OnOpenGpsSettings"/>
+                        </Grid>
+
                         <Button x:Name="MapDownloadBtn"
                                 Text="⬇ Скачать карту города для работы офлайн"
                                 BackgroundColor="#252536"

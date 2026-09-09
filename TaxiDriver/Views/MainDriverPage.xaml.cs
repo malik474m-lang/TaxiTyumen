@@ -55,7 +55,6 @@ public partial class MainDriverPage : ContentPage
         _location.LocationUpdated += OnLocationUpdated;
 
         // Кнопки плавающей панели поверх Яндекс Навигатора
-        NavigatorOverlay.ActionRequested += OnOverlayAction;
 
         _ = LoadBalanceAsync();
         _ = LoadBalanceHistoryAsync();
@@ -948,7 +947,6 @@ public partial class MainDriverPage : ContentPage
         // Дублируем текущий этап на кнопке поверх карты
         // Панель поверх Навигатора и, при смене цели, сам маршрут
         // Маршрут в Навигаторе перестраиваем, только если водитель им пользуется
-        if (NavigatorOverlay.ModeEnabled) RouteInNavigator();
         // Карта в приложении перерисовывается под новый этап
         if (_activeOrder != null) _ = ShowRouteMapAsync(_activeOrder);
     }
@@ -1067,8 +1065,7 @@ public partial class MainDriverPage : ContentPage
                     NavigatorOverlay.Toast(shortText);
                     // После успешной смены этапа поднимаем приложение, чтобы панель/Навигатор
                     // не оставляли водителя без интерфейса.
-                    NavigatorOverlay.BringAppToFront();
-                }
+                            }
             }
         }
         catch (Exception ex)
@@ -1109,10 +1106,6 @@ public partial class MainDriverPage : ContentPage
         HideRouteMap();
         _location.ActiveOrderId = null;
         _orderStatusStep = 0;
-        // Панель поверх Навигатора больше не нужна (режим остаётся включённым
-        // и сработает на следующем заказе автоматически)
-        NavigatorOverlay.Hide();
-        _lastNavTargetKey = "";
 
         await LoadBalanceAsync();
         await LoadBalanceHistoryAsync();
@@ -1219,6 +1212,11 @@ public partial class MainDriverPage : ContentPage
 #endif
     }
 
+    private void OnOpenGpsSettings(object? sender, EventArgs e)
+    {
+        OpenLocationSettings();
+    }
+
     /// Открыть системный экран настроек геолокации.
     private static void OpenLocationSettings()
     {
@@ -1243,6 +1241,12 @@ public partial class MainDriverPage : ContentPage
             var granted = await _location.EnsureLocationPermissionAsync();
             if (!granted)
             {
+                try
+                {
+                    GpsStatusLabel.Text = "Нет разрешения на геолокацию";
+                    GpsStatusLabel.TextColor = Color.FromArgb("#F87171");
+                }
+                catch { }
                 if (_gpsRequested) return;
                 _gpsRequested = true;
                 var go = await DisplayAlert("Нужен доступ к геолокации",
@@ -1258,6 +1262,12 @@ public partial class MainDriverPage : ContentPage
             // в системе. Тогда координат не будет, и запроса Android не покажет.
             if (!IsLocationServiceEnabled())
             {
+                try
+                {
+                    GpsStatusLabel.Text = "GPS выключен — нажмите «Настройки GPS»";
+                    GpsStatusLabel.TextColor = Color.FromArgb("#F87171");
+                }
+                catch { }
                 if (!_gpsRequested)
                 {
                     _gpsRequested = true;
@@ -1303,139 +1313,19 @@ public partial class MainDriverPage : ContentPage
         NavigatorOverlay.Toast(title + ": " + message);
     }
 
-    /// Навигация работает через УСТАНОВЛЕННЫЙ Яндекс Навигатор и его офлайн-карты.
-    /// Перед запуском никаких HTTP-запросов нет: используем координаты из полного
-    /// объекта заказа. Для старых заказов без координат адрес передаётся самому
-    /// Навигатору через map_search — его поиск использует скачанные карты.
-    private static NavigatorPoint? PointFromOrder(
-        string? address, double? latitude, double? longitude)
-    {
-        var lat = latitude ?? 0;
-        var lng = longitude ?? 0;
-        if (lat == 0 || lng == 0 || IsCityCenterPlaceholder(lat, lng)) return null;
-        return new NavigatorPoint
-        {
-            Address = address ?? string.Empty,
-            Latitude = lat,
-            Longitude = lng,
-        };
-    }
-
-    private static bool IsCityCenterPlaceholder(double lat, double lng)
-        => Math.Abs(lat - 57.1522) < 0.0005 && Math.Abs(lng - 65.5272) < 0.0005;
-
-    /// Куда сейчас ведёт Навигатор — чтобы не перестраивать маршрут на каждый тик.
-    private string _lastNavTargetKey = string.Empty;
-
-    /// До посадки: текущее положение → подача.
-    /// После начала поездки: текущее положение → промежуточные точки → назначение.
-    /// Яндекс Навигатор получает официальный составной URL (lat_from/lon_from,
-    /// lat_via_N/lon_via_N, lat_to/lon_to). Если какой-то точки нет координат,
-    /// Навигатор ищет её по точному тексту адреса из своей офлайн-карты.
-    private void RouteInNavigator(bool force = false)
-    {
-        if (!NavigatorOverlay.ModeEnabled || _activeOrder == null) return;
-
-        var inProgress = NormStatus(_activeOrder.Status) == "inprogress";
-        var key = inProgress
-            ? $"trip:{_activeOrder.Id}:{_activeOrder.DestinationAddress}:{_activeOrder.IntermediatePoints.Count}"
-            : $"pickup:{_activeOrder.Id}:{_activeOrder.PickupAddress}";
-        if (!force && key == _lastNavTargetKey) return;
-
-        bool ok;
-        if (!inProgress)
-        {
-            var pickup = PointFromOrder(
-                _activeOrder.PickupAddress,
-                _activeOrder.PickupLatitude,
-                _activeOrder.PickupLongitude);
-            ok = pickup != null
-                ? NavigatorOverlay.OpenNavigator(pickup.Latitude, pickup.Longitude)
-                : NavigatorOverlay.SearchInNavigator(_activeOrder.PickupAddress);
-        }
-        else
-        {
-            var navPoints = new List<NavigatorPoint>();
-
-            if (_location.CurrentLat != 0 && _location.CurrentLng != 0)
-            {
-                navPoints.Add(new NavigatorPoint
-                {
-                    Address = "Текущее местоположение",
-                    Latitude = _location.CurrentLat,
-                    Longitude = _location.CurrentLng,
-                });
-            }
-
-            foreach (var stop in _activeOrder.IntermediatePoints.OrderBy(p => p.SortOrder))
-            {
-                var point = PointFromOrder(stop.Address, stop.Latitude, stop.Longitude);
-                if (point != null) navPoints.Add(point);
-            }
-
-            var destination = PointFromOrder(
-                _activeOrder.DestinationAddress,
-                _activeOrder.DestinationLatitude,
-                _activeOrder.DestinationLongitude);
-            if (destination != null) navPoints.Add(destination);
-
-            // Финиш обязателен: без него составной маршрут привёл бы к остановке,
-            // а не к адресу назначения (заметно на дальних адресах вне зоны).
-            var hasDestination = destination != null;
-            ok = hasDestination && navPoints.Count >= 2
-                ? NavigatorOverlay.OpenMultiPointRoute(navPoints)
-                : NavigatorOverlay.SearchInNavigator(_activeOrder.DestinationAddress ?? string.Empty);
-        }
-
-        if (ok)
-        {
-            _lastNavTargetKey = key;
-            // Яндекс Навигатор стал верхним Activity. Через небольшую задержку
-            // возвращаем прозрачную сервисную панель поверх его карты.
-            NavigatorOverlay.BringControlsToFront();
-        }
-        else
-        {
-            NavigatorOverlay.Toast("Не удалось открыть маршрут Яндекс Навигатора");
-        }
-    }
-
-
-
-    /// Нажатия на плавающей панели выполняют те же действия, что и в приложении.
-    private void OnOverlayAction(string action)
-    {
-        try
-        {
-            switch (action)
-            {
-                case "status":
-                    OnStatusButtonClick(this, EventArgs.Empty);
-                    break;
-                case "waiting":
-                    OnToggleWaiting(this, EventArgs.Empty);
-                    break;
-                case "chat":
-                    OnOpenChat(this, EventArgs.Empty);
-                    break;
-                case "cancel":
-                    OnRejectActiveOrder(this, EventArgs.Empty);
-                    break;
-                case "sos":
-                    // Тревожная кнопка требует подтверждения в приложении
-                    OnSosClicked(this, EventArgs.Empty);
-                    break;
-            }
-        }
-        catch { }
-    }
-
     private void OnLocationUpdated(double lat, double lng)
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
             if (_isOnline)
                 StatusLabel.Text = "В сети  " + lat.ToString("F4") + ", " + lng.ToString("F4");
+
+            try
+            {
+                GpsStatusLabel.Text = $"GPS включён · {lat:F5}, {lng:F5}";
+                GpsStatusLabel.TextColor = Color.FromArgb("#4ADE80");
+            }
+            catch { }
 
             PushDriverPositionToMaps(lat, lng);
 
@@ -1450,121 +1340,166 @@ public partial class MainDriverPage : ContentPage
     private string _mapRouteJson = string.Empty;
     private DateTime _lastMapPush = DateTime.MinValue;
 
-    /// Показ карты: первый раз грузим страницу, затем только обновляем маршрут.
+    /// Показ карты. Дорожную геометрию ждём ДО публикации состояния:
+    /// раньше сначала показывались две точки, а фоновое обновление маршрута
+    /// терялось — пользователь всегда видел только точки без линии.
     private async Task ShowRouteMapAsync(OrderResponse order)
     {
         try
         {
             MapContainer.IsVisible = true;
+            MapRouteStatusLabel.Text = "Построение маршрута по дорогам…";
+            MapRouteStatusLabel.TextColor = Color.FromArgb("#FACC15");
 
             if (!_mapLoaded)
             {
                 var url = await MapAssets.EnsureAsync();
                 RouteMap.Source = new UrlWebViewSource { Url = url };
                 _mapLoaded = true;
-                // Даём странице подняться, затем передаём маршрут
                 await Task.Delay(700);
             }
 
-            var toPickup = NormStatus(order.Status) != "inprogress";
             _mapOrder = order;
-            _mapToPickup = toPickup;
-            PublishMapState();
+            _mapToPickup = NormStatus(order.Status) != "inprogress";
 
-            // Геометрия ПО ДОРОГАМ от текущей позиции водителя.
-            // В заказе хранится только участок «подача → назначение», поэтому
-            // путь до клиента раньше рисовался напрямую — через озёра и дворы.
-            _ = Task.Run(async () => await BuildRoadRouteAsync(order, toPickup));
-
-            // Свежая точка GPS сразу, не дожидаясь очередного тика трекинга
-            _ = Task.Run(async () =>
+            // Получаем свежий GPS до маршрута. Если GPS пока не дал точку,
+            // строим хотя бы полный маршрут заявки: подача → остановки → финиш.
+            if (!_location.HasFix)
             {
                 try
                 {
-                    var loc = await Geolocation.GetLastKnownLocationAsync()
-                        ?? await Geolocation.GetLocationAsync(
-                            new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(5)));
-                    if (loc == null) return;
-                    _mapDriverLat = loc.Latitude;
-                    _mapDriverLng = loc.Longitude;
-                    PublishMapState();
+                    var loc = await Geolocation.GetLocationAsync(
+                        new GeolocationRequest(GeolocationAccuracy.High, TimeSpan.FromSeconds(8)));
+                    if (loc != null)
+                    {
+                        _mapDriverLat = loc.Latitude;
+                        _mapDriverLng = loc.Longitude;
+                    }
                 }
                 catch { }
-            });
+            }
+            else
+            {
+                _mapDriverLat = _location.CurrentLat;
+                _mapDriverLng = _location.CurrentLng;
+            }
+
+            // Ждём маршрут — никаких промежуточных «двух точек» на карте.
+            _roadGeometry = await GetFullRoadRouteAsync(order);
+            if (_roadGeometry is not { Count: > 2 }
+                && order.RouteGeometry is { Count: > 2 })
+            {
+                // Маршрут заказа, сохранённый при создании — резерв на случай
+                // временной недоступности маршрутизатора.
+                _roadGeometry = order.RouteGeometry;
+            }
+
+            _mapRouteJson = string.Empty;
+            PublishMapState();
+
+            if (_roadGeometry is { Count: > 2 })
+            {
+                MapRouteStatusLabel.Text = $"Маршрут построен по дорогам · {_roadGeometry.Count} точек";
+                MapRouteStatusLabel.TextColor = Color.FromArgb("#4ADE80");
+            }
+            else
+            {
+                MapRouteStatusLabel.Text = "Маршрутизатор не ответил — проверьте /api/route.php";
+                MapRouteStatusLabel.TextColor = Color.FromArgb("#F87171");
+            }
         }
-        catch
+        catch (Exception ex)
         {
-            // Карта — вспомогательный элемент: её сбой не ломает работу с заказом
+            MapRouteStatusLabel.Text = "Ошибка маршрута: " + ex.Message;
+            MapRouteStatusLabel.TextColor = Color.FromArgb("#F87171");
+            App.LogCrash("ShowRouteMap", ex);
         }
     }
 
-    /// Команда «скачать тайлы» передаётся карте через состояние:
-    /// прямые вызовы JS на устройстве не срабатывали.
-    private long _mapDownloadAt;
+    private bool _mapDownloadBusy;
+    private long _mapTilesVersion;
 
+    /// Нативное скачивание тайлов в файловый кеш приложения.
+    /// Не зависит от JavaScript/WebView: прогресс всегда виден на кнопке.
     private async void OnDownloadCityMap(object? sender, EventArgs e)
     {
-        if (!MapContainer.IsVisible)
+        if (_mapDownloadBusy) return;
+        if (Connectivity.Current.NetworkAccess != NetworkAccess.Internet)
         {
-            await DisplayAlert("Карта", "Откройте активный заказ — карта появится вместе с ним.", "OK");
+            await DisplayAlert("Карта", "Для первичного скачивания карты включите интернет.", "OK");
             return;
         }
 
-        _mapDownloadAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        _mapRouteJson = string.Empty;   // форсируем публикацию нового состояния
-        PublishMapState();
+        _mapDownloadBusy = true;
+        MapDownloadBtn.IsEnabled = false;
+        try
+        {
+            var progress = new Progress<LocalWebServer.DownloadProgress>(p =>
+            {
+                MapDownloadBtn.Text = $"Скачивание: {p.Done} / {p.Total} · новых {p.Saved}";
+            });
+            var result = await LocalWebServer.DownloadTyumenAsync(progress);
+            MapDownloadBtn.Text = result.Failed == 0
+                ? $"✓ Карта скачана · {result.Total} тайлов"
+                : $"Загружено {result.Total - result.Failed}/{result.Total} · повторить";
 
-        MapDownloadBtn.Text = "Скачивание запущено — прогресс на карте";
-        await Task.Delay(4000);
-        MapDownloadBtn.Text = "⬇ Обновить карту города";
+            // MapLibre перечитает недостающие тайлы из локального файлового кеша
+            _mapTilesVersion = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            _mapRouteJson = string.Empty;
+            PublishMapState();
+        }
+        catch (Exception ex)
+        {
+            MapDownloadBtn.Text = "Ошибка скачивания · повторить";
+            await DisplayAlert("Карта", "Ошибка скачивания: " + ex.Message, "OK");
+        }
+        finally
+        {
+            _mapDownloadBusy = false;
+            MapDownloadBtn.IsEnabled = true;
+        }
     }
 
     /// Кеш дорожной геометрии: ключ маршрута → точки по улицам.
     private readonly Dictionary<string, List<List<double>>> _roadCache = new();
 
-    /// Запрашивает у сервера маршрут по дорогам и отдаёт его карте.
-    private async Task BuildRoadRouteAsync(OrderResponse order, bool toPickup)
+    /// Полный маршрут заказа по дорогам:
+    /// машина → подача → ВСЕ промежуточные точки → назначение.
+    private async Task<List<List<double>>?> GetFullRoadRouteAsync(OrderResponse order)
     {
-        try
-        {
-            var points = new List<(double Lat, double Lng)>();
+        var points = new List<(double Lat, double Lng)>();
 
-            var lat = _mapDriverLat != 0 ? _mapDriverLat : _location.CurrentLat;
-            var lng = _mapDriverLng != 0 ? _mapDriverLng : _location.CurrentLng;
-            if (lat != 0 && lng != 0) points.Add((lat, lng));
+        var driverLat = _mapDriverLat != 0 ? _mapDriverLat : _location.CurrentLat;
+        var driverLng = _mapDriverLng != 0 ? _mapDriverLng : _location.CurrentLng;
+        AddPoint(points, driverLat, driverLng);
+        AddPoint(points, order.PickupLatitude, order.PickupLongitude);
 
-            if (toPickup)
-            {
-                // Едем к клиенту: только до точки подачи
-                points.Add((order.PickupLatitude, order.PickupLongitude));
-            }
-            else
-            {
-                // В поездке: остановки по порядку, затем назначение
-                foreach (var s in order.IntermediatePoints.OrderBy(p => p.SortOrder))
-                    if (s.Latitude != 0 && s.Longitude != 0) points.Add((s.Latitude, s.Longitude));
+        foreach (var stop in order.IntermediatePoints.OrderBy(p => p.SortOrder))
+            AddPoint(points, stop.Latitude, stop.Longitude);
 
-                if (order.DestinationLatitude.HasValue && order.DestinationLongitude.HasValue)
-                    points.Add((order.DestinationLatitude.Value, order.DestinationLongitude.Value));
-            }
+        if (order.DestinationLatitude.HasValue && order.DestinationLongitude.HasValue)
+            AddPoint(points, order.DestinationLatitude.Value, order.DestinationLongitude.Value);
 
-            if (points.Count < 2) return;
+        if (points.Count < 2) return null;
 
-            // Ключ округляем: мелкие сдвиги GPS не должны дёргать сервер
-            var key = string.Join("|", points.Select(p => $"{p.Lat:F3},{p.Lng:F3}"));
-            if (!_roadCache.TryGetValue(key, out var geometry))
-            {
-                var loaded = await _api.GetRoadRouteAsync(points);
-                if (loaded is not { Count: > 1 }) return;
-                geometry = loaded;
-                _roadCache[key] = geometry;     // работает и офлайн после первого раза
-            }
+        var key = string.Join("|", points.Select(p => $"{p.Lat:F4},{p.Lng:F4}"));
+        if (_roadCache.TryGetValue(key, out var cached)) return cached;
 
-            _roadGeometry = geometry;
-            _mapRouteJson = string.Empty;        // форсируем публикацию с новой линией
-            PublishMapState();
-        }
-        catch { }
+        var geometry = await _api.GetRoadRouteAsync(points);
+        if (geometry is not { Count: > 2 }) return null;
+
+        _roadCache[key] = geometry;
+        return geometry;
+    }
+
+    private static void AddPoint(List<(double Lat, double Lng)> points, double lat, double lng)
+    {
+        if (lat == 0 || lng == 0) return;
+        // Не добавляем дубли соседних точек (OSRM может вернуть NoRoute)
+        if (points.Count > 0
+            && Math.Abs(points[^1].Lat - lat) < 0.00001
+            && Math.Abs(points[^1].Lng - lng) < 0.00001) return;
+        points.Add((lat, lng));
     }
 
     private List<List<double>>? _roadGeometry;
@@ -1582,7 +1517,7 @@ public partial class MainDriverPage : ContentPage
             var lat = _mapDriverLat != 0 ? _mapDriverLat : _location.CurrentLat;
             var lng = _mapDriverLng != 0 ? _mapDriverLng : _location.CurrentLng;
             var json = MapAssets.BuildRouteJson(
-                _mapOrder, lat, lng, _mapToPickup, _mapDownloadAt, _roadGeometry);
+                _mapOrder, lat, lng, _mapToPickup, _roadGeometry, _mapTilesVersion);
             if (json == _mapRouteJson) return;
             _mapRouteJson = json;
             LocalWebServer.SetState(json);
