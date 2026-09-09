@@ -192,9 +192,10 @@ window.setRoute = function(json){
     }
 
     /* Линия маршрута по дорогам (геометрия пришла вместе с заказом → офлайн) */
+    /* Только реальная дорожная геометрия. Прямую линию «по воздуху»
+       (через озёра и дворы) не рисуем — она вводила водителя в заблуждение. */
     var line = (d.geometry || []).map(function(p){ return [p[1], p[0]]; });
-    if (line.length < 2 && d.driver && d.target)
-      line = [[d.driver.lng, d.driver.lat], [d.target.lng, d.target.lat]];
+    if (line.length < 3) line = [];
     var gj = { type: 'Feature', geometry: { type: 'LineString', coordinates: line } };
     if (map.getSource('route')) map.getSource('route').setData(gj);
     else {

@@ -88,20 +88,15 @@ final class Taxi
                 'durationMinutes' => (int) ceil($dist / 25 * 60),
             ];
         };
-        try {
-            $url = sprintf(
-                'https://router.project-osrm.org/route/v1/driving/%F,%F;%F,%F?overview=false',
-                $lng1, $lat1, $lng2, $lat2
-            );
-            $json = self::httpGet($url, 4);
-            $route = $json['routes'][0] ?? null;
-            if ($route) {
-                return [
-                    'distanceKm' => round($route['distance'] / 1000, 1),
-                    'durationMinutes' => (int) ceil($route['duration'] / 60),
-                ];
-            }
-        } catch (\Throwable) {
+        $json = self::osrmRequest(sprintf(
+            '/route/v1/driving/%F,%F;%F,%F?overview=false', $lng1, $lat1, $lng2, $lat2
+        ), 5);
+        $route = $json['routes'][0] ?? null;
+        if ($route) {
+            return [
+                'distanceKm' => round($route['distance'] / 1000, 1),
+                'durationMinutes' => (int) ceil($route['duration'] / 60),
+            ];
         }
         return $fallback();
     }
@@ -139,22 +134,19 @@ final class Taxi
             ];
         };
 
-        try {
-            $coords = [];
-            foreach ($points as $p) {
-                $coords[] = sprintf('%F,%F', (float) $p[1], (float) $p[0]);
-            }
-            $url = 'https://router.project-osrm.org/route/v1/driving/'
-                . implode(';', $coords) . '?overview=false';
-            $json = self::httpGet($url, 6);
-            $route = $json['routes'][0] ?? null;
-            if ($route) {
-                return [
-                    'distanceKm' => round(((float) $route['distance']) / 1000, 1),
-                    'durationMinutes' => (int) ceil(((float) $route['duration']) / 60),
-                ];
-            }
-        } catch (\Throwable) {
+        $coords = [];
+        foreach ($points as $p) {
+            $coords[] = sprintf('%F,%F', (float) $p[1], (float) $p[0]);
+        }
+        $json = self::osrmRequest(
+            '/route/v1/driving/' . implode(';', $coords) . '?overview=false', 7
+        );
+        $route = $json['routes'][0] ?? null;
+        if ($route) {
+            return [
+                'distanceKm' => round(((float) $route['distance']) / 1000, 1),
+                'durationMinutes' => (int) ceil(((float) $route['duration']) / 60),
+            ];
         }
         return $fallback();
     }
@@ -164,6 +156,25 @@ final class Taxi
      *
      * @param array<int,array{0:float,1:float}> $points
      */
+    /** Публичные OSRM-серверы: пробуем по очереди, пока не ответит рабочий. */
+    public const OSRM_HOSTS = [
+        'https://router.project-osrm.org',
+        'https://routing.openstreetmap.de/routed-car',
+    ];
+
+    /** Запрос к OSRM с перебором серверов. */
+    private static function osrmRequest(string $path, int $timeoutSec = 6): ?array
+    {
+        foreach (self::OSRM_HOSTS as $host) {
+            try {
+                return self::httpGet($host . $path, $timeoutSec);
+            } catch (\Throwable) {
+                continue;   // пробуем следующий сервер
+            }
+        }
+        return null;
+    }
+
     public static function getRouteGeometryThrough(array $points): array
     {
         $points = array_values(array_filter(
@@ -174,50 +185,76 @@ final class Taxi
         if (count($points) < 2) {
             return $points;
         }
-        try {
-            $coords = [];
-            foreach ($points as $p) {
-                $coords[] = sprintf('%F,%F', (float) $p[1], (float) $p[0]);
-            }
-            $url = 'https://router.project-osrm.org/route/v1/driving/'
-                . implode(';', $coords) . '?overview=full&geometries=geojson';
-            $json = self::httpGet($url, 7);
-            $line = $json['routes'][0]['geometry']['coordinates'] ?? null;
-            if (is_array($line) && count($line) > 1) {
-                return array_map(fn(array $c) => [$c[1], $c[0]], $line);
-            }
-        } catch (\Throwable) {
+        $coords = [];
+        foreach ($points as $p) {
+            $coords[] = sprintf('%F,%F', (float) $p[1], (float) $p[0]);
+        }
+        $json = self::osrmRequest(
+            '/route/v1/driving/' . implode(';', $coords) . '?overview=full&geometries=geojson', 8
+        );
+        $line = $json['routes'][0]['geometry']['coordinates'] ?? null;
+        if (is_array($line) && count($line) > 1) {
+            return array_map(fn(array $c) => [$c[1], $c[0]], $line);
         }
         return $points;
     }
 
     public static function getRouteGeometry(float $lat1, float $lng1, float $lat2, float $lng2): array
     {
-        try {
-            $url = sprintf(
-                'https://router.project-osrm.org/route/v1/driving/%F,%F;%F,%F?overview=full&geometries=geojson',
-                $lng1, $lat1, $lng2, $lat2
-            );
-            $json = self::httpGet($url, 5);
-            $coords = $json['routes'][0]['geometry']['coordinates'] ?? null;
-            if (is_array($coords) && count($coords) > 1) {
-                return array_map(fn(array $c) => [$c[1], $c[0]], $coords);
-            }
-        } catch (\Throwable) {
+        $json = self::osrmRequest(sprintf(
+            '/route/v1/driving/%F,%F;%F,%F?overview=full&geometries=geojson',
+            $lng1, $lat1, $lng2, $lat2
+        ), 6);
+        $coords = $json['routes'][0]['geometry']['coordinates'] ?? null;
+        if (is_array($coords) && count($coords) > 1) {
+            return array_map(fn(array $c) => [$c[1], $c[0]], $coords);
         }
         return [[$lat1, $lng1], [$lat2, $lng2]];
     }
 
+    /**
+     * GET с JSON-ответом. На shared-хостингах file_get_contents для внешних
+     * URL обычно запрещён (allow_url_fopen=off) — тогда маршрут не строился
+     * и карта рисовала прямую линию между точками. Сначала пробуем cURL.
+     */
     private static function httpGet(string $url, int $timeoutSec): array
     {
-        $ctx = stream_context_create(['http' => ['timeout' => $timeoutSec, 'method' => 'GET']]);
-        $raw = @file_get_contents($url, false, $ctx);
+        $raw = false;
+
+        if (function_exists('curl_init')) {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => $timeoutSec,
+                CURLOPT_CONNECTTIMEOUT => max(2, (int) ($timeoutSec / 2)),
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_USERAGENT => 'TaxiTyumen/1.0 (+https://taxi.event72.ru)',
+                CURLOPT_HTTPHEADER => ['Accept: application/json'],
+            ]);
+            $result = curl_exec($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            if ($result !== false && $code >= 200 && $code < 300) {
+                $raw = $result;
+            }
+        }
+
+        if ($raw === false && ini_get('allow_url_fopen')) {
+            $ctx = stream_context_create(['http' => [
+                'timeout' => $timeoutSec,
+                'method' => 'GET',
+                'header' => "User-Agent: TaxiTyumen/1.0\r\nAccept: application/json\r\n",
+            ]]);
+            $raw = @file_get_contents($url, false, $ctx);
+        }
+
         if ($raw === false) {
-            throw new \RuntimeException('OSRM недоступен');
+            throw new \RuntimeException('Маршрутизатор недоступен: нет исходящих HTTP-запросов');
         }
         $json = json_decode($raw, true);
         if (!is_array($json)) {
-            throw new \RuntimeException('Плохой ответ OSRM');
+            throw new \RuntimeException('Плохой ответ маршрутизатора');
         }
         return $json;
     }

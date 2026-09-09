@@ -88,10 +88,18 @@ public class ApiService
 
             var resp = await _http.GetFromJsonAsync<RoadRouteResponse>(
                 $"route?points={Uri.EscapeDataString(query)}", _json);
-            return resp?.Geometry;
+            if (resp?.Geometry is not { Count: > 1 }) return null;
+
+            // byRoads=false — сервер вернул отрезок-заглушку (маршрутизатор
+            // недоступен). Такую «прямую через озеро» не показываем.
+            LastRouteByRoads = resp.ByRoads;
+            return resp.ByRoads ? resp.Geometry : null;
         }
         catch { return null; }
     }
+
+    /// Построил ли сервер последний маршрут по дорогам.
+    public bool LastRouteByRoads { get; private set; } = true;
 
     private class RoadRouteResponse
     {

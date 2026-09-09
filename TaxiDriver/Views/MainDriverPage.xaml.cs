@@ -310,16 +310,6 @@ public partial class MainDriverPage : ContentPage
         {
             await LoadBalanceAsync();
 
-            // Проверяем разрешение «Поверх других приложений» при выходе на линию
-            if (NavigatorOverlay.IsSupported && !NavigatorOverlay.HasOverlayPermission())
-            {
-                var ask = await DisplayAlert(
-                    "Кнопки поверх Навигатора",
-                    "Чтобы кнопки управления заказом отображались поверх Яндекс Навигатора, разрешите приложению «Поверх других приложений».\n\nОткрыть настройки сейчас?",
-                    "Открыть настройки", "Позже");
-                if (ask) NavigatorOverlay.RequestOverlayPermission();
-            }
-
             if (!_hasBalance)
             {
                 _isOnline = false;
@@ -1210,6 +1200,40 @@ public partial class MainDriverPage : ContentPage
 
     private bool _gpsRequested;
 
+    /// Включена ли служба геолокации в системе (не путать с разрешением).
+    private static bool IsLocationServiceEnabled()
+    {
+#if ANDROID
+        try
+        {
+            var manager = (global::Android.Locations.LocationManager?)
+                global::Android.App.Application.Context.GetSystemService(
+                    global::Android.Content.Context.LocationService);
+            if (manager == null) return false;
+            return manager.IsProviderEnabled(global::Android.Locations.LocationManager.GpsProvider)
+                || manager.IsProviderEnabled(global::Android.Locations.LocationManager.NetworkProvider);
+        }
+        catch { return true; }
+#else
+        return true;
+#endif
+    }
+
+    /// Открыть системный экран настроек геолокации.
+    private static void OpenLocationSettings()
+    {
+#if ANDROID
+        try
+        {
+            var intent = new global::Android.Content.Intent(
+                global::Android.Provider.Settings.ActionLocationSourceSettings);
+            intent.AddFlags(global::Android.Content.ActivityFlags.NewTask);
+            global::Android.App.Application.Context.StartActivity(intent);
+        }
+        catch { }
+#endif
+    }
+
     /// Разрешение и запуск GPS. Если водитель отказал — объясняем и ведём
     /// в настройки: без геопозиции не работают ни карта, ни выдача заказов.
     private async Task EnsureGpsAsync()
@@ -1227,6 +1251,22 @@ public partial class MainDriverPage : ContentPage
                     + "Откройте настройки и разрешите доступ к геолокации.",
                     "Открыть настройки", "Позже");
                 if (go) AppInfo.Current.ShowSettingsUI();
+                return;
+            }
+
+            // Разрешение выдано — но сама служба геолокации может быть выключена
+            // в системе. Тогда координат не будет, и запроса Android не покажет.
+            if (!IsLocationServiceEnabled())
+            {
+                if (!_gpsRequested)
+                {
+                    _gpsRequested = true;
+                    var open = await DisplayAlert("GPS выключен",
+                        "Включите определение местоположения (GPS) в настройках телефона — "
+                        + "без него карта не покажет вашу машину, а диспетчер не увидит её на линии.",
+                        "Включить GPS", "Позже");
+                    if (open) OpenLocationSettings();
+                }
                 return;
             }
 

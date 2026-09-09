@@ -368,9 +368,44 @@ final class GeocodingService
         return $result;
     }
 
+    /**
+     * HTTP-запрос. Приоритет — cURL: на shared-хостингах file_get_contents
+     * для внешних URL обычно запрещён (allow_url_fopen=off), из-за чего
+     * геокодинг молча не работал и адреса не находились.
+     */
     private static function request(string $url, string $method, ?string $body, array $headers): array
     {
         $started = microtime(true);
+
+        if (function_exists('curl_init')) {
+            $ch = curl_init($url);
+            $opts = [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 10,
+                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_HTTPHEADER => $headers,
+                CURLOPT_USERAGENT => 'TaxiTyumen/1.0 (+https://taxi.event72.ru)',
+            ];
+            if ($method === 'POST') {
+                $opts[CURLOPT_POST] = true;
+                $opts[CURLOPT_POSTFIELDS] = $body ?? '';
+            }
+            curl_setopt_array($ch, $opts);
+            $raw = curl_exec($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $error = curl_error($ch);
+            curl_close($ch);
+
+            if ($raw !== false) {
+                return [$code, $raw, (int) round((microtime(true) - $started) * 1000)];
+            }
+            if (!ini_get('allow_url_fopen')) {
+                return [0, 'cURL: ' . $error, (int) round((microtime(true) - $started) * 1000)];
+            }
+        }
+
         $ctx = stream_context_create(['http' => [
             'timeout' => 8,
             'method' => $method,
