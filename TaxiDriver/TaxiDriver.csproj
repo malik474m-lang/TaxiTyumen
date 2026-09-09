@@ -12,8 +12,8 @@
 
     <ApplicationTitle>Такси Тюмень - Водитель</ApplicationTitle>
     <ApplicationId>ru.taxityumen.driver</ApplicationId>
-    <ApplicationDisplayVersion>3.3</ApplicationDisplayVersion>
-    <ApplicationVersion>32</ApplicationVersion>
+    <ApplicationDisplayVersion>3.4</ApplicationDisplayVersion>
+    <ApplicationVersion>33</ApplicationVersion>
 
     <!-- Android: минимум Android 8.0 (API 26) -->
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>

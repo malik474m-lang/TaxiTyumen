@@ -73,6 +73,32 @@ public class ApiService
         return await response.Content.ReadFromJsonAsync<List<OrderResponse>>(_json) ?? new();
     }
 
+    /// Геометрия маршрута ПО ДОРОГАМ через сервер (OSRM).
+    /// Без неё линия рисовалась напрямую — через озёра и дворы.
+    public async Task<List<List<double>>?> GetRoadRouteAsync(
+        IEnumerable<(double Lat, double Lng)> points)
+    {
+        try
+        {
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            var query = string.Join(";", points
+                .Where(p => p.Lat != 0 && p.Lng != 0)
+                .Select(p => p.Lat.ToString("F6", ci) + "," + p.Lng.ToString("F6", ci)));
+            if (string.IsNullOrEmpty(query)) return null;
+
+            var resp = await _http.GetFromJsonAsync<RoadRouteResponse>(
+                $"route?points={Uri.EscapeDataString(query)}", _json);
+            return resp?.Geometry;
+        }
+        catch { return null; }
+    }
+
+    private class RoadRouteResponse
+    {
+        public List<List<double>>? Geometry { get; set; }
+        public bool ByRoads { get; set; }
+    }
+
     /// Полная карточка заказа: координаты, промежуточные точки, актуальный статус.
     public async Task<OrderResponse?> GetOrderAsync(Guid orderId)
     {

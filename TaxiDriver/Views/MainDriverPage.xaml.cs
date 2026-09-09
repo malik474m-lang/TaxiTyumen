@@ -1187,6 +1187,10 @@ public partial class MainDriverPage : ContentPage
     {
         base.OnAppearing();
         _uiVisible = true;
+
+        // GPS раньше стартовал ТОЛЬКО при выходе «на линию»: до этого позиция
+        // не определялась вовсе. Запускаем сразу при открытии экрана.
+        _ = EnsureGpsAsync();
         // Панель навигатора — вспомогательная функция: её сбой не должен
         // мешать открытию главного экрана после входа.
         try
@@ -1202,6 +1206,51 @@ public partial class MainDriverPage : ContentPage
     {
         _uiVisible = false;
         base.OnDisappearing();
+    }
+
+    private bool _gpsRequested;
+
+    /// Разрешение и запуск GPS. Если водитель отказал — объясняем и ведём
+    /// в настройки: без геопозиции не работают ни карта, ни выдача заказов.
+    private async Task EnsureGpsAsync()
+    {
+        try
+        {
+            var granted = await _location.EnsureLocationPermissionAsync();
+            if (!granted)
+            {
+                if (_gpsRequested) return;
+                _gpsRequested = true;
+                var go = await DisplayAlert("Нужен доступ к геолокации",
+                    "Без доступа к местоположению приложение не покажет вас на карте "
+                    + "и не сможет передавать координаты диспетчеру.\n\n"
+                    + "Откройте настройки и разрешите доступ к геолокации.",
+                    "Открыть настройки", "Позже");
+                if (go) AppInfo.Current.ShowSettingsUI();
+                return;
+            }
+
+            await _location.StartTrackingAsync();
+
+            // Первая точка сразу — карта и список заказов не ждут тика таймера
+            var loc = await Geolocation.GetLastKnownLocationAsync()
+                ?? await Geolocation.GetLocationAsync(
+                    new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(8)));
+            if (loc != null)
+            {
+                _mapDriverLat = loc.Latitude;
+                _mapDriverLng = loc.Longitude;
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    OnLocationUpdated(loc.Latitude, loc.Longitude);
+                    PublishMapState();
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            App.LogCrash("EnsureGps", ex);
+        }
     }
 
     private async Task SafeAlertAsync(string title, string message, string cancel = "OK")
@@ -1382,6 +1431,11 @@ public partial class MainDriverPage : ContentPage
             _mapToPickup = toPickup;
             PublishMapState();
 
+            // Геометрия ПО ДОРОГАМ от текущей позиции водителя.
+            // В заказе хранится только участок «подача → назначение», поэтому
+            // путь до клиента раньше рисовался напрямую — через озёра и дворы.
+            _ = Task.Run(async () => await BuildRoadRouteAsync(order, toPickup));
+
             // Свежая точка GPS сразу, не дожидаясь очередного тика трекинга
             _ = Task.Run(async () =>
             {
@@ -1425,6 +1479,55 @@ public partial class MainDriverPage : ContentPage
         MapDownloadBtn.Text = "⬇ Обновить карту города";
     }
 
+    /// Кеш дорожной геометрии: ключ маршрута → точки по улицам.
+    private readonly Dictionary<string, List<List<double>>> _roadCache = new();
+
+    /// Запрашивает у сервера маршрут по дорогам и отдаёт его карте.
+    private async Task BuildRoadRouteAsync(OrderResponse order, bool toPickup)
+    {
+        try
+        {
+            var points = new List<(double Lat, double Lng)>();
+
+            var lat = _mapDriverLat != 0 ? _mapDriverLat : _location.CurrentLat;
+            var lng = _mapDriverLng != 0 ? _mapDriverLng : _location.CurrentLng;
+            if (lat != 0 && lng != 0) points.Add((lat, lng));
+
+            if (toPickup)
+            {
+                // Едем к клиенту: только до точки подачи
+                points.Add((order.PickupLatitude, order.PickupLongitude));
+            }
+            else
+            {
+                // В поездке: остановки по порядку, затем назначение
+                foreach (var s in order.IntermediatePoints.OrderBy(p => p.SortOrder))
+                    if (s.Latitude != 0 && s.Longitude != 0) points.Add((s.Latitude, s.Longitude));
+
+                if (order.DestinationLatitude.HasValue && order.DestinationLongitude.HasValue)
+                    points.Add((order.DestinationLatitude.Value, order.DestinationLongitude.Value));
+            }
+
+            if (points.Count < 2) return;
+
+            // Ключ округляем: мелкие сдвиги GPS не должны дёргать сервер
+            var key = string.Join("|", points.Select(p => $"{p.Lat:F3},{p.Lng:F3}"));
+            if (!_roadCache.TryGetValue(key, out var geometry))
+            {
+                var loaded = await _api.GetRoadRouteAsync(points);
+                if (loaded is not { Count: > 1 }) return;
+                geometry = loaded;
+                _roadCache[key] = geometry;     // работает и офлайн после первого раза
+            }
+
+            _roadGeometry = geometry;
+            _mapRouteJson = string.Empty;        // форсируем публикацию с новой линией
+            PublishMapState();
+        }
+        catch { }
+    }
+
+    private List<List<double>>? _roadGeometry;
     private OrderResponse? _mapOrder;
     private bool _mapToPickup = true;
     private double _mapDriverLat;
@@ -1438,7 +1541,8 @@ public partial class MainDriverPage : ContentPage
             if (_mapOrder == null) return;
             var lat = _mapDriverLat != 0 ? _mapDriverLat : _location.CurrentLat;
             var lng = _mapDriverLng != 0 ? _mapDriverLng : _location.CurrentLng;
-            var json = MapAssets.BuildRouteJson(_mapOrder, lat, lng, _mapToPickup, _mapDownloadAt);
+            var json = MapAssets.BuildRouteJson(
+                _mapOrder, lat, lng, _mapToPickup, _mapDownloadAt, _roadGeometry);
             if (json == _mapRouteJson) return;
             _mapRouteJson = json;
             LocalWebServer.SetState(json);
@@ -1497,6 +1601,7 @@ public partial class MainDriverPage : ContentPage
             MapWaitingLabel.IsVisible = false;
             _mapRouteJson = string.Empty;
             _mapOrder = null;
+            _roadGeometry = null;
             LocalWebServer.SetState("{}");
             if (_mapFullscreen) OnToggleMapFullscreen(null, EventArgs.Empty);
         }

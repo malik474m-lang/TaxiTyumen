@@ -61,7 +61,7 @@ public static class MapAssets
     /// JSON для window.setRoute(): точки, геометрия дороги, позиция водителя.
     public static string BuildRouteJson(
         OrderResponse order, double driverLat, double driverLng, bool toPickup,
-        long downloadAt = 0)
+        long downloadAt = 0, List<List<double>>? roadGeometry = null)
     {
         var payload = new
         {
@@ -78,7 +78,9 @@ public static class MapAssets
                 .Where(p => p.Latitude != 0 && p.Longitude != 0)
                 .Select(p => new { lat = p.Latitude, lng = p.Longitude, label = p.Address })
                 .ToList(),
-            geometry = order.RouteGeometry ?? new List<List<double>>(),
+            // Приоритет — дорожная геометрия от текущей позиции водителя;
+            // геометрия из заказа только как запасной вариант.
+            geometry = roadGeometry ?? order.RouteGeometry ?? new List<List<double>>(),
         };
         return JsonSerializer.Serialize(payload);
     }
