@@ -9,7 +9,82 @@
 
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
 
-        <!-- Шапка -->
+        <!-- ПОЛНОЭКРАННАЯ КАРТА: оверлей поверх всего экрана -->
+        <Grid x:Name="FullscreenMapOverlay"
+              Grid.RowSpan="5"
+              IsVisible="False"
+              BackgroundColor="#1E1E2E"
+              ZIndex="99">
+            <WebView x:Name="FullscreenMap" BackgroundColor="#1E1E2E"/>
+
+            <Button Text="✕"
+                    FontSize="20"
+                    BackgroundColor="#CC252536"
+                    TextColor="White"
+                    CornerRadius="24"
+                    HeightRequest="48"
+                    WidthRequest="48"
+                    Margin="12"
+                    HorizontalOptions="End"
+                    VerticalOptions="Start"
+                    Clicked="OnToggleMapFullscreen"/>
+
+            <Label x:Name="FullscreenWaitingLabel"
+                   Text=""
+                   TextColor="White"
+                   BackgroundColor="#CC0EA5E9"
+                   FontAttributes="Bold"
+                   FontSize="15"
+                   Padding="12,7"
+                   Margin="12"
+                   HorizontalOptions="Start"
+                   VerticalOptions="Start"
+                   IsVisible="False"/>
+
+            <!-- Кнопки управления заказом поверх полноэкранной карты -->
+            <!-- SOS поверх полноэкранной карты — всегда доступен -->
+            <Button Text="SOS"
+                    BackgroundColor="#DC2626"
+                    TextColor="White"
+                    FontAttributes="Bold"
+                    FontSize="14"
+                    CornerRadius="24"
+                    HeightRequest="48"
+                    WidthRequest="72"
+                    Margin="12,12,72,0"
+                    HorizontalOptions="End"
+                    VerticalOptions="Start"
+                    Clicked="OnSosClicked"/>
+
+            <Grid VerticalOptions="End" Margin="12"
+                  ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <Button Grid.Column="0" x:Name="FsStatusBtn"
+                        Text="Я на месте"
+                        BackgroundColor="#FF9800"
+                        TextColor="White"
+                        FontAttributes="Bold"
+                        FontSize="16"
+                        CornerRadius="12"
+                        HeightRequest="54"
+                        Clicked="OnStatusButtonClick"/>
+                <Button Grid.Column="1" x:Name="FsWaitingBtn"
+                        Text="Простой"
+                        BackgroundColor="#0EA5E9"
+                        TextColor="White"
+                        CornerRadius="12"
+                        HeightRequest="54"
+                        WidthRequest="104"
+                        Clicked="OnToggleWaiting"/>
+                <Button Grid.Column="2"
+                        Text="Навиг."
+                        BackgroundColor="#2196F3"
+                        TextColor="White"
+                        CornerRadius="12"
+                        HeightRequest="54"
+                        WidthRequest="92"
+                        Clicked="OnYandexNavClicked"/>
+            </Grid>
+        </Grid>
         <Border x:Name="HeaderBorder" Grid.Row="0" BackgroundColor="#252536" Padding="15,12">
             <Grid ColumnDefinitions="*,Auto,Auto">
                 <StackLayout Grid.Column="0" Spacing="2">
@@ -226,6 +301,82 @@
                                         Clicked="OnOpenNavigatorAgain"/>
                             </VerticalStackLayout>
                         </Border>
+
+                        <Grid x:Name="MapContainer" HeightRequest="340" IsVisible="False">
+                            <WebView x:Name="RouteMap"
+                                     BackgroundColor="#1E1E2E"/>
+
+                            <Button Text="SOS"
+                                    BackgroundColor="#CCDC2626"
+                                    TextColor="White"
+                                    FontAttributes="Bold"
+                                    FontSize="13"
+                                    CornerRadius="21"
+                                    HeightRequest="42"
+                                    WidthRequest="64"
+                                    Margin="60,8,0,0"
+                                    HorizontalOptions="Start"
+                                    VerticalOptions="Start"
+                                    Clicked="OnSosClicked"/>
+
+                            <Button x:Name="MapExpandBtn"
+                                    Text="⛶"
+                                    FontSize="18"
+                                    BackgroundColor="#CC252536"
+                                    TextColor="White"
+                                    CornerRadius="10"
+                                    HeightRequest="42"
+                                    WidthRequest="42"
+                                    Margin="8"
+                                    HorizontalOptions="Start"
+                                    VerticalOptions="Start"
+                                    Clicked="OnToggleMapFullscreen"/>
+
+                            <!-- Кнопки этапов поверх карты -->
+                            <Grid VerticalOptions="End" Margin="8"
+                                  ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                                <Button Grid.Column="0" x:Name="MapStatusBtn"
+                                        Text="Я на месте"
+                                        BackgroundColor="#FF9800"
+                                        TextColor="White"
+                                        FontAttributes="Bold"
+                                        CornerRadius="10"
+                                        HeightRequest="46"
+                                        Opacity="0.96"
+                                        Clicked="OnStatusButtonClick"/>
+                                <Button Grid.Column="1" x:Name="MapWaitingBtn"
+                                        Text="Простой"
+                                        BackgroundColor="#0EA5E9"
+                                        TextColor="White"
+                                        CornerRadius="10"
+                                        HeightRequest="46"
+                                        WidthRequest="92"
+                                        Opacity="0.96"
+                                        Clicked="OnToggleWaiting"/>
+                                <Button Grid.Column="2"
+                                        Text="Навиг."
+                                        BackgroundColor="#2196F3"
+                                        TextColor="White"
+                                        CornerRadius="10"
+                                        HeightRequest="46"
+                                        WidthRequest="80"
+                                        Opacity="0.96"
+                                        Clicked="OnYandexNavClicked"/>
+                            </Grid>
+
+                            <!-- Таймер простоя поверх карты -->
+                            <Label x:Name="MapWaitingLabel"
+                                   Text=""
+                                   TextColor="White"
+                                   BackgroundColor="#CC0EA5E9"
+                                   FontAttributes="Bold"
+                                   FontSize="14"
+                                   Padding="10,6"
+                                   Margin="8"
+                                   HorizontalOptions="End"
+                                   VerticalOptions="Start"
+                                   IsVisible="False"/>
+                        </Grid>
 
                         <Grid ColumnDefinitions="20,*">
                             <Label Grid.Column="0" Text="🅰" FontSize="16" VerticalOptions="Center"/>

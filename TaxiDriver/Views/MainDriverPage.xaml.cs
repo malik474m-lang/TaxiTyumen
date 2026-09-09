@@ -747,8 +747,11 @@ public partial class MainDriverPage : ContentPage
         if (waitStatus is "driverarrived" or "inprogress") EnsureWaitingTimer();
 
         UpdateStatusButton();
-        // Заказ принят — сразу открываем карту Яндекс Навигатора и кнопки поверх неё
-        StartNavigatorGuidance();
+        // Карта маршрута прямо в карточке заказа: кнопки этапа/простоя/SOS
+        // лежат поверх неё — это наш интерфейс, они видны всегда.
+        _ = ShowRouteMapAsync(order);
+        NavPanel.IsVisible = true;
+        UpdateNavPanelHint();
     }
 
     private bool _waitingTimerStarted;
@@ -770,11 +773,12 @@ public partial class MainDriverPage : ContentPage
         var st = NormStatus(order.Status);
         var canWait = st is "driverarrived" or "inprogress";
         WaitingBtn.IsVisible = canWait;
+        MapWaitingBtn.IsVisible = canWait;
 
         if (!canWait)
         {
             WaitingLabel.Text = "";
-
+            MapWaitingLabel.IsVisible = false;
             return;
         }
 
@@ -796,6 +800,9 @@ public partial class MainDriverPage : ContentPage
         WaitingBtn.BackgroundColor = canStartWaiting
             ? Color.FromArgb("#0EA5E9")
             : Color.FromArgb("#2A3A44");
+        MapWaitingBtn.Text = "Простой";
+        MapWaitingBtn.IsEnabled = canStartWaiting;
+        MapWaitingBtn.BackgroundColor = WaitingBtn.BackgroundColor;
 
         // Счётчик виден всегда: сначала бесплатное ожидание, затем платное.
         string waitingText;
@@ -954,12 +961,17 @@ public partial class MainDriverPage : ContentPage
 
         StatusBtn.Text = label;
         StatusBtn.BackgroundColor = Color.FromArgb(color);
+        MapStatusBtn.Text = label;
+        MapStatusBtn.BackgroundColor = Color.FromArgb(color);
+        if (_mapFullscreen) SyncFullscreenButtons();
         // Дублируем текущий этап на кнопке поверх карты
         // Панель поверх Навигатора и, при смене цели, сам маршрут
+        UpdateNavPanelHint();
         UpdateOverlayState();
-        RouteInNavigator();
-        // Смена этапа меняет и подпись цели на плашке
-        if (_activeOrder != null) NavPanel.IsVisible = true;
+        // Маршрут в Навигаторе перестраиваем, только если водитель им пользуется
+        if (NavigatorOverlay.ModeEnabled) RouteInNavigator();
+        // Карта в приложении перерисовывается под новый этап
+        if (_activeOrder != null) _ = ShowRouteMapAsync(_activeOrder);
     }
 
     /// Останавливает платное ожидание, не меняя этап заказа.
@@ -1100,6 +1112,7 @@ public partial class MainDriverPage : ContentPage
     private async Task OnOrderCompleted()
     {
         _activeOrder = null;
+        HideRouteMap();
         NavPanel.IsVisible = false;
         _location.ActiveOrderId = null;
         _orderStatusStep = 0;
@@ -1176,8 +1189,7 @@ public partial class MainDriverPage : ContentPage
         // мешать открытию главного экрана после входа.
         try
         {
-            // Ведение Навигатором включено всегда, пока есть активный заказ
-            if (_activeOrder != null) StartNavigatorGuidance();
+            if (_activeOrder != null) UpdateNavPanelHint();
             UpdateOverlayState();
         }
         catch (Exception ex)
@@ -1300,74 +1312,54 @@ public partial class MainDriverPage : ContentPage
     }
 
     private void OnOpenNavigatorAgain(object? sender, EventArgs e)
-    {
-        if (NavigatorOverlay.IsSupported && !NavigatorOverlay.IsNavigatorInstalled())
-        {
-            NavigatorOverlay.OpenNavigatorInStore();
-            return;
-        }
-        if (NavigatorOverlay.IsSupported && !NavigatorOverlay.HasOverlayPermission())
-        {
-            NavigatorOverlay.RequestOverlayPermission();
-            return;
-        }
-        StartNavigatorGuidance(force: true);
-    }
+        => StartNavigatorGuidance(force: true);
 
-    /// Заказ в работе → карта Яндекс Навигатора на весь экран + сервисные
-    /// кнопки поверх неё. Вызывается автоматически при принятии заказа,
-    /// смене этапа и возврате в приложение.
-    private async void StartNavigatorGuidance(bool force = false)
+    /// Кнопка «Навиг.» поверх карты: голосовое ведение в Яндекс Навигаторе.
+    private void OnYandexNavClicked(object? sender, EventArgs e)
+        => StartNavigatorGuidance(force: true);
+
+    /// Подпись плашки: карта уже в приложении, Навигатор — по кнопке
+    /// (нужен для голосового ведения и офлайн-карт вне зоны покрытия).
+    private void UpdateNavPanelHint()
     {
         if (_activeOrder == null)
         {
             NavPanel.IsVisible = false;
-            NavigatorOverlay.Hide();
             return;
         }
 
-        NavPanel.IsVisible = true;
-        NavigatorOverlay.ModeEnabled = true;
+        var inProgress = NormStatus(_activeOrder.Status) == "inprogress";
+        var target = inProgress
+            ? (_activeOrder.DestinationAddress ?? "Назначение не указано")
+            : _activeOrder.PickupAddress;
+        NavTargetLabel.Text = (inProgress ? "Назначение: " : "Подача: ") + target;
 
         if (!NavigatorOverlay.IsSupported)
         {
-            NavHintLabel.Text = "Ведение Навигатором доступно только на Android.";
+            NavHintLabel.Text = "Голосовое ведение доступно только на Android.";
             return;
         }
+        NavHintLabel.Text = NavigatorOverlay.IsNavigatorInstalled()
+            ? "Карта маршрута — выше. Для голосового ведения и офлайн-карт откройте Навигатор."
+            : "Яндекс Навигатор не установлен — нажмите, чтобы установить.";
+        NavOpenBtn.Text = NavigatorOverlay.IsNavigatorInstalled()
+            ? "Открыть в Яндекс Навигаторе"
+            : "Установить Яндекс Навигатор";
+    }
+
+    /// Ручной запуск Навигатора для голосового ведения по офлайн-картам.
+    private void StartNavigatorGuidance(bool force = false)
+    {
+        if (_activeOrder == null) return;
+        if (!NavigatorOverlay.IsSupported) return;
 
         if (!NavigatorOverlay.IsNavigatorInstalled())
         {
-            NavHintLabel.Text = "Яндекс Навигатор не установлен — нажмите кнопку ниже для установки.";
-            NavOpenBtn.Text = "Установить Яндекс Навигатор";
-            var install = await DisplayAlert("Яндекс Навигатор",
-                "Для ведения по маршруту требуется установленный Яндекс Навигатор.\n\nОткрыть Google Play для установки?",
-                "Установить", "Отмена");
-            if (install) NavigatorOverlay.OpenNavigatorInStore();
+            NavigatorOverlay.OpenNavigatorInStore();
             return;
         }
-        NavOpenBtn.Text = "Открыть карту Навигатора";
 
-        // Без системного разрешения кнопки поверх ЧУЖОГО приложения показать
-        // невозможно — это ограничение Android, а не приложения.
-        if (!NavigatorOverlay.HasOverlayPermission())
-        {
-            NavHintLabel.Text = "Нужно разрешение «Поверх других приложений» — нажмите кнопку ниже.";
-            NavOpenBtn.Text = "Разрешить кнопки поверх карты";
-            var go = await DisplayAlert("Кнопки поверх карты",
-                "Android разрешает рисовать кнопки поверх Яндекс Навигатора только с разрешением "
-                + "«Поверх других приложений».\n\nСейчас откроются настройки телефона: включите переключатель "
-                + "для «Такси Тюмень — Водитель» и вернитесь назад. Навигатор запустится сразу после этого.",
-                "Открыть настройки", "Позже");
-            if (go) NavigatorOverlay.RequestOverlayPermission();
-            return;   // Навигатор не запускаем: иначе кнопок не будет видно
-        }
-
-        NavHintLabel.Text = "Кнопки заказа показаны поверх карты Навигатора.";
-        NavOpenBtn.Text = "Открыть карту Навигатора";
-
-        // Сначала поднимаем окно-оверлей (приложение ещё на экране — Android
-        // разрешает старт сервиса), только потом отдаём экран Навигатору.
-        UpdateOverlayState();
+        NavigatorOverlay.ModeEnabled = true;
         RouteInNavigator(force);
     }
 
@@ -1453,7 +1445,129 @@ public partial class MainDriverPage : ContentPage
             if (_isOnline)
                 StatusLabel.Text = "В сети  " + lat.ToString("F4") + ", " + lng.ToString("F4");
 
+            PushDriverPositionToMaps(lat, lng);
+
         });
+    }
+
+    // ── Встроенная карта маршрута в карточке заказа ────────────────────────
+    private bool _mapFullscreen;
+    private string? _lastMapHtml;
+    private DateTime _lastMapPush = DateTime.MinValue;
+
+    /// Карта маршрута в приложении: водитель → подача → (финиш)
+    private async Task ShowRouteMapAsync(OrderResponse order)
+    {
+        try
+        {
+            MapContainer.IsVisible = true;
+
+            var apiKey = await MapHtml.GetApiKeyAsync();
+            // До посадки ведём к точке подачи, в поездке — к точке назначения
+            var toPickup = NormStatus(order.Status) != "inprogress";
+            double? toLat = toPickup ? order.PickupLatitude : order.DestinationLatitude;
+            double? toLng = toPickup ? order.PickupLongitude : order.DestinationLongitude;
+
+            var html = MapHtml.Build(
+                apiKey,
+                _location.CurrentLat, _location.CurrentLng,
+                toLat, toLng,
+                toPickup ? "Подача" : "Назначение",
+                toPickup ? order.DestinationLatitude : null,
+                toPickup ? order.DestinationLongitude : null);
+
+            _lastMapHtml = html;
+            RouteMap.Source = new HtmlWebViewSource { Html = html };
+            if (_mapFullscreen)
+                FullscreenMap.Source = new HtmlWebViewSource { Html = html };
+        }
+        catch
+        {
+            MapContainer.IsVisible = false;
+        }
+    }
+
+    /// Карта на весь экран: отдельный оверлей поверх страницы (не «окно» в списке).
+    private void OnToggleMapFullscreen(object? sender, EventArgs e)
+    {
+        try
+        {
+            _mapFullscreen = !_mapFullscreen;
+            FullscreenMapOverlay.IsVisible = _mapFullscreen;
+
+            if (_mapFullscreen)
+            {
+                // Переносим текущую карту в полноэкранный WebView
+                if (!string.IsNullOrEmpty(_lastMapHtml))
+                    FullscreenMap.Source = new HtmlWebViewSource { Html = _lastMapHtml };
+                SyncFullscreenButtons();
+            }
+        }
+        catch { }
+    }
+
+    /// Кнопки полноэкранной карты повторяют состояние основных
+    private void SyncFullscreenButtons()
+    {
+        try
+        {
+            FsStatusBtn.Text = MapStatusBtn.Text;
+            FsStatusBtn.BackgroundColor = MapStatusBtn.BackgroundColor;
+            FsWaitingBtn.Text = MapWaitingBtn.Text;
+            FsWaitingBtn.BackgroundColor = MapWaitingBtn.BackgroundColor;
+            FsWaitingBtn.IsEnabled = MapWaitingBtn.IsEnabled;
+            FsWaitingBtn.IsVisible = MapWaitingBtn.IsVisible;
+            FullscreenWaitingLabel.Text = MapWaitingLabel.Text;
+            FullscreenWaitingLabel.IsVisible = MapWaitingLabel.IsVisible;
+        }
+        catch { }
+    }
+
+    private void HideRouteMap()
+    {
+        try
+        {
+            MapContainer.IsVisible = false;
+            MapWaitingLabel.IsVisible = false;
+            FullscreenMapOverlay.IsVisible = false;
+            _mapFullscreen = false;
+        }
+        catch { }
+    }
+
+    private void PushDriverPositionToMaps(double lat, double lng)
+    {
+        try
+        {
+            // Обновляем не чаще раза в 2 секунды: GPS тикает каждые 5 с,
+            // а частые перерисовки маршрута нагружают WebView.
+            if ((DateTime.UtcNow - _lastMapPush).TotalSeconds < 2) return;
+            _lastMapPush = DateTime.UtcNow;
+
+            var latText = lat.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+            var lngText = lng.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+            var script = $"window.updateDriver && window.updateDriver({latText},{lngText},{(_mapFullscreen ? "true" : "false")});";
+
+            if (MapContainer.IsVisible)
+                RouteMap.Eval(script);
+            if (_mapFullscreen)
+                FullscreenMap.Eval(script);
+        }
+        catch
+        {
+            // WebView ещё грузится — обновление применится на следующем тике GPS
+        }
+    }
+
+    /// Аппаратная кнопка «Назад» сначала закрывает полноэкранную карту.
+    protected override bool OnBackButtonPressed()
+    {
+        if (_mapFullscreen)
+        {
+            OnToggleMapFullscreen(null, EventArgs.Empty);
+            return true;
+        }
+        return base.OnBackButtonPressed();
     }
 
     // ==========================
