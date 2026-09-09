@@ -49,6 +49,9 @@ public class OrderResponse
     /// Промежуточные адреса маршрута в порядке следования.
     public List<IntermediatePointDto> IntermediatePoints { get; set; } = new();
 
+    /// Геометрия маршрута по дорогам [[lat,lng], ...] — рисуется офлайн.
+    public List<List<double>>? RouteGeometry { get; set; }
+
     // Простой по просьбе пассажира (поминутная тарификация)
     public DateTimeOffset? WaitingStartedAt { get; set; }
     public int WaitingSeconds { get; set; }

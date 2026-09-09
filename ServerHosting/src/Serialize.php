@@ -125,6 +125,10 @@ final class Serialize
             'fromZoneId' => $o['from_zone_id'] ?? null,
             'toZoneId' => $o['to_zone_id'] ?? null,
             'routePoints' => $routePoints,
+            // Геометрия дороги: приложение рисует её офлайн, без интернета
+            'routeGeometry' => !empty($o['route_geometry'])
+                ? json_decode((string) $o['route_geometry'], true)
+                : null,
             'intermediatePoints' => $intermediatePoints,
             'paymentMethod' => $paymentValue,
             'paymentMethodName' => Taxi::PAYMENT_NAMES[$o['payment_method']] ?? $o['payment_method'],

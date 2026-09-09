@@ -1368,7 +1368,9 @@ public partial class MainDriverPage : ContentPage
                 toPickupStage ? "pickup" : "trip",
                 order.PickupLatitude.ToString("F5"), order.PickupLongitude.ToString("F5"),
                 order.DestinationLatitude?.ToString("F5") ?? "-",
-                order.DestinationLongitude?.ToString("F5") ?? "-");
+                order.DestinationLongitude?.ToString("F5") ?? "-",
+                order.IntermediatePoints.Count.ToString(),
+                (order.RouteGeometry?.Count ?? 0).ToString());
             if (routeKey == _mapRouteKey && !string.IsNullOrEmpty(_lastMapHtml))
             {
                 // Маршрут тот же — просто двигаем маркер водителя.
@@ -1383,13 +1385,22 @@ public partial class MainDriverPage : ContentPage
             double? toLat = toPickup ? order.PickupLatitude : order.DestinationLatitude;
             double? toLng = toPickup ? order.PickupLongitude : order.DestinationLongitude;
 
+            // Геометрия дороги и промежуточные адреса — чтобы карта рисовалась
+            // и без интернета (офлайн-режим внутри WebView).
+            var stops = order.IntermediatePoints
+                .OrderBy(p => p.SortOrder)
+                .Select((p, i) => (p.Latitude, p.Longitude, $"{i + 1}. {p.Address}"))
+                .ToList();
+
             var html = MapHtml.Build(
                 apiKey,
                 _location.CurrentLat, _location.CurrentLng,
                 toLat, toLng,
                 toPickup ? "Подача" : "Назначение",
                 toPickup ? order.DestinationLatitude : null,
-                toPickup ? order.DestinationLongitude : null);
+                toPickup ? order.DestinationLongitude : null,
+                order.RouteGeometry,
+                stops);
 
             _lastMapHtml = html;
             RouteMap.Source = new HtmlWebViewSource { Html = html };
