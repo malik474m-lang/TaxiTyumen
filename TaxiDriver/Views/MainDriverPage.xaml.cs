@@ -1404,6 +1404,27 @@ public partial class MainDriverPage : ContentPage
         }
     }
 
+    /// Команда «скачать тайлы» передаётся карте через состояние:
+    /// прямые вызовы JS на устройстве не срабатывали.
+    private long _mapDownloadAt;
+
+    private async void OnDownloadCityMap(object? sender, EventArgs e)
+    {
+        if (!MapContainer.IsVisible)
+        {
+            await DisplayAlert("Карта", "Откройте активный заказ — карта появится вместе с ним.", "OK");
+            return;
+        }
+
+        _mapDownloadAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        _mapRouteJson = string.Empty;   // форсируем публикацию нового состояния
+        PublishMapState();
+
+        MapDownloadBtn.Text = "Скачивание запущено — прогресс на карте";
+        await Task.Delay(4000);
+        MapDownloadBtn.Text = "⬇ Обновить карту города";
+    }
+
     private OrderResponse? _mapOrder;
     private bool _mapToPickup = true;
     private double _mapDriverLat;
@@ -1417,7 +1438,7 @@ public partial class MainDriverPage : ContentPage
             if (_mapOrder == null) return;
             var lat = _mapDriverLat != 0 ? _mapDriverLat : _location.CurrentLat;
             var lng = _mapDriverLng != 0 ? _mapDriverLng : _location.CurrentLng;
-            var json = MapAssets.BuildRouteJson(_mapOrder, lat, lng, _mapToPickup);
+            var json = MapAssets.BuildRouteJson(_mapOrder, lat, lng, _mapToPickup, _mapDownloadAt);
             if (json == _mapRouteJson) return;
             _mapRouteJson = json;
             LocalWebServer.SetState(json);

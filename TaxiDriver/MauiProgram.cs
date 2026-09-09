@@ -40,6 +40,10 @@ public static class MauiProgram
                 settings.DatabaseEnabled = true;
                 settings.CacheMode = global::Android.Webkit.CacheModes.Default;
                 settings.SetGeolocationEnabled(true);
+
+                // Без этого клиента страница карты не получает геолокацию:
+                // синяя точка и центрирование на машине не работали.
+                handler.PlatformView.SetWebChromeClient(new MapChromeClient());
                 // Карта MapLibre отдаётся локальным HTTP-сервером на 127.0.0.1
                 settings.AllowFileAccess = false;
                 settings.AllowContentAccess = false;
@@ -68,3 +72,16 @@ public static class MauiProgram
         return builder.Build();
     }
 }
+
+#if ANDROID
+/// <summary>Разрешает странице карты доступ к геолокации устройства.</summary>
+internal sealed class MapChromeClient : global::Android.Webkit.WebChromeClient
+{
+    public override void OnGeolocationPermissionsShowPrompt(
+        string? origin, global::Android.Webkit.GeolocationPermissions.ICallback? callback)
+    {
+        // Карта загружается только с локального сервера приложения — доверяем
+        callback?.Invoke(origin, true, false);
+    }
+}
+#endif

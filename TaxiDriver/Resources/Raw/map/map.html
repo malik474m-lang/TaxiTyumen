@@ -9,9 +9,9 @@ html,body{margin:0;padding:0;height:100%;width:100%;background:#12121c;overflow:
 #badge{position:absolute;left:8px;top:8px;z-index:5;display:none;
   background:rgba(220,38,38,.92);color:#fff;font:600 12px sans-serif;
   padding:5px 9px;border-radius:8px;pointer-events:none}
-#dl{position:absolute;left:50%;transform:translateX(-50%);bottom:10px;z-index:1000;
-  border:none;border-radius:10px;background:rgba(37,37,54,.97);color:#FFD700;
-  font:600 13px sans-serif;padding:11px 16px;box-shadow:0 2px 10px rgba(0,0,0,.6)}
+#prog{position:absolute;left:50%;transform:translateX(-50%);bottom:10px;z-index:1000;
+  display:none;border-radius:10px;background:rgba(37,37,54,.97);color:#FFD700;
+  font:600 13px sans-serif;padding:10px 15px;box-shadow:0 2px 10px rgba(0,0,0,.6)}
 #dl.busy{color:#a1a1aa}
 .mk{width:18px;height:18px;border-radius:50%;border:3px solid #111;box-shadow:0 1px 6px rgba(0,0,0,.6)}
 .mk.me{background:#FFD700;width:20px;height:20px}
@@ -24,7 +24,7 @@ html,body{margin:0;padding:0;height:100%;width:100%;background:#12121c;overflow:
   Не удалось загрузить карту MapLibre.<br>Перезапустите приложение.
 </div>
 <div id="badge">Офлайн · карта из памяти</div>
-<button id="dl">⬇ Скачать карту города</button>
+<div id="prog"></div>
 <script src="maplibre-gl.js"></script>
 <script>
 /* ---------- Кеш тайлов в IndexedDB: работает без интернета ---------- */
@@ -121,18 +121,39 @@ var map = new maplibregl.Map({
 // Позиция обязана быть top-left|top-right|bottom-left|bottom-right:
 // значение 'right' роняло инициализацию карты (appendChild of undefined),
 // из-за чего window.setRoute не создавался и карта оставалась пустой.
-map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'right');
+/* Каждый контрол — в своей защите: раньше одна ошибка в addControl
+   останавливала ВЕСЬ скрипт, и карта висела без кнопок, позиции и маршрута. */
+try {
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+} catch (e) { console.warn('nav control', e); }
 
-/* Собственная геолокация карты: синяя точка появляется сразу, не дожидаясь
-   тика GPS из приложения (он приходит раз в 5 секунд). */
-var geo = new maplibregl.GeolocateControl({
-  positionOptions: { enableHighAccuracy: true },
-  trackUserLocation: true,
-  showUserLocation: true,
-  showAccuracyCircle: false
-});
-map.addControl(geo, 'right');
-map.on('load', function(){ setTimeout(function(){ try { geo.trigger(); } catch(e){} }, 500); });
+var geo = null;
+try {
+  geo = new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true, timeout: 10000 },
+    trackUserLocation: true,
+    showUserLocation: true,
+    showAccuracyCircle: false
+  });
+  map.addControl(geo, 'top-right');
+  map.on('load', function(){
+    setTimeout(function(){ try { geo.trigger(); } catch(e){} }, 600);
+  });
+} catch (e) { console.warn('geolocate', e); }
+
+/* Резервная геолокация браузера: если контрол недоступен, позиция всё равно
+   появится и карта отцентрируется на машине, а не на центре города. */
+try {
+  if (navigator.geolocation){
+    navigator.geolocation.watchPosition(function(pos){
+      window.updateDriver(pos.coords.latitude, pos.coords.longitude, false);
+      if (!window._centered){
+        window._centered = true;
+        map.jumpTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 14 });
+      }
+    }, function(){}, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
+  }
+} catch (e) { console.warn('watchPosition', e); }
 
 var meMarker = null, markers = [], routeReady = false, lastData = null;
 
@@ -242,14 +263,18 @@ function tileRange(z, minLat, maxLat, minLng, maxLng){
   return { x0: x(minLng), x1: x(maxLng), y0: y(maxLat), y1: y(minLat) };
 }
 
+var downloading = false;
 window.downloadCity = async function(minLat, maxLat, minLng, maxLng, zMin, zMax){
-  var btn = document.getElementById('dl');
-  if (btn.classList.contains('busy')) return;
+  var btn = document.getElementById('prog');
+  if (downloading) return;
   if (navigator.onLine === false){
+    btn.style.display = 'block';
     btn.textContent = 'Нет интернета для скачивания';
-    setTimeout(function(){ btn.textContent = '⬇ Скачать карту города'; }, 3000);
+    setTimeout(function(){ btn.style.display = 'none'; }, 3000);
     return;
   }
+  downloading = true;
+  btn.style.display = 'block';
   minLat = minLat || 57.05; maxLat = maxLat || 57.26;
   minLng = minLng || 65.36; maxLng = maxLng || 65.75;
   zMin = zMin || 11; zMax = zMax || 15;
@@ -262,7 +287,6 @@ window.downloadCity = async function(minLat, maxLat, minLng, maxLng, zMin, zMax)
         list.push('https://tile.openstreetmap.org/' + z + '/' + x + '/' + y + '.png');
   }
 
-  btn.classList.add('busy');
   var done = 0, saved = 0;
   for (var i = 0; i < list.length; i++){
     var url = list[i];
@@ -275,20 +299,15 @@ window.downloadCity = async function(minLat, maxLat, minLng, maxLng, zMin, zMax)
       }
     }catch(e){}
     done++;
-    if (done % 10 === 0 || done === list.length)
-      btn.textContent = '⬇ ' + done + ' / ' + list.length;
+    if (done % 5 === 0 || done === list.length)
+      btn.textContent = 'Скачивание карты: ' + done + ' / ' + list.length;
   }
-  btn.classList.remove('busy');
-  btn.textContent = '✓ Сохранено тайлов: ' + saved;
-  setTimeout(function(){ btn.textContent = '⬇ Обновить карту города'; }, 5000);
+  downloading = false;
+  btn.textContent = '✓ Карта города сохранена (' + saved + ' тайлов)';
+  setTimeout(function(){ btn.style.display = 'none'; }, 5000);
 };
 
-/* Обработчик вешаем после объявления функции: inline-onclick срабатывал
-   раньше, чем downloadCity появлялась, и нажатие ничего не делало. */
-document.getElementById('dl').addEventListener('click', function(){
-  try { window.downloadCity(); }
-  catch (e){ this.textContent = 'Ошибка: ' + e.message; }
-});
+
 
 var tileErrors = 0;
 map.on('error', function(e){
@@ -321,7 +340,13 @@ function startStatePolling(){
         var txt = await r.text();
         if (txt && txt !== lastStateHash && txt !== '{}'){
           lastStateHash = txt;
-          window.setRoute(JSON.parse(txt));
+          var st = JSON.parse(txt);
+          window.setRoute(st);
+          // Нативная кнопка под картой просит скачать тайлы
+          if (st.downloadAt && st.downloadAt !== window._lastDownloadAt){
+            window._lastDownloadAt = st.downloadAt;
+            window.downloadCity();
+          }
         }
       }
     }catch(e){}

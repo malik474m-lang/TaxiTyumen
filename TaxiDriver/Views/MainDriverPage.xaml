@@ -225,6 +225,19 @@
                                    IsVisible="False"/>
                         </Grid>
 
+                        <!-- Скачивание карты города: нативная кнопка под картой,
+                             её не перекрывают элементы управления MapLibre -->
+                        <Button x:Name="MapDownloadBtn"
+                                Text="⬇ Скачать карту города для работы офлайн"
+                                BackgroundColor="#252536"
+                                TextColor="#FFD700"
+                                FontSize="13"
+                                FontAttributes="Bold"
+                                CornerRadius="8"
+                                HeightRequest="44"
+                                Margin="0,8,0,0"
+                                Clicked="OnDownloadCityMap"/>
+
                         <VerticalStackLayout x:Name="OrderDetailsPanel" Spacing="8">
                             <Grid ColumnDefinitions="20,*">
                                 <Label Grid.Column="0" Text="🅰" FontSize="16" VerticalOptions="Center"/>
