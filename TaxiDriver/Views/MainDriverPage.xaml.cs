@@ -1378,14 +1378,11 @@ public partial class MainDriverPage : ContentPage
             }
 
             var toPickup = NormStatus(order.Status) != "inprogress";
-            var json = MapAssets.BuildRouteJson(order, _location.CurrentLat, _location.CurrentLng, toPickup);
-            if (json == _mapRouteJson) return;   // маршрут не изменился — не трогаем карту
-            _mapRouteJson = json;
+            _mapOrder = order;
+            _mapToPickup = toPickup;
+            PublishMapState();
 
-            await RouteMap.EvaluateJavaScriptAsync($"window.setRoute && window.setRoute('{MapAssets.JsArg(json)}')");
-
-            // Свежая точка GPS сразу, не дожидаясь очередного тика трекинга:
-            // иначе маркер водителя появлялся только через несколько секунд.
+            // Свежая точка GPS сразу, не дожидаясь очередного тика трекинга
             _ = Task.Run(async () =>
             {
                 try
@@ -1394,9 +1391,9 @@ public partial class MainDriverPage : ContentPage
                         ?? await Geolocation.GetLocationAsync(
                             new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(5)));
                     if (loc == null) return;
-                    await MainThread.InvokeOnMainThreadAsync(async () =>
-                        await RouteMap.EvaluateJavaScriptAsync(
-                            $"window.updateDriver && window.updateDriver({MapAssets.N(loc.Latitude)},{MapAssets.N(loc.Longitude)},true)"));
+                    _mapDriverLat = loc.Latitude;
+                    _mapDriverLng = loc.Longitude;
+                    PublishMapState();
                 }
                 catch { }
             });
@@ -1407,18 +1404,39 @@ public partial class MainDriverPage : ContentPage
         }
     }
 
-    /// Позиция водителя двигается без перерисовки карты.
+    private OrderResponse? _mapOrder;
+    private bool _mapToPickup = true;
+    private double _mapDriverLat;
+    private double _mapDriverLng;
+
+    /// Кладём актуальные данные на локальный сервер — карта заберёт их сама.
+    private void PublishMapState()
+    {
+        try
+        {
+            if (_mapOrder == null) return;
+            var lat = _mapDriverLat != 0 ? _mapDriverLat : _location.CurrentLat;
+            var lng = _mapDriverLng != 0 ? _mapDriverLng : _location.CurrentLng;
+            var json = MapAssets.BuildRouteJson(_mapOrder, lat, lng, _mapToPickup);
+            if (json == _mapRouteJson) return;
+            _mapRouteJson = json;
+            LocalWebServer.SetState(json);
+        }
+        catch { }
+    }
+
+    /// Позиция водителя обновляется через то же состояние — без перерисовки.
     private void PushDriverPositionToMaps(double lat, double lng)
     {
         try
         {
-            if (!_mapLoaded || !MapContainer.IsVisible) return;
+            if (!MapContainer.IsVisible || _mapOrder == null) return;
             if ((DateTime.UtcNow - _lastMapPush).TotalSeconds < 2) return;
             _lastMapPush = DateTime.UtcNow;
 
-            var follow = _mapFullscreen ? "true" : "false";
-            _ = RouteMap.EvaluateJavaScriptAsync(
-                $"window.updateDriver && window.updateDriver({MapAssets.N(lat)},{MapAssets.N(lng)},{follow})");
+            _mapDriverLat = lat;
+            _mapDriverLng = lng;
+            PublishMapState();
         }
         catch { }
     }
@@ -1457,6 +1475,8 @@ public partial class MainDriverPage : ContentPage
             MapContainer.IsVisible = false;
             MapWaitingLabel.IsVisible = false;
             _mapRouteJson = string.Empty;
+            _mapOrder = null;
+            LocalWebServer.SetState("{}");
             if (_mapFullscreen) OnToggleMapFullscreen(null, EventArgs.Empty);
         }
         catch { }

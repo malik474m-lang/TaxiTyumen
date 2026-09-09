@@ -205,26 +205,49 @@ public partial class MainWindow : Window
         await RefreshAsync();
     }
 
+    /// Пока открыто модальное окно уведомления, таймер продолжает тикать.
+    /// Без этого флага каждый тик открывал ЕЩЁ одно окно с тем же текстом —
+    /// отсюда бесконечные «Водитель отказался от заказа».
+    private bool _notificationsBusy;
+
     private async Task PollNotificationsAsync()
     {
+        if (_notificationsBusy) return;
+        _notificationsBusy = true;
         try
         {
             var notifications = await _api.GetNotificationsAsync();
+            var shown = new HashSet<string>();
+
             foreach (var n in notifications)
             {
+                // СНАЧАЛА помечаем прочитанным, потом показываем окно:
+                // иначе модальное окно блокирует пометку, и уведомление
+                // приходит снова на каждом опросе.
+                try { await _api.MarkNotificationReadAsync(n.Id); } catch { }
+
+                if (n.Type is not ("DriverRejectedOrder" or "AdminMessage")) continue;
+
+                // Одинаковые сообщения в одной пачке показываем один раз
+                var key = n.Type + "|" + n.Message;
+                if (!shown.Add(key)) continue;
+
                 if (n.Type == "DriverRejectedOrder")
                 {
                     System.Media.SystemSounds.Exclamation.Play();
                     MessageBox.Show(n.Message, n.Title, MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
-                else if (n.Type == "AdminMessage")
+                else
                 {
                     MessageBox.Show(n.Message, n.Title, MessageBoxButton.OK, MessageBoxImage.Information);
                 }
-                await _api.MarkNotificationReadAsync(n.Id);
             }
         }
         catch { }
+        finally
+        {
+            _notificationsBusy = false;
+        }
     }
 
     // ===== Обновление данных =====

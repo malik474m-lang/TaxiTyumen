@@ -9,9 +9,9 @@ html,body{margin:0;padding:0;height:100%;width:100%;background:#12121c;overflow:
 #badge{position:absolute;left:8px;top:8px;z-index:5;display:none;
   background:rgba(220,38,38,.92);color:#fff;font:600 12px sans-serif;
   padding:5px 9px;border-radius:8px;pointer-events:none}
-#dl{position:absolute;right:8px;top:8px;z-index:6;border:none;border-radius:9px;
-  background:rgba(37,37,54,.96);color:#FFD700;font:600 12px sans-serif;padding:9px 12px;
-  box-shadow:0 2px 8px rgba(0,0,0,.5)}
+#dl{position:absolute;left:50%;transform:translateX(-50%);bottom:10px;z-index:1000;
+  border:none;border-radius:10px;background:rgba(37,37,54,.97);color:#FFD700;
+  font:600 13px sans-serif;padding:11px 16px;box-shadow:0 2px 10px rgba(0,0,0,.6)}
 #dl.busy{color:#a1a1aa}
 .mk{width:18px;height:18px;border-radius:50%;border:3px solid #111;box-shadow:0 1px 6px rgba(0,0,0,.6)}
 .mk.me{background:#FFD700;width:20px;height:20px}
@@ -184,8 +184,13 @@ window.setRoute = function(json){
     }
     line.forEach(function(c){ pts.push(c); });
 
-    if (d.driver && d.driver.lat && d.driver.lng)
+    if (d.driver && d.driver.lat && d.driver.lng){
       window.updateDriver(d.driver.lat, d.driver.lng, false);
+      if (!window._centered){
+        window._centered = true;
+        map.jumpTo({ center: [d.driver.lng, d.driver.lat], zoom: 14 });
+      }
+    }
 
     if (pts.length){
       var b = pts.reduce(function(acc, c){ return acc.extend(c); },
@@ -302,7 +307,28 @@ map.on('error', function(e){
 map.on('load', function(){
   document.getElementById('fatal').style.display = 'none';
   if (lastData) window.setRoute(lastData);
+  startStatePolling();
 });
+
+/* Данные берём сами с локального сервера приложения: это работает всегда,
+   в отличие от вызовов JS снаружи, которые на части устройств не проходили. */
+var lastStateHash = '';
+function startStatePolling(){
+  async function tick(){
+    try{
+      var r = await fetch('/state.json?t=' + Date.now(), { cache: 'no-store' });
+      if (r.ok){
+        var txt = await r.text();
+        if (txt && txt !== lastStateHash && txt !== '{}'){
+          lastStateHash = txt;
+          window.setRoute(JSON.parse(txt));
+        }
+      }
+    }catch(e){}
+    setTimeout(tick, 1500);
+  }
+  tick();
+}
 
 /* Явная проверка: если движок не загрузился — показываем причину, а не тёмный экран */
 if (typeof maplibregl === 'undefined'){

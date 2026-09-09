@@ -21,6 +21,14 @@ public static class LocalWebServer
     public static int Port { get; private set; }
     public static bool IsRunning => _listener != null;
 
+    /// Текущее состояние карты (маршрут + позиция водителя).
+    /// Страница карты забирает его через /state.json — это надёжнее, чем
+    /// EvaluateJavaScriptAsync: тот молча не срабатывал на части устройств,
+    /// из-за чего маршрут и маркер не появлялись.
+    private static volatile string _state = "{}";
+
+    public static void SetState(string json) => _state = json ?? "{}";
+
     /// URL страницы карты (сервер стартует при первом обращении).
     public static string Start(string rootDirectory)
     {
@@ -73,6 +81,13 @@ public static class LocalWebServer
                 var rawPath = firstLine.Length > 1 ? firstLine[1] : "/";
                 var path = Uri.UnescapeDataString(rawPath.Split('?')[0]).TrimStart('/');
                 if (string.IsNullOrEmpty(path)) path = "map.html";
+
+                // Состояние карты отдаём из памяти, без файлов
+                if (path == "state.json")
+                {
+                    await WriteAsync(stream, 200, "application/json; charset=utf-8", _state);
+                    return;
+                }
 
                 // Защита от выхода за пределы каталога
                 var root = Path.GetFullPath(_root);
