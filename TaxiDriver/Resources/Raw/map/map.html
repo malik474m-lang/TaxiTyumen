@@ -3,16 +3,20 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <link rel="stylesheet" href="maplibre-gl.css">
 <style>
-html,body{margin:0;padding:0;height:100%;width:100%;background:#12121c;overflow:hidden}
+html,body{margin:0;padding:0;height:100%;width:100%;background:#e8e6e1;overflow:hidden}
 #map{position:absolute;inset:0}
+.maplibregl-canvas{outline:none}
 .maplibregl-ctrl-attrib{font-size:9px;opacity:.55}
 #badge{position:absolute;left:8px;top:8px;z-index:5;display:none;
   background:rgba(220,38,38,.92);color:#fff;font:600 12px sans-serif;
   padding:5px 9px;border-radius:8px;pointer-events:none}
 #dl.busy{color:#a1a1aa}
 .mk{width:18px;height:18px;border-radius:50%;border:3px solid #111;box-shadow:0 1px 6px rgba(0,0,0,.6)}
-.mk.me{background:#FFD700;width:20px;height:20px}
 .mk.a{background:#FF9800}.mk.b{background:#4CAF50}.mk.s{background:#38BDF8}
+/* Машина водителя: значок авто, разворачивается по курсу движения */
+#car{width:44px;height:44px;will-change:transform;pointer-events:none}
+#car svg{display:block;filter:drop-shadow(0 2px 5px rgba(0,0,0,.55))}
+#car .body{transition:transform .35s linear}
 </style></head>
 <body>
 <div id="map"></div>
@@ -35,8 +39,11 @@ var map = new maplibregl.Map({
     sources: { osm: { type: 'raster', tiles: [TILE], tileSize: 256, maxzoom: 19,
       attribution: '© OpenStreetMap' } },
     layers: [
-      { id: 'bg', type: 'background', paint: { 'background-color': '#12121c' } },
-      { id: 'osm', type: 'raster', source: 'osm' }
+      // Светлый фон под тайлами: незагруженные участки выглядят как пустая
+      // карта, а не как чёрные дыры на экране.
+      { id: 'bg', type: 'background', paint: { 'background-color': '#e8e6e1' } },
+      { id: 'osm', type: 'raster', source: 'osm',
+        paint: { 'raster-fade-duration': 0 } }
     ]
   },
   center: [65.5272, 57.1522], zoom: 12, attributionControl: { compact: true }
@@ -139,14 +146,18 @@ window.setRoute = function(json){
     line.forEach(function(c){ pts.push(c); });
 
     if (d.driver && d.driver.lat && d.driver.lng){
-      window.updateDriver(d.driver.lat, d.driver.lng, false);
+      window.updateDriver(d.driver.lat, d.driver.lng, !!d.follow, d.driver.bearing);
       if (!window._centered){
         window._centered = true;
         map.jumpTo({ center: [d.driver.lng, d.driver.lat], zoom: 14 });
       }
     }
 
-    if (pts.length){
+    // Подгоняем камеру под маршрут только при его смене: иначе каждая
+    // новая точка GPS сбрасывала масштаб и «дёргала» карту.
+    var routeKey = JSON.stringify(pts);
+    if (pts.length && routeKey !== window._fitKey){
+      window._fitKey = routeKey;
       var b = pts.reduce(function(acc, c){ return acc.extend(c); },
         new maplibregl.LngLatBounds(pts[0], pts[0]));
       map.fitBounds(b, { padding: 60, maxZoom: 16, duration: 0 });
@@ -156,12 +167,43 @@ window.setRoute = function(json){
   }catch(e){ return 'err:' + e.message; }
 };
 
-window.updateDriver = function(lat, lng, follow){
+/* Значок автомобиля вместо простой точки. */
+function carElement(){
+  var wrap = document.createElement('div');
+  wrap.id = 'car';
+  wrap.innerHTML =
+    '<svg viewBox="0 0 44 44" width="44" height="44">' +
+    '<g class="body" transform="rotate(0 22 22)">' +
+    '<circle cx="22" cy="22" r="13" fill="rgba(250,204,21,.20)"/>' +
+    '<path d="M22 5 L31 33 L22 27 L13 33 Z" fill="#FACC15" stroke="#1b1b1b" ' +
+    'stroke-width="2" stroke-linejoin="round"/>' +
+    '</g></svg>';
+  return wrap;
+}
+
+function setCarBearing(deg){
+  try{
+    var body = document.querySelector('#car .body');
+    if (body) body.setAttribute('transform', 'rotate(' + (deg || 0) + ' 22 22)');
+  }catch(e){}
+}
+
+window.updateDriver = function(lat, lng, follow, bearing){
   try{
     if (!lat || !lng) return 'no-coords';
     var ll = [Number(lng), Number(lat)];
-    if (!meMarker) meMarker = new maplibregl.Marker({ element: el('me') }).setLngLat(ll).addTo(map);
+    if (!meMarker) meMarker = new maplibregl.Marker({ element: carElement() }).setLngLat(ll).addTo(map);
     else meMarker.setLngLat(ll);
+
+    // Курс: с GPS, иначе вычисляем по направлению последнего перемещения
+    var deg = (bearing !== undefined && bearing !== null) ? Number(bearing) : null;
+    if (deg === null && window._prevLL){
+      var dx = ll[0] - window._prevLL[0], dy = ll[1] - window._prevLL[1];
+      if (Math.abs(dx) > 1e-6 || Math.abs(dy) > 1e-6)
+        deg = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+    }
+    if (deg !== null) setCarBearing(deg);
+    window._prevLL = ll;
     if (routeReady && lastData && lastData.geometry && lastData.geometry.length > 1){
       /* стартовая точка линии следует за водителем */
       var src = map.getSource('route');

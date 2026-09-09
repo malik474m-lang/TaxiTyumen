@@ -18,7 +18,7 @@ public static class LocalWebServer
     private static string _tileRoot = string.Empty;
     private static volatile string _state = "{}";
     private static readonly HttpClient TileHttp = CreateTileHttp();
-    private static readonly SemaphoreSlim TileGate = new(6, 6);
+    private static readonly SemaphoreSlim TileGate = new(16, 16);
 
     public static int Port { get; private set; }
     public static bool IsRunning => _listener != null;
@@ -100,9 +100,17 @@ public static class LocalWebServer
                 {
                     var bytes = await GetTileAsync(z, x, y);
                     if (bytes != null)
+                    {
                         await WriteAsync(stream, 200, "image/png", bytes, noStore: false);
+                    }
                     else
-                        await WriteAsync(stream, 404, "text/plain", "tile unavailable", noStore: true);
+                    {
+                        // Раньше здесь был 404: MapLibre считал тайл битым и
+                        // навсегда оставлял чёрный прямоугольник. Отдаём светлую
+                        // заглушку без кеширования — при следующем панорамировании
+                        // тайл будет запрошен снова и появится настоящая карта.
+                        await WriteAsync(stream, 200, "image/png", PlaceholderTile(), noStore: true);
+                    }
                     return;
                 }
 
@@ -154,10 +162,24 @@ public static class LocalWebServer
                 if (File.Exists(file)) return await File.ReadAllBytesAsync(file, ct);
 
                 var url = $"https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-                using var response = await TileHttp.GetAsync(url, ct);
-                if (!response.IsSuccessStatusCode) return null;
-                var bytes = await response.Content.ReadAsByteArrayAsync(ct);
-                if (bytes.Length < 100) return null;
+                byte[]? bytes = null;
+                for (var attempt = 0; attempt < 2 && bytes == null; attempt++)
+                {
+                    try
+                    {
+                        using var response = await TileHttp.GetAsync(url, ct);
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            await Task.Delay(200, ct);
+                            continue;
+                        }
+                        var data = await response.Content.ReadAsByteArrayAsync(ct);
+                        if (data.Length > 100) bytes = data;
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch { await Task.Delay(200, ct); }
+                }
+                if (bytes == null) return null;
 
                 Directory.CreateDirectory(Path.GetDirectoryName(file)!);
                 await File.WriteAllBytesAsync(file, bytes, ct);
@@ -166,6 +188,19 @@ public static class LocalWebServer
             finally { TileGate.Release(); }
         }
         catch { return null; }
+    }
+
+    private static byte[]? _placeholder;
+
+    /// Светлый PNG 256×256 — показывается вместо ещё не загруженного тайла.
+    private static byte[] PlaceholderTile()
+    {
+        if (_placeholder != null) return _placeholder;
+        // Минимальный valid PNG (1×1, цвет фона карты), масштабируется движком
+        _placeholder = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mPk6" +
+            "e/5DwAGgwJ/lK3Q6wAAAABJRU5ErkJggg==");
+        return _placeholder;
     }
 
     public sealed record DownloadProgress(int Done, int Total, int Saved, int Existing, int Failed);

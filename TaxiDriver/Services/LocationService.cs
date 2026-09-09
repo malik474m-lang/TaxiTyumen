@@ -12,6 +12,10 @@ public class LocationService
     public double CurrentLat { get; private set; }
     public double CurrentLng { get; private set; }
     public bool HasFix { get; private set; }
+
+    /// Курс движения в градусах (0 = север) — иконка машины разворачивается по нему.
+    public double? CurrentBearing { get; private set; }
+    public double? CurrentSpeed { get; private set; }
     public Guid? ActiveOrderId { get; set; }
     public Guid? DriverId { get; set; }
 
@@ -91,7 +95,7 @@ public class LocationService
 #endif
 
         _timer = Application.Current!.Dispatcher.CreateTimer();
-        _timer.Interval = TimeSpan.FromSeconds(5);
+        _timer.Interval = TimeSpan.FromSeconds(3);
         _timer.Tick += async (s, e) => await UpdateLocationAsync();
         _timer.Start();
 
@@ -143,26 +147,42 @@ public class LocationService
     }
 #endif
 
+    private bool _updating;
+
     private async Task UpdateLocationAsync()
     {
+        // Тик раз в 5 секунд может наложиться на медленный GPS-ответ
+        if (_updating) return;
+        _updating = true;
         try
         {
-            var location = await Geolocation.GetLastKnownLocationAsync();
-            if (location == null)
+            // ВАЖНО: GetLastKnownLocationAsync отдаёт КЕШ и возвращает одну и ту
+            // же точку — из-за неё машина «стояла на месте» на карте.
+            // Запрашиваем свежую позицию, кеш используем только как резерв.
+            Location? location = null;
+            try
             {
                 location = await Geolocation.GetLocationAsync(
-                    new GeolocationRequest(GeolocationAccuracy.High,
-                        TimeSpan.FromSeconds(3)));
+                    new GeolocationRequest(GeolocationAccuracy.Best, TimeSpan.FromSeconds(8)));
             }
+            catch { }
+
+            location ??= await Geolocation.GetLastKnownLocationAsync();
 
             if (location != null)
                 await ApplyLocationAsync(location);
         }
         catch { /* GPS временно недоступен */ }
+        finally { _updating = false; }
     }
 
     private async Task ApplyLocationAsync(Location location)
     {
+        // Курс сохраняем последний известный: при остановке GPS его обнуляет,
+        // и иконка машины дёргалась бы на север.
+        if (location.Course is > 0) CurrentBearing = location.Course;
+        CurrentSpeed = location.Speed;
+
         CurrentLat = location.Latitude;
         CurrentLng = location.Longitude;
         HasFix = true;

@@ -61,12 +61,15 @@ public static class MapAssets
     /// JSON для window.setRoute(): точки, геометрия дороги, позиция водителя.
     public static string BuildRouteJson(
         OrderResponse order, double driverLat, double driverLng, bool toPickup,
-        List<List<double>>? roadGeometry = null, long tilesVersion = 0)
+        List<List<double>>? roadGeometry = null, long tilesVersion = 0,
+        double? bearing = null, bool follow = false)
     {
         var payload = new
         {
             tilesVersion,
-            driver = new { lat = driverLat, lng = driverLng },
+            // follow — камера едет за машиной (включается в полноэкранном режиме)
+            follow,
+            driver = new { lat = driverLat, lng = driverLng, bearing },
             target = toPickup
                 ? Point(order.PickupLatitude, order.PickupLongitude, "Подача")
                 : Point(order.DestinationLatitude, order.DestinationLongitude, "Назначение"),

@@ -1507,6 +1507,7 @@ public partial class MainDriverPage : ContentPage
     private bool _mapToPickup = true;
     private double _mapDriverLat;
     private double _mapDriverLng;
+    private double? _mapDriverBearing;
 
     /// Кладём актуальные данные на локальный сервер — карта заберёт их сама.
     private void PublishMapState()
@@ -1517,7 +1518,8 @@ public partial class MainDriverPage : ContentPage
             var lat = _mapDriverLat != 0 ? _mapDriverLat : _location.CurrentLat;
             var lng = _mapDriverLng != 0 ? _mapDriverLng : _location.CurrentLng;
             var json = MapAssets.BuildRouteJson(
-                _mapOrder, lat, lng, _mapToPickup, _roadGeometry, _mapTilesVersion);
+                _mapOrder, lat, lng, _mapToPickup, _roadGeometry, _mapTilesVersion,
+                _mapDriverBearing ?? _location.CurrentBearing, _mapFullscreen);
             if (json == _mapRouteJson) return;
             _mapRouteJson = json;
             LocalWebServer.SetState(json);
@@ -1531,11 +1533,12 @@ public partial class MainDriverPage : ContentPage
         try
         {
             if (!MapContainer.IsVisible || _mapOrder == null) return;
-            if ((DateTime.UtcNow - _lastMapPush).TotalSeconds < 2) return;
+            if ((DateTime.UtcNow - _lastMapPush).TotalMilliseconds < 900) return;
             _lastMapPush = DateTime.UtcNow;
 
             _mapDriverLat = lat;
             _mapDriverLng = lng;
+            _mapDriverBearing = _location.CurrentBearing;
             PublishMapState();
         }
         catch { }
@@ -1561,9 +1564,11 @@ public partial class MainDriverPage : ContentPage
             if (_mapFullscreen)
                 await MainScroll.ScrollToAsync(MapContainer, ScrollToPosition.Start, false);
 
-            // Сообщаем карте о новом размере окна
+            // Новый размер окна + режим слежения за машиной
             await Task.Delay(120);
             await RouteMap.EvaluateJavaScriptAsync("window.mapResize && window.mapResize()");
+            _mapRouteJson = string.Empty;
+            PublishMapState();
         }
         catch { }
     }
