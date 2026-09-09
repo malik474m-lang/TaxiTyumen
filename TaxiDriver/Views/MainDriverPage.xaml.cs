@@ -1087,15 +1087,30 @@ public partial class MainDriverPage : ContentPage
         }
     }
 
-    private async void OnCancelActiveOrder(object? sender, EventArgs e)
+    /// Водитель НЕ отменяет заказ — он отказывается от него.
+    /// Заказ возвращается в поиск и остаётся у диспетчера, а не пропадает.
+    /// Отменить заказ могут только клиент и оператор.
+    private async void OnRejectActiveOrder(object? sender, EventArgs e)
     {
-        if (_activeOrder == null) return;
+        if (_activeOrder == null || _auth.DriverId == null) return;
 
-        var confirm = await DisplayAlert("Отмена", "Отменить текущий заказ?", "Да", "Нет");
+        var confirm = await DisplayAlert(
+            "Отказ от заказа",
+            "Отказаться от заказа? Он вернётся диспетчеру и будет предложен другим водителям.\n\n"
+            + "Может быть удержан штраф за отказ.",
+            "Отказаться", "Продолжить заказ");
         if (!confirm) return;
 
-        await _api.CancelOrderAsync(_activeOrder.Id, _auth.DriverId!.Value, "Отменён водителем");
-        await OnOrderCompleted();
+        try
+        {
+            await _api.RejectOrderAsync(_activeOrder.Id, _auth.DriverId.Value, "Отказ водителя");
+            NavigatorOverlay.Toast("Заказ возвращён диспетчеру");
+            await OnOrderCompleted();
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlert("Отказ", "Не удалось отказаться: " + ex.Message, "OK");
+        }
     }
 
     private async Task OnOrderCompleted()
@@ -1315,7 +1330,7 @@ public partial class MainDriverPage : ContentPage
                     OnOpenChat(this, EventArgs.Empty);
                     break;
                 case "cancel":
-                    OnCancelActiveOrder(this, EventArgs.Empty);
+                    OnRejectActiveOrder(this, EventArgs.Empty);
                     break;
                 case "sos":
                     // Тревожная кнопка требует подтверждения в приложении
@@ -1368,6 +1383,23 @@ public partial class MainDriverPage : ContentPage
             _mapRouteJson = json;
 
             await RouteMap.EvaluateJavaScriptAsync($"window.setRoute && window.setRoute('{MapAssets.JsArg(json)}')");
+
+            // Свежая точка GPS сразу, не дожидаясь очередного тика трекинга:
+            // иначе маркер водителя появлялся только через несколько секунд.
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var loc = await Geolocation.GetLastKnownLocationAsync()
+                        ?? await Geolocation.GetLocationAsync(
+                            new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(5)));
+                    if (loc == null) return;
+                    await MainThread.InvokeOnMainThreadAsync(async () =>
+                        await RouteMap.EvaluateJavaScriptAsync(
+                            $"window.updateDriver && window.updateDriver({MapAssets.N(loc.Latitude)},{MapAssets.N(loc.Longitude)},true)"));
+                }
+                catch { }
+            });
         }
         catch
         {

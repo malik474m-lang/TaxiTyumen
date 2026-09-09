@@ -24,7 +24,7 @@ html,body{margin:0;padding:0;height:100%;width:100%;background:#12121c;overflow:
   Не удалось загрузить карту MapLibre.<br>Перезапустите приложение.
 </div>
 <div id="badge">Офлайн · карта из памяти</div>
-<button id="dl" onclick="downloadCity()">⬇ Скачать карту города</button>
+<button id="dl">⬇ Скачать карту города</button>
 <script src="maplibre-gl.js"></script>
 <script>
 /* ---------- Кеш тайлов в IndexedDB: работает без интернета ---------- */
@@ -121,7 +121,18 @@ var map = new maplibregl.Map({
 // Позиция обязана быть top-left|top-right|bottom-left|bottom-right:
 // значение 'right' роняло инициализацию карты (appendChild of undefined),
 // из-за чего window.setRoute не создавался и карта оставалась пустой.
-map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'right');
+
+/* Собственная геолокация карты: синяя точка появляется сразу, не дожидаясь
+   тика GPS из приложения (он приходит раз в 5 секунд). */
+var geo = new maplibregl.GeolocateControl({
+  positionOptions: { enableHighAccuracy: true },
+  trackUserLocation: true,
+  showUserLocation: true,
+  showAccuracyCircle: false
+});
+map.addControl(geo, 'right');
+map.on('load', function(){ setTimeout(function(){ try { geo.trigger(); } catch(e){} }, 500); });
 
 var meMarker = null, markers = [], routeReady = false, lastData = null;
 
@@ -173,7 +184,8 @@ window.setRoute = function(json){
     }
     line.forEach(function(c){ pts.push(c); });
 
-    if (d.driver) window.updateDriver(d.driver.lat, d.driver.lng, false);
+    if (d.driver && d.driver.lat && d.driver.lng)
+      window.updateDriver(d.driver.lat, d.driver.lng, false);
 
     if (pts.length){
       var b = pts.reduce(function(acc, c){ return acc.extend(c); },
@@ -187,6 +199,7 @@ window.setRoute = function(json){
 
 window.updateDriver = function(lat, lng, follow){
   try{
+    if (!lat || !lng) return 'no-coords';
     var ll = [Number(lng), Number(lat)];
     if (!meMarker) meMarker = new maplibregl.Marker({ element: el('me') }).setLngLat(ll).addTo(map);
     else meMarker.setLngLat(ll);
@@ -227,6 +240,11 @@ function tileRange(z, minLat, maxLat, minLng, maxLng){
 window.downloadCity = async function(minLat, maxLat, minLng, maxLng, zMin, zMax){
   var btn = document.getElementById('dl');
   if (btn.classList.contains('busy')) return;
+  if (navigator.onLine === false){
+    btn.textContent = 'Нет интернета для скачивания';
+    setTimeout(function(){ btn.textContent = '⬇ Скачать карту города'; }, 3000);
+    return;
+  }
   minLat = minLat || 57.05; maxLat = maxLat || 57.26;
   minLng = minLng || 65.36; maxLng = maxLng || 65.75;
   zMin = zMin || 11; zMax = zMax || 15;
@@ -256,9 +274,16 @@ window.downloadCity = async function(minLat, maxLat, minLng, maxLng, zMin, zMax)
       btn.textContent = '⬇ ' + done + ' / ' + list.length;
   }
   btn.classList.remove('busy');
-  btn.textContent = '✓ Карта города сохранена (' + saved + ')';
-  setTimeout(function(){ btn.textContent = '⬇ Обновить карту города'; }, 4000);
+  btn.textContent = '✓ Сохранено тайлов: ' + saved;
+  setTimeout(function(){ btn.textContent = '⬇ Обновить карту города'; }, 5000);
 };
+
+/* Обработчик вешаем после объявления функции: inline-onclick срабатывал
+   раньше, чем downloadCity появлялась, и нажатие ничего не делало. */
+document.getElementById('dl').addEventListener('click', function(){
+  try { window.downloadCity(); }
+  catch (e){ this.textContent = 'Ошибка: ' + e.message; }
+});
 
 var tileErrors = 0;
 map.on('error', function(e){

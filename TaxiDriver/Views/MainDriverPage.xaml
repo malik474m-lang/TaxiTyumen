@@ -256,12 +256,12 @@
                                         Margin="0,0,4,0"
                                         Clicked="OnStatusButtonClick"/>
                                 <Button Grid.Column="1"
-                                        Text="Отменить"
+                                        Text="Отказаться"
                                         BackgroundColor="#555"
                                         TextColor="White"
                                         CornerRadius="8"
                                         Margin="4,0,0,0"
-                                        Clicked="OnCancelActiveOrder"/>
+                                        Clicked="OnRejectActiveOrder"/>
                             </Grid>
 
                             <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">

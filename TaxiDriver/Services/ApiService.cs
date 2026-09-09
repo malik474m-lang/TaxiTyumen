@@ -204,15 +204,6 @@ public class ApiService
         }
     }
 
-    public async Task CancelOrderAsync(Guid orderId, Guid driverId, string reason)
-    {
-        await _http.PostAsJsonAsync($"orders/{orderId}/cancel", new
-        {
-            Reason = reason,
-            CancelledByUserId = driverId
-        });
-    }
-
     public async Task UpdateLocationAsync(Guid driverId, UpdateLocationRequest request)
     {
         await _http.PutAsJsonAsync($"drivers/{driverId}/location", request);

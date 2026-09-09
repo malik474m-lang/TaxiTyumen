@@ -44,11 +44,16 @@ if (in_array($action, $driverActions, true)) {
 } elseif ($action === 'assign') {
     Guard::role($claims, 'operator', 'admin');
 } elseif ($action === 'cancel') {
+    // Отменить заказ могут ТОЛЬКО клиент (свой заказ), оператор и админ.
+    // Водитель отменять не вправе: для него есть 'reject' — отказ, после
+    // которого заказ возвращается в поиск и остаётся в работе у диспетчера.
+    if (($claims['role'] ?? '') === 'driver') {
+        Response::error(
+            'Водитель не может отменить заказ. Используйте «Отказаться» — '
+            . 'заказ вернётся диспетчеру.', 403);
+    }
     $isOwner = $order['client_id'] !== null && $order['client_id'] === ($claims['uid'] ?? '');
-    $isAssignedDriver = ($claims['role'] ?? '') === 'driver'
-        && $order['driver_id'] !== null
-        && $order['driver_id'] === ($claims['driverId'] ?? '');
-    if (!$isOwner && !$isAssignedDriver) {
+    if (!$isOwner) {
         Guard::role($claims, 'operator', 'admin');
     }
 } elseif ($action === 'rate') {
