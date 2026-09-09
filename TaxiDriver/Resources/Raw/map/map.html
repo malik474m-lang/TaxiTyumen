@@ -9,8 +9,9 @@ html,body{margin:0;padding:0;height:100%;width:100%;background:#12121c;overflow:
 #badge{position:absolute;left:8px;top:8px;z-index:5;display:none;
   background:rgba(220,38,38,.92);color:#fff;font:600 12px sans-serif;
   padding:5px 9px;border-radius:8px;pointer-events:none}
-#dl{position:absolute;left:8px;bottom:8px;z-index:6;border:none;border-radius:9px;
-  background:rgba(37,37,54,.94);color:#FFD700;font:600 12px sans-serif;padding:9px 12px}
+#dl{position:absolute;right:8px;top:8px;z-index:6;border:none;border-radius:9px;
+  background:rgba(37,37,54,.96);color:#FFD700;font:600 12px sans-serif;padding:9px 12px;
+  box-shadow:0 2px 8px rgba(0,0,0,.5)}
 #dl.busy{color:#a1a1aa}
 .mk{width:18px;height:18px;border-radius:50%;border:3px solid #111;box-shadow:0 1px 6px rgba(0,0,0,.6)}
 .mk.me{background:#FFD700;width:20px;height:20px}
@@ -54,19 +55,24 @@ function idbPut(k, v){
   });
 }
 
-/* Протокол tiles:// — сначала кеш, затем сеть с сохранением в кеш */
-maplibregl.addProtocol('tiles', function(params, cb){
+/* Протокол tiles:// — сначала кеш, затем сеть с сохранением в кеш.
+   ВАЖНО: в MapLibre 4.x addProtocol работает через Promise (в 3.x был callback).
+   Из-за старой сигнатуры тайлы не загружались и карта оставалась тёмной. */
+maplibregl.addProtocol('tiles', async function(params, abortController){
   var url = params.url.replace('tiles://', 'https://');
-  var cancelled = false;
-  idbGet(url).then(function(hit){
-    if (cancelled) return;
-    if (hit) return cb(null, hit, null, null);
-    fetch(url, {headers: {'Accept': 'image/*'}})
-      .then(function(r){ if (!r.ok) throw new Error('http'); return r.arrayBuffer(); })
-      .then(function(buf){ idbPut(url, buf); if (!cancelled) cb(null, buf, null, null); })
-      .catch(function(){ if (!cancelled) cb(new Error('offline'), null, null, null); });
+
+  var hit = await idbGet(url);
+  if (hit) return { data: hit };
+
+  var resp = await fetch(url, {
+    signal: abortController ? abortController.signal : undefined,
+    headers: { 'Accept': 'image/png,image/*' }
   });
-  return { cancel: function(){ cancelled = true; } };
+  if (!resp.ok) throw new Error('tile ' + resp.status);
+
+  var buf = await resp.arrayBuffer();
+  idbPut(url, buf);
+  return { data: buf };
 });
 
 /* ---------- Карта ---------- */
@@ -84,7 +90,7 @@ var map = new maplibregl.Map({
   },
   center: [65.5272, 57.1522], zoom: 12, attributionControl: { compact: true }
 });
-map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'right');
 
 var meMarker = null, markers = [], routeReady = false, lastData = null;
 
@@ -223,9 +229,19 @@ window.downloadCity = async function(minLat, maxLat, minLng, maxLng, zMin, zMax)
   setTimeout(function(){ btn.textContent = '⬇ Обновить карту города'; }, 4000);
 };
 
+var tileErrors = 0;
 map.on('error', function(e){
-  // Ошибки отдельного тайла при офлайне — норма, не трогаем интерфейс
-  if (e && e.error && /Failed to load|network/i.test(String(e.error.message || ''))) return;
+  var msg = (e && e.error && e.error.message) ? String(e.error.message) : '';
+  if (/tile|Failed to fetch|network/i.test(msg)){
+    // Единичные промахи тайлов в офлайне — норма. Массовые — показываем причину.
+    if (++tileErrors === 12 && navigator.onLine !== false){
+      var f = document.getElementById('fatal');
+      f.style.display = 'block';
+      f.innerHTML = 'Тайлы карты не загружаются.<br>Проверьте интернет и нажмите «Скачать карту города».';
+      setTimeout(function(){ f.style.display = 'none'; }, 6000);
+    }
+    return;
+  }
 });
 map.on('load', function(){
   document.getElementById('fatal').style.display = 'none';

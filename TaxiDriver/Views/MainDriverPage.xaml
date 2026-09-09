@@ -196,19 +196,8 @@
                             <WebView x:Name="RouteMap"
                                      BackgroundColor="#1E1E2E"/>
 
-                            <Button Text="SOS"
-                                    BackgroundColor="#CCDC2626"
-                                    TextColor="White"
-                                    FontAttributes="Bold"
-                                    FontSize="13"
-                                    CornerRadius="21"
-                                    HeightRequest="42"
-                                    WidthRequest="64"
-                                    Margin="60,8,0,0"
-                                    HorizontalOptions="Start"
-                                    VerticalOptions="Start"
-                                    Clicked="OnSosClicked"/>
-
+                            <!-- Только разворот: кнопки этапа и простоя живут
+                                 под картой в карточке заказа, дублей нет -->
                             <Button x:Name="MapExpandBtn"
                                     Text="⛶"
                                     FontSize="18"
@@ -222,29 +211,6 @@
                                     VerticalOptions="Start"
                                     Clicked="OnToggleMapFullscreen"/>
 
-                            <!-- Кнопки этапов поверх карты -->
-                            <Grid VerticalOptions="End" Margin="8"
-                                  ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                                <Button Grid.Column="0" x:Name="MapStatusBtn"
-                                        Text="Я на месте"
-                                        BackgroundColor="#FF9800"
-                                        TextColor="White"
-                                        FontAttributes="Bold"
-                                        CornerRadius="10"
-                                        HeightRequest="46"
-                                        Opacity="0.96"
-                                        Clicked="OnStatusButtonClick"/>
-                                <Button Grid.Column="1" x:Name="MapWaitingBtn"
-                                        Text="Простой"
-                                        BackgroundColor="#0EA5E9"
-                                        TextColor="White"
-                                        CornerRadius="10"
-                                        HeightRequest="46"
-                                        WidthRequest="92"
-                                        Opacity="0.96"
-                                        Clicked="OnToggleWaiting"/>
-                            </Grid>
-
                             <!-- Таймер простоя поверх карты -->
                             <Label x:Name="MapWaitingLabel"
                                    Text=""
@@ -253,8 +219,8 @@
                                    FontAttributes="Bold"
                                    FontSize="14"
                                    Padding="10,6"
-                                   Margin="8"
-                                   HorizontalOptions="End"
+                                   Margin="8,56,8,8"
+                                   HorizontalOptions="Start"
                                    VerticalOptions="Start"
                                    IsVisible="False"/>
                         </Grid>

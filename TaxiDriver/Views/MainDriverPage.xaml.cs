@@ -771,7 +771,6 @@ public partial class MainDriverPage : ContentPage
         var st = NormStatus(order.Status);
         var canWait = st is "driverarrived" or "inprogress";
         WaitingBtn.IsVisible = canWait;
-        MapWaitingBtn.IsVisible = canWait;
 
         if (!canWait)
         {
@@ -798,9 +797,6 @@ public partial class MainDriverPage : ContentPage
         WaitingBtn.BackgroundColor = canStartWaiting
             ? Color.FromArgb("#0EA5E9")
             : Color.FromArgb("#2A3A44");
-        MapWaitingBtn.Text = "Простой";
-        MapWaitingBtn.IsEnabled = canStartWaiting;
-        MapWaitingBtn.BackgroundColor = WaitingBtn.BackgroundColor;
 
         // Счётчик виден всегда: сначала бесплатное ожидание, затем платное.
         string waitingText;
@@ -959,8 +955,6 @@ public partial class MainDriverPage : ContentPage
 
         StatusBtn.Text = label;
         StatusBtn.BackgroundColor = Color.FromArgb(color);
-        MapStatusBtn.Text = label;
-        MapStatusBtn.BackgroundColor = Color.FromArgb(color);
         // Дублируем текущий этап на кнопке поверх карты
         // Панель поверх Навигатора и, при смене цели, сам маршрут
         // Маршрут в Навигаторе перестраиваем, только если водитель им пользуется
@@ -1404,9 +1398,10 @@ public partial class MainDriverPage : ContentPage
         {
             _mapFullscreen = !_mapFullscreen;
 
+            // В полноэкранном режиме прячем только шапку и статистику:
+            // кнопки этапа/простоя остаются под картой и доступны водителю.
             HeaderBorder.IsVisible = !_mapFullscreen;
             StatsGrid.IsVisible = !_mapFullscreen;
-            OrderDetailsPanel.IsVisible = !_mapFullscreen;
 
             MapContainer.HeightRequest = _mapFullscreen
                 ? Math.Max(420, Height - 40)
