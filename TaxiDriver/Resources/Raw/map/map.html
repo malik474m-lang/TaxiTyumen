@@ -58,22 +58,50 @@ function idbPut(k, v){
 /* Протокол tiles:// — сначала кеш, затем сеть с сохранением в кеш.
    ВАЖНО: в MapLibre 4.x addProtocol работает через Promise (в 3.x был callback).
    Из-за старой сигнатуры тайлы не загружались и карта оставалась тёмной. */
+/* Прозрачный тайл 1x1: показываем вместо ошибки, когда нет ни кеша, ни сети.
+   Иначе MapLibre в офлайне сыпет ошибками на каждый квадрат. */
+var BLANK = Uint8Array.from(atob(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+), function(c){ return c.charCodeAt(0); }).buffer;
+
+var tilesOk = 0, tilesFail = 0;
+
 maplibregl.addProtocol('tiles', async function(params, abortController){
   var url = params.url.replace('tiles://', 'https://');
 
-  var hit = await idbGet(url);
-  if (hit) return { data: hit };
+  try {
+    var hit = await idbGet(url);
+    if (hit) { tilesOk++; return { data: hit }; }
+  } catch (e) { /* кеш недоступен — идём в сеть */ }
 
-  var resp = await fetch(url, {
-    signal: abortController ? abortController.signal : undefined,
-    headers: { 'Accept': 'image/png,image/*' }
-  });
-  if (!resp.ok) throw new Error('tile ' + resp.status);
+  try {
+    var resp = await fetch(url, {
+      signal: abortController ? abortController.signal : undefined,
+      headers: { 'Accept': 'image/png,image/*' }
+    });
+    if (!resp.ok) throw new Error('tile ' + resp.status);
 
-  var buf = await resp.arrayBuffer();
-  idbPut(url, buf);
-  return { data: buf };
+    var buf = await resp.arrayBuffer();
+    idbPut(url, buf);
+    tilesOk++; showTileHint();
+    return { data: buf };
+  } catch (e) {
+    tilesFail++; showTileHint();
+    return { data: BLANK };   // карта продолжает работать: маршрут и метки видны
+  }
 });
+
+/* Подсказка, если тайлов нет вообще: чаще всего карта города не скачана */
+function showTileHint(){
+  var el = document.getElementById('badge');
+  if (!el) return;
+  if (tilesOk === 0 && tilesFail > 4){
+    el.textContent = 'Нет карты офлайн · нажмите «Скачать карту города»';
+    el.style.display = 'block';
+  } else if (tilesOk > 0 && navigator.onLine !== false){
+    el.style.display = 'none';
+  }
+}
 
 /* ---------- Карта ---------- */
 var TILE = 'tiles://tile.openstreetmap.org/{z}/{x}/{y}.png';
@@ -90,7 +118,10 @@ var map = new maplibregl.Map({
   },
   center: [65.5272, 57.1522], zoom: 12, attributionControl: { compact: true }
 });
-map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'right');
+// Позиция обязана быть top-left|top-right|bottom-left|bottom-right:
+// значение 'right' роняло инициализацию карты (appendChild of undefined),
+// из-за чего window.setRoute не создавался и карта оставалась пустой.
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 
 var meMarker = null, markers = [], routeReady = false, lastData = null;
 
