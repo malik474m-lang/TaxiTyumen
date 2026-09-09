@@ -9,6 +9,10 @@ final class GeocodingService
     private const DADATA_GEOLOCATE = 'https://suggestions.dadata.ru/suggestions/api/4_1/rs/geolocate/address';
     private const YANDEX_GEOCODER = 'https://geocode-maps.yandex.ru/1.x/';
     private const OPENCAGE_GEOCODE = 'https://api.opencagedata.com/geocode/v1/json';
+    // Photon (OpenStreetMap) специально предназначен для автодополнения.
+    // OpenCage прямо не поддерживает autosuggest и на короткие улицы возвращал
+    // один нерелевантный населённый пункт («Перевалово») для любого запроса.
+    private const PHOTON_SEARCH = 'https://photon.komoot.io/api/';
 
     public static function search(\PDO $db, string $query): array
     {
@@ -51,10 +55,29 @@ final class GeocodingService
                 $code >= 200 && $code < 300 ? 'success' : 'failed', $code, $raw, $ms);
         }
 
-        // OpenCage Data (OSM) — независимый резервный геокодер:
-        // подхватывает адреса, которых нет в DaData/ФИАС
+        // Photon / OSM — нормальное автодополнение адреса по мере ввода.
+        // lat/lon лишь повышают Тюмень в выдаче, но не ограничивают дальние адреса.
+        if (count($results) < 7) {
+            $url = self::PHOTON_SEARCH . '?' . http_build_query([
+                'q' => $query,
+                'limit' => 7,
+                'lat' => (float) $svc['center_latitude'],
+                'lon' => (float) $svc['center_longitude'],
+            ]);
+            [$code, $raw, $ms] = self::request($url, 'GET', null, [
+                'User-Agent: TaxiTyumen/1.0 (+https://taxi.event72.ru)',
+                'Accept: application/json',
+            ]);
+            $items = self::parsePhoton($raw);
+            $results = self::mergeUnique($results, $items);
+            self::log($db, 'photon', 'suggest', $query,
+                $items ? 'success' : 'failed', $code, $raw, $ms);
+        }
+
+        // OpenCage — только последний fallback. Он является геокодером,
+        // а не сервисом автоподсказок, поэтому не должен опережать Photon.
         $queryLower = mb_strtolower($query);
-        if (count($results) < 3 && api_key('opencage') !== '') {
+        if (count($results) === 0 && api_key('opencage') !== '') {
             $searchQuery = str_contains($queryLower, mb_strtolower($city))
                 || str_contains($queryLower, mb_strtolower($region))
                 ? $query
@@ -65,7 +88,7 @@ final class GeocodingService
                 'language' => 'ru',
                 'limit' => 7,
                 'no_annotations' => 1,
-                'proximity' => $svc['center_longitude'] . ',' . $svc['center_latitude'],
+                'proximity' => $svc['center_latitude'] . ',' . $svc['center_longitude'],
                 'bounds' => ($svc['center_longitude'] - 0.9) . ',' . ($svc['center_latitude'] - 0.6) . ','
                     . ($svc['center_longitude'] + 0.9) . ',' . ($svc['center_latitude'] + 0.6),
             ];
@@ -246,13 +269,14 @@ final class GeocodingService
         $svc = ServiceSettings::get($db);
         $items = self::search($db, (string) $svc['city_name']);
         return [
-            'configured' => api_key('dadata') !== '' || api_key('opencage') !== '' || api_key('yandex_maps') !== '',
+            // Photon работает без ключа, поэтому геокодинг настроен всегда
+            'configured' => true,
             'ok' => count($items) > 0,
             'results' => count($items),
             'sources' => array_values(array_unique(array_column($items, 'source'))),
             'message' => count($items) > 0
                 ? 'Геокодинг РФ доступен'
-                : 'Добавьте ключ DaData, OpenCage или Яндекс в админке → «API-ключи»',
+                : 'Photon недоступен; проверьте исходящие HTTPS-запросы сервера',
         ];
     }
 
@@ -303,6 +327,44 @@ final class GeocodingService
             return $items;
         }
         return [];
+    }
+
+    private static function parsePhoton(string $raw): array
+    {
+        $json = json_decode($raw, true);
+        $result = [];
+        foreach ($json['features'] ?? [] as $feature) {
+            $coords = $feature['geometry']['coordinates'] ?? [];
+            if (count($coords) < 2) continue;
+            $lng = (float) $coords[0];
+            $lat = (float) $coords[1];
+            if (!$lat || !$lng) continue;
+
+            $p = $feature['properties'] ?? [];
+            $parts = [];
+            $street = trim((string) ($p['street'] ?? ''));
+            $house = trim((string) ($p['housenumber'] ?? ''));
+            $name = trim((string) ($p['name'] ?? ''));
+            if ($street !== '') {
+                $parts[] = $street . ($house !== '' ? ', ' . $house : '');
+            } elseif ($name !== '') {
+                $parts[] = $name;
+            }
+            foreach (['city', 'district', 'county', 'state'] as $key) {
+                $value = trim((string) ($p[$key] ?? ''));
+                if ($value !== '' && !in_array($value, $parts, true)) $parts[] = $value;
+            }
+            if (!$parts) continue;
+            $display = implode(', ', $parts);
+            $result[] = [
+                'displayName' => $display,
+                'fullAddress' => $display,
+                'latitude' => $lat,
+                'longitude' => $lng,
+                'source' => 'photon',
+            ];
+        }
+        return $result;
     }
 
     private static function parseOpenCage(string $raw): array

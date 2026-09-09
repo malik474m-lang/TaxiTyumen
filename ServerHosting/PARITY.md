@@ -71,7 +71,7 @@ API Controllers/Hubs/Background Services, TaxiAdmin, TaxiClient, TaxiDriver, Tax
 - Пул ключей OpenCage (`src/KeyPool.php`, таблица `api_key_pool_state`): несколько аккаунтов,
   автопереключение при 402/429/401, разблокировка в полночь UTC, статус в админке.
 - OpenCage (opencagedata.com, OSM) подключён как независимый резервный геокодер:
-  `OPENCAGE_API_KEY`, цепочка DaData -> OpenCage -> Яндекс с дедупликацией по координатам.
+  `OPENCAGE_API_KEY`; подсказки: DaData -> Photon/OSM -> Яндекс -> OpenCage, с дедупликацией.
 
 ## Осознанные инфраструктурные адаптации
 

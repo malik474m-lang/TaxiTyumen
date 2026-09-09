@@ -3,13 +3,14 @@ using System.Net.Http.Json;
 
 namespace TaxiOperator.Services;
 
-// Серверный DaData + Nominatim. API-ключ хранится только на PHP-хостинге.
+// Серверные подсказки: DaData → Photon/OSM → Яндекс → OpenCage fallback.
+// Все ключи хранятся на PHP-хостинге; пульт не содержит секретов.
 public class DadataService
 {
     private readonly HttpClient _http = new()
     {
         BaseAddress = new Uri("https://taxi.event72.ru/api/"),
-        Timeout = TimeSpan.FromSeconds(12)
+        Timeout = TimeSpan.FromSeconds(20)
     };
 
     public async Task<List<AddressSuggestion>> SearchAsync(string query)

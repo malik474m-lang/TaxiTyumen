@@ -25,8 +25,8 @@ $lastEvent=(int)$db->query('SELECT COALESCE(MAX(id),0) FROM events')->fetchColum
 $checks['realtime']=['ok'=>true,'detail'=>'MySQL polling · последнее событие #'.$lastEvent,'ms'=>null];
 $settings=AutoCall::getSettings($db);
 $checks['sms']=['ok'=>api_key('sms_ru')!==''?null:false,'detail'=>api_key('sms_ru')!==''?'Ключ настроен, нажмите «Проверить всё»':'SMS_API_ID не настроен','ms'=>null];
-$geoProviders=[];
-if(api_key('dadata')!=='')$geoProviders[]='DaData';
+$geoProviders=['Photon/OSM'];
+if(api_key('dadata')!=='')array_unshift($geoProviders,'DaData');
 if(api_key('opencage')!=='')$geoProviders[]='OpenCage';
 if(api_key('yandex_maps')!=='')$geoProviders[]='Яндекс';
 $checks['geocoding']=['ok'=>null,'detail'=>$geoProviders?implode(' + ',$geoProviders):'ключи геокодинга не настроены','ms'=>null];
@@ -65,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 $logs=$db->query('SELECT * FROM service_call_logs ORDER BY created_at DESC LIMIT 100')->fetchAll();
 $endpoints=[
 ['POST','/api/auth/login.php','Авторизация и HMAC-токен'],['POST','/api/auth/register.php','Регистрация клиента/водителя'],['POST','/api/auth/sms.php','SMS-код send/verify'],
-['GET/POST','/api/notifications.php','Уведомления, прочтение, admin-send'],['GET/POST','/api/chat.php','Чат заказа + read'],['GET','/api/geocoding.php','DaData/OpenCage/Яндекс search + reverse'],
+['GET/POST','/api/notifications.php','Уведомления, прочтение, admin-send'],['GET/POST','/api/chat.php','Чат заказа + read'],['GET','/api/geocoding.php','DaData/Photon/Яндекс/OpenCage search + reverse'],
 ['GET/POST','/api/orders/','Списки и создание заказа'],['POST','/api/orders/action.php','Жизненный цикл заказа'],['GET/POST','/api/drivers/','Водители и координаты'],
 ['GET/PUT','/api/tariffs/','Тарифы'],['POST','/api/pricing.php','OSRM-расчёт цены'],['GET/PUT','/api/branding.php','Серверный брендинг'],
 ['GET/POST','/api/branding-logo.php','Логотип бренда'],['GET/POST','/api/operators/shift.php','Смены операторов'],['GET/PUT','/api/autocall.php','Эскалация и Zvonok'],
@@ -80,7 +80,7 @@ layout_header('API и сервисы','services');
 
 <div class="grid q4" style="margin-top:18px">
 <?php foreach([
-'mysql'=>['MySQL','База, пользователи, заказы'],'yandex_maps'=>['Яндекс Карты','Карты РФ и редактор зон'],'osrm'=>['OSRM','Маршруты и расстояния'],'geocoding'=>['DaData / OpenCage / Яндекс','Поиск и reverse geocode'],'sms'=>['sms.ru','SMS-коды и рассылки'],
+'mysql'=>['MySQL','База, пользователи, заказы'],'yandex_maps'=>['Яндекс Карты','Карты РФ и редактор зон'],'osrm'=>['OSRM','Маршруты и расстояния'],'geocoding'=>['DaData / Photon / Яндекс / OpenCage','Поиск и reverse geocode'],'sms'=>['sms.ru','SMS-коды и рассылки'],
 'zvonok'=>['Zvonok','Автодозвон клиенту'],'storage'=>['Хранилище','Логотипы брендов'],'realtime'=>['Realtime','События приложений']
 ] as $key=>[$name,$desc]):$c=$checks[$key];?>
 <div class="card"><div class="flex between"><b style="font-size:16px"><?=h($name)?></b><?=service_badge($c['ok'])?></div><div class="mut" style="margin-top:8px"><?=h($desc)?></div><div style="margin-top:8px;font-size:12px"><?=h($c['detail'])?></div><?php if($c['ms']!==null):?><div class="mut" style="margin-top:5px"><?=$c['ms']?> мс</div><?php endif;?></div>

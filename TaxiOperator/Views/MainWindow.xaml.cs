@@ -28,6 +28,9 @@ public partial class MainWindow : Window
     private readonly List<IntermediatePointRequest> _stops = new();
     private List<AddressSuggestion> _pickupSuggestions = new();
     private List<AddressSuggestion> _destSuggestions = new();
+    // Версия запроса: поздний ответ на старый текст не затирает свежие подсказки.
+    private int _pickupSearchVersion;
+    private int _destSearchVersion;
 
     // ── SIP-софтфон ────────────────────────────────────────────────────────
     private readonly SipSettings _sipSettings = SipSettings.Load();
@@ -801,9 +804,18 @@ public partial class MainWindow : Window
             return;
         }
 
+        var version = ++_pickupSearchVersion;
         try
         {
-            _pickupSuggestions = await _dadata.SearchAsync(text);
+            // Не вызываем сервер на каждую клавишу — ждём, пока оператор
+            // закончит короткую серию ввода.
+            await Task.Delay(250);
+            if (version != _pickupSearchVersion || PickupAddressBox.Text.Trim() != text.Trim()) return;
+
+            var suggestions = await _dadata.SearchAsync(text);
+            if (version != _pickupSearchVersion || PickupAddressBox.Text.Trim() != text.Trim()) return;
+
+            _pickupSuggestions = suggestions;
             PickupSuggestionsList.ItemsSource =
                 _pickupSuggestions.Select(s => s.DisplayName).ToList();
             PickupSuggestionsList.Visibility =
@@ -811,7 +823,8 @@ public partial class MainWindow : Window
         }
         catch
         {
-            PickupSuggestionsList.Visibility = Visibility.Collapsed;
+            if (version == _pickupSearchVersion)
+                PickupSuggestionsList.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -853,9 +866,16 @@ public partial class MainWindow : Window
             return;
         }
 
+        var version = ++_destSearchVersion;
         try
         {
-            _destSuggestions = await _dadata.SearchAsync(text);
+            await Task.Delay(250);
+            if (version != _destSearchVersion || DestinationBox.Text.Trim() != text.Trim()) return;
+
+            var suggestions = await _dadata.SearchAsync(text);
+            if (version != _destSearchVersion || DestinationBox.Text.Trim() != text.Trim()) return;
+
+            _destSuggestions = suggestions;
             DestSuggestionsList.ItemsSource =
                 _destSuggestions.Select(s => s.DisplayName).ToList();
             DestSuggestionsList.Visibility =
@@ -863,7 +883,8 @@ public partial class MainWindow : Window
         }
         catch
         {
-            DestSuggestionsList.Visibility = Visibility.Collapsed;
+            if (version == _destSearchVersion)
+                DestSuggestionsList.Visibility = Visibility.Collapsed;
         }
     }
 
