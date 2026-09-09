@@ -81,6 +81,10 @@ public class CreateOperatorOrderRequest
 
     /// Опции заказа: child_seat, pet, meeting_sign, extra_luggage, non_smoking.
     public List<string> Options { get; set; } = new();
+
+    /// Цена, названная клиенту в пульте. Сервер сохраняет именно её:
+    /// иначе при неудачном геокодировании заказ уезжал на минимальный тариф.
+    public decimal QuotedPrice { get; set; }
 }
 
 public class IntermediatePointRequest

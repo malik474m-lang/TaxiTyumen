@@ -144,10 +144,28 @@ if ($destinationAddress && $destLat != 0.0) {
         );
     }
 }
-if ($estimatedPrice == 0.0) {
-    $t = $db->prepare('SELECT minimum_fare FROM tariffs WHERE type = ? LIMIT 1');
+// Цена, названная клиенту в пульте, — договорная и приоритетна.
+// Пересчёт на сервере мог дать другой результат (например, геокодер не нашёл
+// назначение) и заказ молча уезжал на минимальный тариф.
+$quotedPrice = (float) ($body['quotedPrice'] ?? $body['QuotedPrice'] ?? 0);
+if ($quotedPrice > 0) {
+    $estimatedPrice = round($quotedPrice, 2);
+} elseif ($estimatedPrice == 0.0) {
+    // Клиентская цена не пришла: считаем по километражу, если маршрут известен,
+    // и только в крайнем случае берём минимальный тариф.
+    $t = $db->prepare('SELECT * FROM tariffs WHERE type = ? LIMIT 1');
     $t->execute([$tariff]);
-    $estimatedPrice = (float) ($t->fetchColumn() ?: 99);
+    $fallbackTariff = $t->fetch();
+    if ($fallbackTariff && $destinationAddress) {
+        $fallbackRoute = Taxi::getRealRoute($pickupLat, $pickupLng, $destLat ?: $pickupLat, $destLng ?: $pickupLng);
+        $fallbackPrice = Taxi::computePrice(
+            $fallbackTariff, (float) $fallbackRoute['distanceKm'], (int) $service['utc_offset']
+        );
+        $estimatedPrice = (float) $fallbackPrice['price'];
+    }
+    if ($estimatedPrice == 0.0) {
+        $estimatedPrice = (float) (($fallbackTariff['minimum_fare'] ?? 0) ?: 99);
+    }
 }
 
 $optionCodes = array_values(array_filter(

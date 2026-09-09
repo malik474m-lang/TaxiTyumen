@@ -574,6 +574,7 @@ public partial class MainWindow : Window
                 stopsNote += $" · опции +{estimate.OptionsTotal:F0} ₽";
 
             PriceText.Text = $"{estimate.Price:F0} ₽";
+            _quotedPrice = estimate.Price;
             DistanceText.Text = $"{estimate.DistanceKm:F1} км · ~{estimate.DurationMinutes} мин{stopsNote}";
         }
         catch
@@ -582,6 +583,9 @@ public partial class MainWindow : Window
             DistanceText.Text = "Ошибка расчёта стоимости";
         }
     }
+
+    /// Последняя цена, показанная оператором клиенту.
+    private decimal _quotedPrice;
 
     private async void OnCreateOrderClick(object sender, RoutedEventArgs e)
     {
@@ -676,6 +680,7 @@ public partial class MainWindow : Window
 
             var request = new CreateOperatorOrderRequest
             {
+                QuotedPrice = _quotedPrice,
                 OperatorId = _api.CurrentUser!.UserId,
                 ClientPhone = ClientPhoneBox.Text.Trim(),
                 ClientName = ClientNameBox.Text.Trim(),
@@ -1186,6 +1191,7 @@ public partial class MainWindow : Window
         TariffCombo.SelectedIndex = 0;
         PassengersCombo.SelectedIndex = 0;
         PriceText.Text = "";
+        _quotedPrice = 0;
         DistanceText.Text = "";
 
         _pickupLat = 0;

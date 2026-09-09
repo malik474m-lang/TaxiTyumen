@@ -750,8 +750,6 @@ public partial class MainDriverPage : ContentPage
         // Карта маршрута прямо в карточке заказа: кнопки этапа/простоя/SOS
         // лежат поверх неё — это наш интерфейс, они видны всегда.
         _ = ShowRouteMapAsync(order);
-        NavPanel.IsVisible = true;
-        UpdateNavPanelHint();
     }
 
     private bool _waitingTimerStarted;
@@ -966,8 +964,6 @@ public partial class MainDriverPage : ContentPage
         if (_mapFullscreen) SyncFullscreenButtons();
         // Дублируем текущий этап на кнопке поверх карты
         // Панель поверх Навигатора и, при смене цели, сам маршрут
-        UpdateNavPanelHint();
-        UpdateOverlayState();
         // Маршрут в Навигаторе перестраиваем, только если водитель им пользуется
         if (NavigatorOverlay.ModeEnabled) RouteInNavigator();
         // Карта в приложении перерисовывается под новый этап
@@ -1113,14 +1109,12 @@ public partial class MainDriverPage : ContentPage
     {
         _activeOrder = null;
         HideRouteMap();
-        NavPanel.IsVisible = false;
         _location.ActiveOrderId = null;
         _orderStatusStep = 0;
         // Панель поверх Навигатора больше не нужна (режим остаётся включённым
         // и сработает на следующем заказе автоматически)
         NavigatorOverlay.Hide();
         _lastNavTargetKey = "";
-        NavPanel.IsVisible = false;
 
         await LoadBalanceAsync();
         await LoadBalanceHistoryAsync();
@@ -1189,8 +1183,6 @@ public partial class MainDriverPage : ContentPage
         // мешать открытию главного экрана после входа.
         try
         {
-            if (_activeOrder != null) UpdateNavPanelHint();
-            UpdateOverlayState();
         }
         catch (Exception ex)
         {
@@ -1311,104 +1303,7 @@ public partial class MainDriverPage : ContentPage
         }
     }
 
-    private void OnOpenNavigatorAgain(object? sender, EventArgs e)
-        => StartNavigatorGuidance(force: true);
 
-    /// Кнопка «Навиг.» поверх карты: голосовое ведение в Яндекс Навигаторе.
-    private void OnYandexNavClicked(object? sender, EventArgs e)
-        => StartNavigatorGuidance(force: true);
-
-    /// Подпись плашки: карта уже в приложении, Навигатор — по кнопке
-    /// (нужен для голосового ведения и офлайн-карт вне зоны покрытия).
-    private void UpdateNavPanelHint()
-    {
-        if (_activeOrder == null)
-        {
-            NavPanel.IsVisible = false;
-            return;
-        }
-
-        var inProgress = NormStatus(_activeOrder.Status) == "inprogress";
-        var target = inProgress
-            ? (_activeOrder.DestinationAddress ?? "Назначение не указано")
-            : _activeOrder.PickupAddress;
-        NavTargetLabel.Text = (inProgress ? "Назначение: " : "Подача: ") + target;
-
-        if (!NavigatorOverlay.IsSupported)
-        {
-            NavHintLabel.Text = "Голосовое ведение доступно только на Android.";
-            return;
-        }
-        NavHintLabel.Text = NavigatorOverlay.IsNavigatorInstalled()
-            ? "Карта маршрута — выше. Для голосового ведения и офлайн-карт откройте Навигатор."
-            : "Яндекс Навигатор не установлен — нажмите, чтобы установить.";
-        NavOpenBtn.Text = NavigatorOverlay.IsNavigatorInstalled()
-            ? "Открыть в Яндекс Навигаторе"
-            : "Установить Яндекс Навигатор";
-    }
-
-    /// Ручной запуск Навигатора для голосового ведения по офлайн-картам.
-    private void StartNavigatorGuidance(bool force = false)
-    {
-        if (_activeOrder == null) return;
-        if (!NavigatorOverlay.IsSupported) return;
-
-        if (!NavigatorOverlay.IsNavigatorInstalled())
-        {
-            NavigatorOverlay.OpenNavigatorInStore();
-            return;
-        }
-
-        NavigatorOverlay.ModeEnabled = true;
-        RouteInNavigator(force);
-    }
-
-    /// Синхронизация плавающей панели с текущим этапом заказа.
-    private void UpdateOverlayState()
-    {
-        if (!NavigatorOverlay.IsSupported) return;
-
-        if (_activeOrder == null)
-        {
-            NavigatorOverlay.Hide();
-            return;
-        }
-
-        var index = Math.Clamp(_orderStatusStep, 0, _statusLabels.Length - 1);
-        var label = _statusLabels[index];
-        var color = _statusColors[index];
-        if (IsWaitingStopStep())
-        {
-            label = "Продолжить";
-            color = "#4CAF50";
-        }
-
-        var inProgress = NormStatus(_activeOrder.Status) == "inprogress";
-        var target = inProgress
-            ? (_activeOrder.DestinationAddress ?? "Назначение не указано")
-            : _activeOrder.PickupAddress;
-        try
-        {
-            NavTargetLabel.Text = (NormStatus(_activeOrder.Status) == "inprogress"
-                ? "Назначение: " : "Подача: ") + target;
-        }
-        catch { }
-
-        var price = _activeOrder.EstimatedPrice.ToString("F0");
-        var subtitle = $"№{_activeOrder.OrderNumber} · {price} ₽";
-        if (_activeOrder.WaitingActive)
-            subtitle += " · идёт простой";
-
-        NavigatorOverlay.Show(new OverlayState
-        {
-            Title = string.IsNullOrWhiteSpace(target) ? "Заказ в работе" : target,
-            Subtitle = subtitle,
-            ActionText = label,
-            ActionColor = color,
-            // Кнопку простоя показываем там же, где она доступна в приложении
-            WaitingText = (_orderStatusStep >= 1 && !_activeOrder.WaitingActive) ? "Простой" : "",
-        });
-    }
 
     /// Нажатия на плавающей панели выполняют те же действия, что и в приложении.
     private void OnOverlayAction(string action)
@@ -1456,11 +1351,31 @@ public partial class MainDriverPage : ContentPage
     private DateTime _lastMapPush = DateTime.MinValue;
 
     /// Карта маршрута в приложении: водитель → подача → (финиш)
+    /// Ключ текущего маршрута: пока он не меняется, WebView не пересоздаём.
+    private string _mapRouteKey = string.Empty;
+
     private async Task ShowRouteMapAsync(OrderResponse order)
     {
         try
         {
             MapContainer.IsVisible = true;
+
+            // Перерисовка WebView — дорогая операция: карта «моргает» и теряет
+            // текущий вид. Делаем её только когда действительно сменился маршрут.
+            var toPickupStage = NormStatus(order.Status) != "inprogress";
+            var routeKey = string.Join("|",
+                order.Id,
+                toPickupStage ? "pickup" : "trip",
+                order.PickupLatitude.ToString("F5"), order.PickupLongitude.ToString("F5"),
+                order.DestinationLatitude?.ToString("F5") ?? "-",
+                order.DestinationLongitude?.ToString("F5") ?? "-");
+            if (routeKey == _mapRouteKey && !string.IsNullOrEmpty(_lastMapHtml))
+            {
+                // Маршрут тот же — просто двигаем маркер водителя.
+                PushDriverPositionToMaps(_location.CurrentLat, _location.CurrentLng);
+                return;
+            }
+            _mapRouteKey = routeKey;
 
             var apiKey = await MapHtml.GetApiKeyAsync();
             // До посадки ведём к точке подачи, в поездке — к точке назначения
@@ -1525,6 +1440,7 @@ public partial class MainDriverPage : ContentPage
 
     private void HideRouteMap()
     {
+        _mapRouteKey = string.Empty;
         try
         {
             MapContainer.IsVisible = false;
