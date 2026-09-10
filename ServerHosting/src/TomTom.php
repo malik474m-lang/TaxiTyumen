@@ -273,8 +273,12 @@ final class TomTom
         }
         $key = rawurlencode(self::apiKey());
         return match ($service) {
+            // Стиль relative0 (рекомендован TomTom): показывает загруженность
+            // относительно свободного потока. Параметр thickness этот стиль НЕ
+            // поддерживает (400 «thickness supported only for styles:
+            // absolute, relative…») — поэтому не передаём его вовсе.
             'traffic_flow' => self::BASE
-                . '/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=' . $key . '&thickness=10',
+                . '/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=' . $key,
             'traffic_incidents' => self::BASE
                 . '/traffic/map/4/tile/incidents/s3/{z}/{x}/{y}.png?key=' . $key,
             'map_tiles' => self::BASE
@@ -493,24 +497,39 @@ final class TomTom
         if (!self::enabled($db, 'snap_to_roads') || count($points) < 2) {
             return null;
         }
+        // Формат v1 (по документации TomTom): тело — GeoJSON-поле «points»
+        // («route» как в Route Monitoring здесь неизвестно → HTTP 400), а в
+        // распарсенном ответе route — FeatureCollection с LineString-ами.
         $points = array_slice($points, 0, 100);
-        $payload = ['route' => array_map(
-            fn($p) => ['latitude' => (float) $p[0], 'longitude' => (float) $p[1]],
+        $payload = ['points' => array_map(
+            fn($p) => [
+                'type' => 'Feature',
+                'geometry' => [
+                    'type' => 'Point',
+                    'coordinates' => [(float) $p[1], (float) $p[0]],   // [lng, lat]
+                ],
+                'properties' => ['heading' => 0],
+            ],
             $points
         )];
         $url = self::BASE . '/snapToRoads/1?' . http_build_query([
             'key' => self::apiKey(),
             'vehicleType' => 'PassengerCar',
+            'fields' => '{route{type,geometry{type,coordinates}}}',
         ]);
         [$code, $raw, $ms] = self::request($url, 'POST', json_encode($payload), [
             'Content-Type: application/json',
         ]);
         self::countUsage($db, 'snap_to_roads');
         $json = json_decode($raw, true);
+
+        // Ответ — GeoJSON: склеиваем координаты всех фрагментов трека
         $snapped = [];
-        foreach (($json['route'] ?? []) as $p) {
-            if (isset($p['latitude'], $p['longitude'])) {
-                $snapped[] = [(float) $p['latitude'], (float) $p['longitude']];
+        foreach (($json['route']['features'] ?? []) as $feature) {
+            foreach (($feature['geometry']['coordinates'] ?? []) as $c) {
+                if (is_array($c) && count($c) >= 2) {
+                    $snapped[] = [(float) $c[1], (float) $c[0]];
+                }
             }
         }
         self::log($db, 'snapToRoads', count($points) . ' точек',
