@@ -37,6 +37,7 @@ final class Access
         'branding'  => ['label' => 'Приложения',     'file' => 'branding.php',  'superadminOnly' => false, 'locked' => false],
         'services'  => ['label' => 'API и сервисы',  'file' => 'services.php',  'superadminOnly' => false, 'locked' => false],
         'apikeys'   => ['label' => 'API-ключи',      'file' => 'api-keys.php',  'superadminOnly' => true,  'locked' => false],
+        'geocoding' => ['label' => 'Геокодинг',      'file' => 'geocoding.php', 'superadminOnly' => false, 'locked' => false],
         'service'   => ['label' => 'Бренд сервиса',  'file' => 'service.php',   'superadminOnly' => true,  'locked' => false],
         'access'    => ['label' => 'Доступ и роли',  'file' => 'access.php',    'superadminOnly' => true,  'locked' => false],
     ];

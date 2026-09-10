@@ -84,6 +84,7 @@ OpenCage (бесплатный триал: 2500 запросов/сутки, htt
 | `GET/POST /api/chat.php` | участники | Чат по заказу + `action=read`, уведомление второго участника |
 | `GET/POST /api/notifications.php` | Bearer/admin | Лента/прочтение; admin: user/role/all, in-app/SMS |
 | `GET /api/geocoding.php` | все | Server-side DaData / Photon / Яндекс / OpenCage: search и reverse geocode |
+| `GET/POST /api/geo-providers.php` | все / admin | Провайдеры геокодинга: список, включение, приоритет, основной |
 | `GET /api/services.php` | admin | Диагностика MySQL, OSRM, sms.ru, Zvonok, DaData, storage, realtime |
 | `GET/PUT /api/branding.php` | app=… публично, список/PUT — admin | Серверный брендинг 3 приложений (`logoUrl` входит в DTO) |
 | `GET/POST /api/branding-logo.php` | GET публично, POST admin | Выдача/загрузка/удаление логотипа, PNG/JPEG/WebP ≤ 2 МБ |

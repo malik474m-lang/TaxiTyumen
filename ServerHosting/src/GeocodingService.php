@@ -23,107 +23,132 @@ final class GeocodingService
         $region = (string) $svc['region_name'];
         $results = [];
 
-        // DaData — точные российские адреса и ФИАС
-        if (api_key('dadata') !== '') {
-            $body = json_encode([
-                'query' => $query,
-                'count' => 7,
-                'locations' => [['region' => $region, 'city' => $city], ['region' => $region]],
-                'restrict_value' => false,
-            ], JSON_UNESCAPED_UNICODE);
-            [$code, $raw, $ms] = self::request(self::DADATA_SUGGEST, 'POST', $body, [
-                'Authorization: Token ' . api_key('dadata'),
-                'Content-Type: application/json',
-                'Accept: application/json',
-            ]);
-            $json = json_decode($raw, true);
-            if ($code >= 200 && $code < 300 && is_array($json)) {
-                foreach ($json['suggestions'] ?? [] as $s) {
-                    $lat = (float) ($s['data']['geo_lat'] ?? 0);
-                    $lng = (float) ($s['data']['geo_lon'] ?? 0);
-                    if (!$lat || !$lng) continue;
-                    $results[] = [
-                        'displayName' => $s['value'] ?? '',
-                        'fullAddress' => $s['unrestricted_value'] ?? $s['value'] ?? '',
-                        'latitude' => $lat,
-                        'longitude' => $lng,
-                        'source' => 'dadata',
-                    ];
-                }
-            }
-            self::log($db, 'dadata', 'suggest', $query,
-                $code >= 200 && $code < 300 ? 'success' : 'failed', $code, $raw, $ms);
-        }
+        // Порядок и состав источников задаёт админка → «Геокодинг».
+        // Первый активный провайдер является основным.
+        foreach (GeoProviders::active($db) as $provider) {
+            if (count($results) >= 7) break;
 
-        // Photon / OSM — нормальное автодополнение адреса по мере ввода.
-        // lat/lon лишь повышают Тюмень в выдаче, но не ограничивают дальние адреса.
-        if (count($results) < 7) {
-            $url = self::PHOTON_SEARCH . '?' . http_build_query([
-                'q' => $query,
-                'limit' => 7,
-                'lat' => (float) $svc['center_latitude'],
-                'lon' => (float) $svc['center_longitude'],
-            ]);
-            [$code, $raw, $ms] = self::request($url, 'GET', null, [
-                'User-Agent: TaxiTyumen/1.0 (+https://taxi.event72.ru)',
-                'Accept: application/json',
-            ]);
-            $items = self::parsePhoton($raw);
+            $items = match ($provider) {
+                'dadata'   => self::searchDaData($db, $query, $city, $region),
+                'photon'   => self::searchPhoton($db, $query, $svc),
+                'yandex'   => self::searchYandex($db, $query, $city, $region, $svc),
+                'opencage' => self::searchOpenCage($db, $query, $city, $region, $svc),
+                default    => [],
+            };
             $results = self::mergeUnique($results, $items);
-            self::log($db, 'photon', 'suggest', $query,
-                $items ? 'success' : 'failed', $code, $raw, $ms);
-        }
-
-        // OpenCage — только последний fallback. Он является геокодером,
-        // а не сервисом автоподсказок, поэтому не должен опережать Photon.
-        $queryLower = mb_strtolower($query);
-        if (count($results) === 0 && api_key('opencage') !== '') {
-            $searchQuery = str_contains($queryLower, mb_strtolower($city))
-                || str_contains($queryLower, mb_strtolower($region))
-                ? $query
-                : $query . ', ' . $city . ', ' . $region;
-            $params = [
-                'q' => $searchQuery,
-                'countrycode' => 'ru',
-                'language' => 'ru',
-                'limit' => 7,
-                'no_annotations' => 1,
-                'proximity' => $svc['center_latitude'] . ',' . $svc['center_longitude'],
-                'bounds' => ($svc['center_longitude'] - 0.9) . ',' . ($svc['center_latitude'] - 0.6) . ','
-                    . ($svc['center_longitude'] + 0.9) . ',' . ($svc['center_latitude'] + 0.6),
-            ];
-            $items = self::openCageRequest($db, $params, 'search', $query);
-            $results = self::mergeUnique($results, $items);
-        }
-
-        // Яндекс HTTP Геокодер — fallback и адреса, которых нет в DaData
-        if (count($results) < 3 && api_key('yandex_maps') !== '') {
-            $searchQuery = str_contains($queryLower, mb_strtolower($city))
-                || str_contains($queryLower, mb_strtolower($region))
-                ? $query
-                : $query . ', ' . $city . ', ' . $region;
-
-            $url = self::YANDEX_GEOCODER . '?' . http_build_query([
-                'apikey' => api_key('yandex_maps'),
-                'geocode' => $searchQuery,
-                'format' => 'json',
-                'lang' => 'ru_RU',
-                'results' => 7,
-                'll' => $svc['center_longitude'] . ',' . $svc['center_latitude'],
-                'spn' => '2.2,1.8',
-                'rspn' => 1,
-            ]);
-            [$code, $raw, $ms] = self::request($url, 'GET', null, [
-                'User-Agent: TaxiService/1.0',
-                'Accept: application/json',
-            ]);
-            $items = self::parseYandex($raw);
-            $results = self::mergeUnique($results, $items);
-            self::log($db, 'yandex-geocoder', 'search', $query,
-                $code >= 200 && $code < 300 ? 'success' : 'failed', $code, $raw, $ms);
         }
 
         return array_slice($results, 0, 7);
+    }
+
+    /** DaData: официальный реестр адресов РФ. */
+    private static function searchDaData(\PDO $db, string $query, string $city, string $region): array
+    {
+        if (api_key('dadata') === '') return [];
+        $body = json_encode([
+            'query' => $query,
+            'count' => 7,
+            'locations' => [['region' => $region, 'city' => $city], ['region' => $region]],
+            'restrict_value' => false,
+        ], JSON_UNESCAPED_UNICODE);
+        [$code, $raw, $ms] = self::request(self::DADATA_SUGGEST, 'POST', $body, [
+            'Authorization: Token ' . api_key('dadata'),
+            'Content-Type: application/json',
+            'Accept: application/json',
+        ]);
+
+        $json = json_decode($raw, true);
+        $items = [];
+        if ($code >= 200 && $code < 300 && is_array($json)) {
+            foreach ($json['suggestions'] ?? [] as $s) {
+                $lat = (float) ($s['data']['geo_lat'] ?? 0);
+                $lng = (float) ($s['data']['geo_lon'] ?? 0);
+                if (!$lat || !$lng) continue;
+                $items[] = [
+                    'displayName' => $s['value'] ?? '',
+                    'fullAddress' => $s['unrestricted_value'] ?? $s['value'] ?? '',
+                    'latitude' => $lat,
+                    'longitude' => $lng,
+                    'source' => 'dadata',
+                ];
+            }
+        }
+        self::log($db, 'dadata', 'suggest', $query,
+            $items ? 'success' : 'failed', $code, $raw, $ms);
+        return $items;
+    }
+
+    /** Photon/OSM: автодополнение без ключа. */
+    private static function searchPhoton(\PDO $db, string $query, array $svc): array
+    {
+        $url = self::PHOTON_SEARCH . '?' . http_build_query([
+            'q' => $query,
+            'limit' => 7,
+            'lat' => (float) $svc['center_latitude'],
+            'lon' => (float) $svc['center_longitude'],
+        ]);
+        [$code, $raw, $ms] = self::request($url, 'GET', null, [
+            'User-Agent: TaxiTyumen/1.0 (+https://taxi.event72.ru)',
+            'Accept: application/json',
+        ]);
+        $items = self::parsePhoton($raw);
+        self::log($db, 'photon', 'suggest', $query,
+            $items ? 'success' : 'failed', $code, $raw, $ms);
+        return $items;
+    }
+
+    /** Яндекс HTTP Геокодер. */
+    private static function searchYandex(
+        \PDO $db, string $query, string $city, string $region, array $svc
+    ): array {
+        if (api_key('yandex_maps') === '') return [];
+        $queryLower = mb_strtolower($query);
+        $searchQuery = str_contains($queryLower, mb_strtolower($city))
+            || str_contains($queryLower, mb_strtolower($region))
+            ? $query
+            : $query . ', ' . $city . ', ' . $region;
+
+        $url = self::YANDEX_GEOCODER . '?' . http_build_query([
+            'apikey' => api_key('yandex_maps'),
+            'geocode' => $searchQuery,
+            'format' => 'json',
+            'lang' => 'ru_RU',
+            'results' => 7,
+            'll' => $svc['center_longitude'] . ',' . $svc['center_latitude'],
+            'spn' => '2.2,1.8',
+            'rspn' => 1,
+        ]);
+        [$code, $raw, $ms] = self::request($url, 'GET', null, [
+            'User-Agent: TaxiService/1.0',
+            'Accept: application/json',
+        ]);
+        $items = self::parseYandex($raw);
+        self::log($db, 'yandex-geocoder', 'search', $query,
+            $items ? 'success' : 'failed', $code, $raw, $ms);
+        return $items;
+    }
+
+    /** OpenCage: геокодер, не предназначенный для автодополнения. */
+    private static function searchOpenCage(
+        \PDO $db, string $query, string $city, string $region, array $svc
+    ): array {
+        if (api_key('opencage') === '') return [];
+        $queryLower = mb_strtolower($query);
+        $searchQuery = str_contains($queryLower, mb_strtolower($city))
+            || str_contains($queryLower, mb_strtolower($region))
+            ? $query
+            : $query . ', ' . $city . ', ' . $region;
+
+        return self::openCageRequest($db, [
+            'q' => $searchQuery,
+            'countrycode' => 'ru',
+            'language' => 'ru',
+            'limit' => 7,
+            'no_annotations' => 1,
+            'proximity' => $svc['center_latitude'] . ',' . $svc['center_longitude'],
+            'bounds' => ($svc['center_longitude'] - 0.9) . ',' . ($svc['center_latitude'] - 0.6) . ','
+                . ($svc['center_longitude'] + 0.9) . ',' . ($svc['center_latitude'] + 0.6),
+        ], 'search', $query);
     }
 
     /**
@@ -137,7 +162,7 @@ final class GeocodingService
         if (mb_strlen($query) < 2) return [];
         $results = [];
 
-        if (api_key('dadata') !== '') {
+        if (GeoProviders::isActive($db, 'dadata')) {
             $body = json_encode(['query' => $query, 'count' => 5], JSON_UNESCAPED_UNICODE);
             [$code, $raw, $ms] = self::request(self::DADATA_SUGGEST, 'POST', $body, [
                 'Authorization: Token ' . api_key('dadata'),
@@ -161,7 +186,18 @@ final class GeocodingService
                 $results ? 'success' : 'failed', $code, $raw, $ms);
         }
 
-        if (!$results && api_key('opencage') !== '') {
+        if (!$results && GeoProviders::isActive($db, 'photon')) {
+            $url = self::PHOTON_SEARCH . '?' . http_build_query(['q' => $query, 'limit' => 5]);
+            [$code, $raw, $ms] = self::request($url, 'GET', null, [
+                'User-Agent: TaxiTyumen/1.0 (+https://taxi.event72.ru)',
+                'Accept: application/json',
+            ]);
+            $results = self::mergeUnique($results, self::parsePhoton($raw));
+            self::log($db, 'photon', 'search-wide', $query,
+                $results ? 'success' : 'failed', $code, $raw, $ms);
+        }
+
+        if (!$results && GeoProviders::isActive($db, 'opencage')) {
             $url = self::OPENCAGE_GEOCODE . '?' . http_build_query([
                 'key' => api_key('opencage'),
                 'q' => $query,
@@ -179,7 +215,7 @@ final class GeocodingService
                 $results ? 'success' : 'failed', $code, $raw, $ms);
         }
 
-        if (!$results && api_key('yandex_maps') !== '') {
+        if (!$results && GeoProviders::isActive($db, 'yandex')) {
             // rspn=0: без обрезания результатов рамкой города
             $url = self::YANDEX_GEOCODER . '?' . http_build_query([
                 'apikey' => api_key('yandex_maps'),
@@ -202,57 +238,16 @@ final class GeocodingService
 
     public static function reverse(\PDO $db, float $lat, float $lng): array
     {
-        // DaData geolocate — сначала
-        if (api_key('dadata') !== '') {
-            $body = json_encode(['lat' => $lat, 'lon' => $lng, 'radius_meters' => 100, 'count' => 1]);
-            [$code, $raw, $ms] = self::request(self::DADATA_GEOLOCATE, 'POST', $body, [
-                'Authorization: Token ' . api_key('dadata'),
-                'Content-Type: application/json',
-            ]);
-            $json = json_decode($raw, true);
-            $s = $json['suggestions'][0] ?? null;
-            self::log($db, 'dadata', 'reverse', "$lat,$lng",
-                $s ? 'success' : 'failed', $code, $raw, $ms);
-            if ($s) {
-                return [
-                    'displayName' => $s['value'] ?? '',
-                    'fullAddress' => $s['unrestricted_value'] ?? $s['value'] ?? '',
-                    'latitude' => $lat,
-                    'longitude' => $lng,
-                    'source' => 'dadata',
-                ];
-            }
-        }
-
-        // OpenCage — резервный reverse (OSM), пул ключей с автопереключением
-        if (api_key('opencage') !== '') {
-            $items = self::openCageRequest($db, [
-                'q' => $lat . ',' . $lng,
-                'language' => 'ru',
-                'limit' => 1,
-                'no_annotations' => 1,
-            ], 'reverse', "$lat,$lng");
-            if ($items) return $items[0];
-        }
-
-        // Яндекс — reverse fallback
-        if (api_key('yandex_maps') !== '') {
-            $url = self::YANDEX_GEOCODER . '?' . http_build_query([
-                'apikey' => api_key('yandex_maps'),
-                'geocode' => $lng . ',' . $lat,
-                'format' => 'json',
-                'lang' => 'ru_RU',
-                'results' => 1,
-                'kind' => 'house',
-            ]);
-            [$code, $raw, $ms] = self::request($url, 'GET', null, [
-                'User-Agent: TaxiService/1.0',
-                'Accept: application/json',
-            ]);
-            $items = self::parseYandex($raw);
-            self::log($db, 'yandex-geocoder', 'reverse', "$lat,$lng",
-                $items ? 'success' : 'failed', $code, $raw, $ms);
-            if ($items) return $items[0];
+        // Порядок обратного геокодинга тоже подчиняется настройкам админки
+        foreach (GeoProviders::active($db) as $provider) {
+            $item = match ($provider) {
+                'dadata'   => self::reverseDaData($db, $lat, $lng),
+                'photon'   => self::reversePhoton($db, $lat, $lng),
+                'yandex'   => self::reverseYandex($db, $lat, $lng),
+                'opencage' => self::reverseOpenCage($db, $lat, $lng),
+                default    => null,
+            };
+            if ($item !== null) return $item;
         }
 
         return [
@@ -264,19 +259,90 @@ final class GeocodingService
         ];
     }
 
+    private static function reverseDaData(\PDO $db, float $lat, float $lng): ?array
+    {
+        if (api_key('dadata') === '') return null;
+        $body = json_encode(['lat' => $lat, 'lon' => $lng, 'radius_meters' => 100, 'count' => 1]);
+        [$code, $raw, $ms] = self::request(self::DADATA_GEOLOCATE, 'POST', $body, [
+            'Authorization: Token ' . api_key('dadata'),
+            'Content-Type: application/json',
+        ]);
+        $json = json_decode($raw, true);
+        $s = $json['suggestions'][0] ?? null;
+        self::log($db, 'dadata', 'reverse', "$lat,$lng",
+            $s ? 'success' : 'failed', $code, $raw, $ms);
+        if (!$s) return null;
+        return [
+            'displayName' => $s['value'] ?? '',
+            'fullAddress' => $s['unrestricted_value'] ?? $s['value'] ?? '',
+            'latitude' => $lat,
+            'longitude' => $lng,
+            'source' => 'dadata',
+        ];
+    }
+
+    private static function reversePhoton(\PDO $db, float $lat, float $lng): ?array
+    {
+        $url = 'https://photon.komoot.io/reverse?' . http_build_query([
+            'lat' => $lat, 'lon' => $lng, 'limit' => 1,
+        ]);
+        [$code, $raw, $ms] = self::request($url, 'GET', null, [
+            'User-Agent: TaxiTyumen/1.0 (+https://taxi.event72.ru)',
+            'Accept: application/json',
+        ]);
+        $items = self::parsePhoton($raw);
+        self::log($db, 'photon', 'reverse', "$lat,$lng",
+            $items ? 'success' : 'failed', $code, $raw, $ms);
+        return $items[0] ?? null;
+    }
+
+    private static function reverseYandex(\PDO $db, float $lat, float $lng): ?array
+    {
+        if (api_key('yandex_maps') === '') return null;
+        $url = self::YANDEX_GEOCODER . '?' . http_build_query([
+            'apikey' => api_key('yandex_maps'),
+            'geocode' => $lng . ',' . $lat,
+            'format' => 'json',
+            'lang' => 'ru_RU',
+            'results' => 1,
+            'kind' => 'house',
+        ]);
+        [$code, $raw, $ms] = self::request($url, 'GET', null, [
+            'User-Agent: TaxiService/1.0',
+            'Accept: application/json',
+        ]);
+        $items = self::parseYandex($raw);
+        self::log($db, 'yandex-geocoder', 'reverse', "$lat,$lng",
+            $items ? 'success' : 'failed', $code, $raw, $ms);
+        return $items[0] ?? null;
+    }
+
+    private static function reverseOpenCage(\PDO $db, float $lat, float $lng): ?array
+    {
+        if (api_key('opencage') === '') return null;
+        $items = self::openCageRequest($db, [
+            'q' => $lat . ',' . $lng,
+            'language' => 'ru',
+            'limit' => 1,
+            'no_annotations' => 1,
+        ], 'reverse', "$lat,$lng");
+        return $items[0] ?? null;
+    }
+
     public static function check(\PDO $db): array
     {
         $svc = ServiceSettings::get($db);
         $items = self::search($db, (string) $svc['city_name']);
         return [
-            // Photon работает без ключа, поэтому геокодинг настроен всегда
-            'configured' => true,
+            'configured' => count(GeoProviders::active($db)) > 0,
             'ok' => count($items) > 0,
             'results' => count($items),
             'sources' => array_values(array_unique(array_column($items, 'source'))),
+            'providers' => GeoProviders::active($db),
+            'primary' => GeoProviders::primary($db),
             'message' => count($items) > 0
-                ? 'Геокодинг РФ доступен'
-                : 'Photon недоступен; проверьте исходящие HTTPS-запросы сервера',
+                ? 'Геокодинг доступен · основной: ' . (GeoProviders::primary($db) ?? '—')
+                : 'Ни один провайдер не ответил — проверьте раздел «Геокодинг»',
         ];
     }
 

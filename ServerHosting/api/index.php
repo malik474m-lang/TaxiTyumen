@@ -27,6 +27,7 @@ Response::json([
         'GET/PUT/POST /api/zones.php (зоны и фиксированные цены)',
         'POST /api/pricing.php',
         'GET /api/options.php (справочник опций; save/create/delete — admin)',
+        'GET/POST /api/geo-providers.php (провайдеры геокодинга; управление — admin)',
         'GET/POST /api/chat.php (чат + mark read)',
         'GET/POST /api/notifications.php (in-app/SMS уведомления)',
         'GET  /api/geocoding.php?q= или ?lat=&lng= (DaData/Photon/Яндекс/OpenCage)',

@@ -204,6 +204,9 @@ if (preg_match('#^orders/([0-9a-f-]+)/(accept|reject|complete|force-assign|cance
 }
 if (preg_match('#^orders/([0-9a-f-]+)$#i',$route,$m) && $method==='GET') $dispatch($api.'/orders/item.php',[],['id'=>$m[1]]);
 
+// ── Провайдеры геокодинга ──────────────────────────────────────────────
+if ($routeLower === 'geo-providers') $dispatch($api . '/geo-providers.php');
+
 // ── Геометрия маршрута по дорогам (приложение водителя) ────────────────
 if ($routeLower === 'route') $dispatch($api . '/route.php');
 

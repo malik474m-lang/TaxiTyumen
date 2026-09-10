@@ -72,6 +72,9 @@ API Controllers/Hubs/Background Services, TaxiAdmin, TaxiClient, TaxiDriver, Tax
   автопереключение при 402/429/401, разблокировка в полночь UTC, статус в админке.
 - OpenCage (opencagedata.com, OSM) подключён как независимый резервный геокодер:
   `OPENCAGE_API_KEY`; подсказки: DaData -> Photon/OSM -> Яндекс -> OpenCage, с дедупликацией.
+- Провайдеры геокодинга управляются из админки («Геокодинг», `src/GeoProviders.php`,
+  таблица `geo_providers`): включение/выключение, порядок опроса, выбор основного;
+  настройки действуют на search, reverse и широкий поиск.
 
 ## Осознанные инфраструктурные адаптации
 

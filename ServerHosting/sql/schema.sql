@@ -432,3 +432,12 @@ CREATE TABLE IF NOT EXISTS events (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Провайдеры геокодинга: включение и порядок опроса (админка → «Геокодинг»)
+CREATE TABLE IF NOT EXISTS geo_providers (
+  provider   VARCHAR(30) PRIMARY KEY,          -- dadata | photon | yandex | opencage
+  is_enabled TINYINT(1) NOT NULL DEFAULT 1,
+  sort_order INT NOT NULL DEFAULT 100,         -- меньше = выше приоритет
+  updated_at DATETIME NULL,
+  updated_by CHAR(36) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
