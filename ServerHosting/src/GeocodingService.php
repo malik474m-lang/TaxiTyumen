@@ -29,7 +29,7 @@ final class GeocodingService
             if (count($results) >= 7) break;
 
             $items = match ($provider) {
-                'dadata'   => self::searchDaData($db, $query, $city, $region),
+                'dadata'   => self::searchDaData($db, $query, $city, $region, $svc),
                 'photon'   => self::searchPhoton($db, $query, $svc),
                 'yandex'   => self::searchYandex($db, $query, $city, $region, $svc),
                 'opencage' => self::searchOpenCage($db, $query, $city, $region, $svc),
@@ -42,40 +42,122 @@ final class GeocodingService
     }
 
     /** DaData: официальный реестр адресов РФ. */
-    private static function searchDaData(\PDO $db, string $query, string $city, string $region): array
-    {
-        if (api_key('dadata') === '') return [];
+    private static function searchDaData(
+        \PDO $db, string $query, string $city, string $region, array $svc
+    ): array {
+        $token = self::dadataToken();
+        if ($token === '') return [];
+
+        // locations жёстко обрезал выдачу и мог вернуть пусто при отличии
+        // названия региона/города в настройках от справочника DaData.
+        // locations_boost только поднимает Тюмень, но не скрывает дальние адреса.
         $body = json_encode([
             'query' => $query,
-            'count' => 7,
-            'locations' => [['region' => $region, 'city' => $city], ['region' => $region]],
-            'restrict_value' => false,
+            'count' => 10,
+            'locations_boost' => [['city' => $city], ['region' => $region]],
         ], JSON_UNESCAPED_UNICODE);
         [$code, $raw, $ms] = self::request(self::DADATA_SUGGEST, 'POST', $body, [
-            'Authorization: Token ' . api_key('dadata'),
-            'Content-Type: application/json',
+            'Authorization: Token ' . $token,
+            'Content-Type: application/json; charset=utf-8',
             'Accept: application/json',
         ]);
 
         $json = json_decode($raw, true);
         $items = [];
+        // Один набор Photon на весь запрос; используем только если у конкретной
+        // подсказки DaData отсутствуют собственные координаты.
+        $coordinateFallbacks = null;
         if ($code >= 200 && $code < 300 && is_array($json)) {
             foreach ($json['suggestions'] ?? [] as $s) {
+                $value = trim((string) ($s['value'] ?? ''));
+                if ($value === '') continue;
+
                 $lat = (float) ($s['data']['geo_lat'] ?? 0);
                 $lng = (float) ($s['data']['geo_lon'] ?? 0);
-                if (!$lat || !$lng) continue;
+
+                // DaData документирует: координаты есть не у всех подсказок
+                // (особенно улиц без номера). Адрес всё равно валиден и должен
+                // показываться оператору, а координаты уточним через Photon.
+                if (!$lat || !$lng) {
+                    $coordinateFallbacks ??= self::searchPhotonRaw($query, $svc);
+                    $fallback = self::bestCoordinateMatch($value, $coordinateFallbacks);
+                    if ($fallback !== null) {
+                        $lat = (float) $fallback['latitude'];
+                        $lng = (float) $fallback['longitude'];
+                    }
+                }
+
                 $items[] = [
-                    'displayName' => $s['value'] ?? '',
-                    'fullAddress' => $s['unrestricted_value'] ?? $s['value'] ?? '',
+                    'displayName' => $value,
+                    'fullAddress' => $s['unrestricted_value'] ?? $value,
                     'latitude' => $lat,
                     'longitude' => $lng,
                     'source' => 'dadata',
+                    'hasCoordinates' => $lat != 0.0 && $lng != 0.0,
                 ];
             }
         }
         self::log($db, 'dadata', 'suggest', $query,
             $items ? 'success' : 'failed', $code, $raw, $ms);
         return $items;
+    }
+
+    /**
+     * В админку часто вставляют «Token xxxxx» или целый заголовок
+     * «Authorization: Token xxxxx». Убираем префикс, иначе получалось
+     * Authorization: Token Token xxxxx и DaData отвечала 401.
+     */
+    private static function dadataToken(): string
+    {
+        $token = trim(api_key('dadata'), " \t\n\r\0\x0B\"'");
+        $token = preg_replace(
+            '/^(?:authorization\s*:\s*)?(?:token|bearer)\s+/i', '', $token
+        ) ?? $token;
+        return trim($token);
+    }
+
+    /** Photon без журналирования — для координат подсказки DaData. */
+    private static function searchPhotonRaw(string $query, array $svc): array
+    {
+        $url = self::PHOTON_SEARCH . '?' . http_build_query([
+            'q' => $query,
+            'limit' => 5,
+            'lat' => (float) $svc['center_latitude'],
+            'lon' => (float) $svc['center_longitude'],
+        ]);
+        [$code, $raw] = self::request($url, 'GET', null, [
+            'User-Agent: TaxiTyumen/1.0 (+https://taxi.event72.ru)',
+            'Accept: application/json',
+        ]);
+        return $code >= 200 && $code < 300 ? self::parsePhoton($raw) : [];
+    }
+
+    /** Лучшее текстовое совпадение для уточнения координат. */
+    private static function bestCoordinateMatch(string $address, array $items): ?array
+    {
+        if (!$items) return null;
+        $normalize = static function (string $value): array {
+            $value = mb_strtolower($value);
+            $value = preg_replace('/[^а-яёa-z0-9]+/u', ' ', $value) ?? $value;
+            $stop = ['г','ул','д','дом','обл','область','россия','рф'];
+            return array_values(array_filter(
+                preg_split('/\s+/u', trim($value)) ?: [],
+                fn(string $word) => mb_strlen($word) >= 2 && !in_array($word, $stop, true)
+            ));
+        };
+
+        $wanted = $normalize($address);
+        $best = null;
+        $bestScore = -1;
+        foreach ($items as $item) {
+            $words = $normalize((string) ($item['displayName'] ?? ''));
+            $score = count(array_intersect($wanted, $words));
+            if ($score > $bestScore) {
+                $best = $item;
+                $bestScore = $score;
+            }
+        }
+        return $bestScore > 0 ? $best : ($items[0] ?? null);
     }
 
     /** Photon/OSM: автодополнение без ключа. */
@@ -165,7 +247,7 @@ final class GeocodingService
         if (GeoProviders::isActive($db, 'dadata')) {
             $body = json_encode(['query' => $query, 'count' => 5], JSON_UNESCAPED_UNICODE);
             [$code, $raw, $ms] = self::request(self::DADATA_SUGGEST, 'POST', $body, [
-                'Authorization: Token ' . api_key('dadata'),
+                'Authorization: Token ' . self::dadataToken(),
                 'Content-Type: application/json',
                 'Accept: application/json',
             ]);
@@ -264,7 +346,7 @@ final class GeocodingService
         if (api_key('dadata') === '') return null;
         $body = json_encode(['lat' => $lat, 'lon' => $lng, 'radius_meters' => 100, 'count' => 1]);
         [$code, $raw, $ms] = self::request(self::DADATA_GEOLOCATE, 'POST', $body, [
-            'Authorization: Token ' . api_key('dadata'),
+            'Authorization: Token ' . self::dadataToken(),
             'Content-Type: application/json',
         ]);
         $json = json_decode($raw, true);
@@ -327,6 +409,99 @@ final class GeocodingService
             'no_annotations' => 1,
         ], 'reverse', "$lat,$lng");
         return $items[0] ?? null;
+    }
+
+    /**
+     * Диагностика одного провайдера для админки: HTTP-код, количество
+     * подсказок и текст ошибки. Особенно важно для DaData — 403 означает
+     * неверный ключ, неподтверждённую почту, отключённую функцию или лимит.
+     */
+    public static function diagnoseProvider(\PDO $db, string $provider, string $query): array
+    {
+        $query = trim($query) ?: 'Республики 52';
+        $svc = ServiceSettings::get($db);
+        $started = microtime(true);
+
+        if ($provider === 'dadata') {
+            $token = self::dadataToken();
+            if ($token === '') {
+                return ['ok' => false, 'code' => 0, 'count' => 0,
+                    'withCoordinates' => 0, 'message' => 'Ключ DaData не задан'];
+            }
+            $body = json_encode([
+                'query' => $query,
+                'count' => 10,
+                'locations_boost' => [
+                    ['city' => (string) $svc['city_name']],
+                    ['region' => (string) $svc['region_name']],
+                ],
+            ], JSON_UNESCAPED_UNICODE);
+            [$code, $raw, $ms] = self::request(self::DADATA_SUGGEST, 'POST', $body, [
+                'Authorization: Token ' . $token,
+                'Content-Type: application/json; charset=utf-8',
+                'Accept: application/json',
+            ]);
+            $json = json_decode($raw, true);
+            $suggestions = is_array($json) ? ($json['suggestions'] ?? []) : [];
+            $withCoordinates = 0;
+            foreach ($suggestions as $s) {
+                if (!empty($s['data']['geo_lat']) && !empty($s['data']['geo_lon'])) {
+                    $withCoordinates++;
+                }
+            }
+
+            $message = match ($code) {
+                200 => $suggestions
+                    ? 'DaData ответила; подсказки получены'
+                    : 'DaData ответила 200, но не нашла адрес по этому запросу',
+                401 => 'DaData: API-ключ отсутствует или передан неверно',
+                403 => 'DaData: ключ отклонён. Проверьте подтверждение почты, '
+                    . 'доступ к SUGGESTIONS и суточный лимит в кабинете',
+                429 => 'DaData: превышена частота запросов; подождите минуту',
+                0 => 'Нет соединения с DaData: проверьте cURL/исходящий HTTPS',
+                default => 'DaData вернула HTTP ' . $code,
+            };
+            if (is_array($json) && !empty($json['message'])) {
+                $message .= ' · ' . (string) $json['message'];
+            } elseif ($code !== 200 && trim($raw) !== '') {
+                $message .= ' · ' . mb_substr(strip_tags($raw), 0, 250);
+            }
+
+            return [
+                'ok' => $code === 200 && count($suggestions) > 0,
+                'code' => $code,
+                'count' => count($suggestions),
+                'withCoordinates' => $withCoordinates,
+                'message' => $message,
+                'durationMs' => $ms,
+                'sample' => array_values(array_filter(array_map(
+                    fn(array $s) => (string) ($s['value'] ?? ''),
+                    array_slice($suggestions, 0, 3)
+                ))),
+            ];
+        }
+
+        $items = match ($provider) {
+            'photon' => self::searchPhoton($db, $query, $svc),
+            'yandex' => self::searchYandex(
+                $db, $query, (string) $svc['city_name'], (string) $svc['region_name'], $svc
+            ),
+            'opencage' => self::searchOpenCage(
+                $db, $query, (string) $svc['city_name'], (string) $svc['region_name'], $svc
+            ),
+            default => [],
+        };
+        return [
+            'ok' => count($items) > 0,
+            'code' => null,
+            'count' => count($items),
+            'withCoordinates' => count(array_filter(
+                $items, fn(array $i) => !empty($i['latitude']) && !empty($i['longitude'])
+            )),
+            'message' => $items ? 'Провайдер работает' : 'Провайдер не вернул подсказки',
+            'durationMs' => (int) round((microtime(true) - $started) * 1000),
+            'sample' => array_column(array_slice($items, 0, 3), 'displayName'),
+        ];
     }
 
     public static function check(\PDO $db): array

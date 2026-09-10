@@ -44,6 +44,14 @@ if ($testQuery !== '') {
     $probe = GeocodingService::search($db, $testQuery);
 }
 
+$providerTest = (string) ($_GET['provider_test'] ?? '');
+$providerProbe = null;
+if ($providerTest !== '' && isset(GeoProviders::REGISTRY[$providerTest])) {
+    $providerProbe = GeocodingService::diagnoseProvider(
+        $db, $providerTest, $testQuery ?: 'Республики 52'
+    );
+}
+
 $providers = GeoProviders::all($db);
 $active = GeoProviders::active($db);
 $primary = GeoProviders::primary($db);
@@ -125,6 +133,10 @@ layout_header('Геокодинг', 'geocoding');
               <button class="btn ghost sm">Сделать основным</button>
             </form>
           <?php endif; ?>
+          <a class="btn ghost sm"
+             href="geocoding.php?provider_test=<?= rawurlencode($name) ?>&q=<?= rawurlencode($testQuery ?: 'Республики 52') ?>">
+            Проверить
+          </a>
           <form method="post" class="inline">
             <input type="hidden" name="cmd" value="move">
             <input type="hidden" name="provider" value="<?= h($name) ?>">
@@ -149,6 +161,30 @@ layout_header('Геокодинг', 'geocoding');
     </div>
   <?php endif; ?>
 </div>
+
+<?php if ($providerProbe !== null): ?>
+<div class="card" style="margin-top:16px;border-color:<?= $providerProbe['ok'] ? 'rgba(52,211,153,.35)' : 'rgba(248,113,113,.4)' ?>">
+  <div class="flex between">
+    <h3 style="font-size:16px">Проверка: <?= h(GeoProviders::REGISTRY[$providerTest]['label'] ?? $providerTest) ?></h3>
+    <span class="chip <?= $providerProbe['ok'] ? 'ok' : 'bad' ?>">
+      <?= $providerProbe['ok'] ? 'работает' : 'ошибка' ?>
+      <?php if ($providerProbe['code'] !== null): ?> · HTTP <?= (int) $providerProbe['code'] ?><?php endif; ?>
+    </span>
+  </div>
+  <p style="margin-top:8px;color:<?= $providerProbe['ok'] ? '#6ee7b7' : '#fca5a5' ?>">
+    <?= h((string) $providerProbe['message']) ?>
+  </p>
+  <div class="mut" style="margin-top:5px">
+    Подсказок: <?= (int) $providerProbe['count'] ?> · с собственными координатами:
+    <?= (int) $providerProbe['withCoordinates'] ?> · <?= (int) $providerProbe['durationMs'] ?> мс
+  </div>
+  <?php if (!empty($providerProbe['sample'])): ?>
+    <ol style="margin:10px 0 0 20px;color:#d4d4d8">
+      <?php foreach ($providerProbe['sample'] as $sample): ?><li><?= h((string) $sample) ?></li><?php endforeach; ?>
+    </ol>
+  <?php endif; ?>
+</div>
+<?php endif; ?>
 
 <div class="card" style="margin-top:16px">
   <h3 style="font-size:16px">Проверка подсказок</h3>
