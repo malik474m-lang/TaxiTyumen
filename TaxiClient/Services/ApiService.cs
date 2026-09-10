@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using TaxiClient.Models;
 
 namespace TaxiClient.Services;
@@ -90,6 +91,16 @@ public class ApiService
             new { action = "confirm", phone, code, newPassword });
         if (!resp.IsSuccessStatusCode)
             throw new Exception(await resp.Content.ReadAsStringAsync());
+    }
+
+    /// Конфиг карты с сервера (админка → «API-ключи»): провайдер и ключ.
+    public async Task<MapConfigDto?> GetMapConfigAsync()
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<MapConfigDto>("map-config.php", _json);
+        }
+        catch { return null; }
     }
 
     public async Task<List<PriceEstimate>> GetAllPricesAsync(
@@ -188,4 +199,16 @@ public class ApiService
             IsClient = true
         });
     }
+}
+
+/// Конфиг карты, отдаётся /api/map-config.php (админка → «API и сервисы»).
+public sealed class MapConfigDto
+{
+    [JsonPropertyName("provider")] public string Provider { get; set; } = string.Empty;
+    [JsonPropertyName("apiKey")] public string? ApiKey { get; set; }
+    [JsonPropertyName("configured")] public bool Configured { get; set; }
+    [JsonPropertyName("center")] public double[]? Center { get; set; }
+
+    public double CenterLat => Center is { Length: 2 } ? Center[0] : 57.1522;
+    public double CenterLng => Center is { Length: 2 } ? Center[1] : 65.5272;
 }

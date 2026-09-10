@@ -67,138 +67,22 @@ public partial class MainClientPage : ContentPage
     }
 
     // =========================
-    // КАРТА + OSRM
+    // КАРТА
+    // Провайдер берём с сервера (api/map-config.php): в админке выбраны
+    // Яндекс Карты — их и показываем. Без ключа/провайдера или при сбое —
+    // автоматический запасной вариант Leaflet + OpenStreetMap.
     // =========================
-    private void SafeLoadMap()
+    private async void SafeLoadMap()
     {
         try
         {
-            var html = @"<!DOCTYPE html>
-<html>
-<head>
-<meta name='viewport' content='width=device-width,initial-scale=1.0'>
-<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'/>
-<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
-<style>
-html,body,#map{margin:0;padding:0;width:100%;height:100%}
-</style>
-</head>
-<body>
-<div id='map'></div>
-<script>
-var map = L.map('map').setView([57.1522, 65.5272], 13);
+            var cfg = await _api.GetMapConfigAsync();
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19
-}).addTo(map);
-
-var pickupM = L.marker([57.1522, 65.5272], { draggable: true })
-    .addTo(map)
-    .bindPopup('Подача');
-
-var destM = null;
-var driverM = null;
-var routeLine = null;
-
-pickupM.on('dragend', function(e) {
-    var p = e.target.getLatLng();
-    window.location = 'callback://pickup/' + p.lat + '/' + p.lng;
-});
-
-function setPickup(lat, lng) {
-    pickupM.setLatLng([lat, lng]);
-    map.setView([lat, lng], 15);
-}
-
-function setDest(lat, lng) {
-    if (!destM) {
-        destM = L.marker([lat, lng], { draggable: true })
-            .addTo(map)
-            .bindPopup('Назначение');
-
-        destM.on('dragend', function(e) {
-            var p = e.target.getLatLng();
-            window.location = 'callback://dest/' + p.lat + '/' + p.lng;
-        });
-    } else {
-        destM.setLatLng([lat, lng]);
-    }
-
-    try {
-        map.fitBounds([pickupM.getLatLng(), destM.getLatLng()], { padding: [40, 40] });
-    } catch(e) {}
-}
-
-function drawRoute(lat1, lng1, lat2, lng2) {
-    if (routeLine) {
-        map.removeLayer(routeLine);
-        routeLine = null;
-    }
-
-    var url = 'https://router.project-osrm.org/route/v1/driving/'
-        + lng1 + ',' + lat1 + ';' + lng2 + ',' + lat2
-        + '?overview=full&geometries=geojson';
-
-    fetch(url)
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (data.routes && data.routes.length > 0) {
-                var coords = data.routes[0].geometry.coordinates.map(function(c) {
-                    return [c[1], c[0]];
-                });
-
-                routeLine = L.polyline(coords, {
-                    color: '#FFD700',
-                    weight: 5,
-                    opacity: 0.9
-                }).addTo(map);
-
-                map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
-            } else {
-                routeLine = L.polyline(
-                    [[lat1, lng1], [lat2, lng2]],
-                    { color: '#FFD700', weight: 4, dashArray: '8,8' }
-                ).addTo(map);
-            }
-        })
-        .catch(function() {
-            routeLine = L.polyline(
-                [[lat1, lng1], [lat2, lng2]],
-                { color: '#FFD700', weight: 4, dashArray: '8,8' }
-            ).addTo(map);
-        });
-}
-
-function setDriver(lat, lng) {
-    if (!driverM) {
-        driverM = L.marker([lat, lng], {
-            icon: L.divIcon({
-                className: '',
-                html: '<div style=""font-size:30px""></div>',
-                iconSize: [30, 30]
-            })
-        }).addTo(map);
-    } else {
-        driverM.setLatLng([lat, lng]);
-    }
-}
-
-function clearDriver() {
-    if (driverM) {
-        map.removeLayer(driverM);
-        driverM = null;
-    }
-}
-
-function clearRoute() {
-    if (routeLine) {
-        map.removeLayer(routeLine);
-        routeLine = null;
-    }
-}
-</script>
-</body>
-</html>";
+            var centerLat = cfg?.CenterLat ?? 57.1522;
+            var centerLng = cfg?.CenterLng ?? 65.5272;
+            var html = cfg is { Configured: true, Provider: "yandex" }
+                ? BuildYandexMapHtml(cfg.ApiKey ?? string.Empty, centerLat, centerLng)
+                : BuildLeafletMapHtml(centerLat, centerLng);
 
             MapWebView.Source = new HtmlWebViewSource { Html = html };
 
@@ -224,6 +108,219 @@ function clearRoute() {
             };
         }
     }
+
+    // Ключ и центр города подставляются из конфига сервера. В JS один и тот
+    // же фасад (setPickup/setDest/...) работает поверх двух движков.
+    private static string Inject(string template, string apiKey, double lat, double lng)
+        => template
+            .Replace("__APIKEY__", apiKey)
+            .Replace("__CLAT__", lat.ToString("R", CultureInfo.InvariantCulture))
+            .Replace("__CLNG__", lng.ToString("R", CultureInfo.InvariantCulture));
+
+    private static string BuildYandexMapHtml(string apiKey, double lat, double lng)
+        => Inject(YandexHtml, apiKey, lat, lng);
+
+    private static string BuildLeafletMapHtml(double lat, double lng)
+        => Inject(LeafletHtml, string.Empty, lat, lng);
+
+    // ── Общий каркас: очередь вызовов до готовности движка + fallback ──────
+    private const string SharedJs = @"
+var queue = [];
+function api(name, args){
+  if (window.__impl) window.__impl[name].apply(null, args);
+  else queue.push([name, args]);
+}
+function setPickup(lat, lng){ api('setPickup', [lat, lng]); }
+function setDest(lat, lng){ api('setDest', [lat, lng]); }
+function drawRoute(a, b, c, d){ api('drawRoute', [a, b, c, d]); }
+function setDriver(lat, lng){ api('setDriver', [lat, lng]); }
+function clearDriver(){ api('clearDriver', []); }
+function clearRoute(){ api('clearRoute', []); }
+function flushQ(){
+  try{ queue.forEach(function(it){ window.__impl[it[0]].apply(null, it[1]); }); }catch(e){}
+  queue = [];
+}
+
+var carSvg = '<svg viewBox=""0 0 44 44"" width=""30"" height=""30"">'
+  + '<circle cx=""22"" cy=""22"" r=""14"" fill=""rgba(250,204,21,.22)"" stroke=""#1b1b1b"" stroke-width=""2""/>'
+  + '<path d=""M22 5 L31 33 L22 27 L13 33 Z"" fill=""#FACC15"" stroke=""#1b1b1b"" stroke-width=""2"" stroke-linejoin=""round""/>'
+  + '</svg>';
+
+// Геометрия маршрута — по дорогам (OSRM, бесплатно), провайдер её только рисует
+function fetchRoute(lat1, lng1, lat2, lng2, ok, fail){
+  var url = 'https://router.project-osrm.org/route/v1/driving/'
+    + lng1 + ',' + lat1 + ';' + lng2 + ',' + lat2
+    + '?overview=full&geometries=geojson';
+  fetch(url)
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.routes && d.routes.length > 0)
+        ok(d.routes[0].geometry.coordinates.map(function(c){ return [c[1], c[0]]; }));
+      else fail();
+    })
+    .catch(fail);
+}
+
+// Запасной движок: Leaflet + OSM — если Яндекс не ответил (сеть, лимит ключа)
+function initLeaflet(){
+  var css = document.createElement('link');
+  css.rel = 'stylesheet';
+  css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+  document.head.appendChild(css);
+  var s = document.createElement('script');
+  s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+  s.onload = function(){
+    var map = L.map('map').setView([__CLAT__, __CLNG__], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+    var pickupM = L.marker([__CLAT__, __CLNG__], { draggable: true }).addTo(map).bindPopup('Подача');
+    pickupM.on('dragend', function(e){
+      var p = e.target.getLatLng();
+      window.location = 'callback://pickup/' + p.lat + '/' + p.lng;
+    });
+    var destM = null, driverM = null, routeLine = null;
+    window.__impl = {
+      setPickup: function(lat, lng){ pickupM.setLatLng([lat, lng]); map.setView([lat, lng], 15); },
+      setDest: function(lat, lng){
+        if (!destM){
+          destM = L.marker([lat, lng], { draggable: true }).addTo(map).bindPopup('Назначение');
+          destM.on('dragend', function(e){
+            var p = e.target.getLatLng();
+            window.location = 'callback://dest/' + p.lat + '/' + p.lng;
+          });
+        } else destM.setLatLng([lat, lng]);
+        try{ map.fitBounds([pickupM.getLatLng(), destM.getLatLng()], { padding: [40, 40] }); }catch(e){}
+      },
+      drawRoute: function(lat1, lng1, lat2, lng2){
+        this.clearRoute();
+        fetchRoute(lat1, lng1, lat2, lng2, function(coords){
+          routeLine = L.polyline(coords, { color: '#FFD700', weight: 5, opacity: .9 }).addTo(map);
+          try{ map.fitBounds(routeLine.getBounds(), { padding: [40, 40] }); }catch(e){}
+        }, function(){
+          routeLine = L.polyline([[lat1, lng1], [lat2, lng2]], { color: '#FFD700', weight: 4, dashArray: '8,8' }).addTo(map);
+        });
+      },
+      setDriver: function(lat, lng){
+        if (!driverM){
+          driverM = L.marker([lat, lng], { icon: L.divIcon({ className: '', html: carSvg, iconSize: [30, 30] }) }).addTo(map);
+        } else driverM.setLatLng([lat, lng]);
+      },
+      clearDriver: function(){ if (driverM){ map.removeLayer(driverM); driverM = null; } },
+      clearRoute: function(){ if (routeLine){ map.removeLayer(routeLine); routeLine = null; } }
+    };
+    flushQ();
+  };
+  s.onerror = function(){
+    document.getElementById('map').innerHTML =
+      '<div style=""color:#888;font:14px sans-serif;padding:24px;text-align:center"">Карта недоступна — проверьте интернет</div>';
+  };
+  document.head.appendChild(s);
+}
+";
+
+    // ── Движок Яндекс Карт JS API 2.1 (ключ из админки, api/map-config) ──────
+    private const string YandexHtml = @"<!DOCTYPE html>
+<html>
+<head>
+<meta name='viewport' content='width=device-width,initial-scale=1.0'>
+<script src='https://api-maps.yandex.ru/2.1/?apikey=__APIKEY__&lang=ru_RU'></script>
+<style>html,body,#map{margin:0;padding:0;width:100%;height:100%}</style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+" + SharedJs + @"
+function initYandex(){
+  ymaps.ready(function(){
+    var map = new ymaps.Map('map', { center: [__CLAT__, __CLNG__], zoom: 13, controls: ['zoomControl'] });
+    var pickupPlacemark = new ymaps.Placemark([__CLAT__, __CLNG__],
+      { balloonContent: 'Подача' }, { preset: 'islands#orangeDotIcon', draggable: true });
+    map.geoObjects.add(pickupPlacemark);
+    pickupPlacemark.events.add('dragend', function(){
+      var c = pickupPlacemark.geometry.getCoordinates();
+      window.location = 'callback://pickup/' + c[0] + '/' + c[1];
+    });
+    var destPlacemark = null, driverPlacemark = null, routeObject = null;
+    window.__impl = {
+      setPickup: function(lat, lng){
+        pickupPlacemark.geometry.setCoordinates([lat, lng]);
+        map.setCenter([lat, lng], 15);
+      },
+      setDest: function(lat, lng){
+        if (!destPlacemark){
+          destPlacemark = new ymaps.Placemark([lat, lng],
+            { balloonContent: 'Назначение' }, { preset: 'islands#darkGreenDotIcon', draggable: true });
+          map.geoObjects.add(destPlacemark);
+          destPlacemark.events.add('dragend', function(){
+            var c = destPlacemark.geometry.getCoordinates();
+            window.location = 'callback://dest/' + c[0] + '/' + c[1];
+          });
+        } else destPlacemark.geometry.setCoordinates([lat, lng]);
+        try{
+          map.setBounds([pickupPlacemark.geometry.getCoordinates(), destPlacemark.geometry.getCoordinates()],
+            { checkZoomRange: true, zoomMargin: [50, 50, 50, 50] });
+        }catch(e){}
+      },
+      drawRoute: function(lat1, lng1, lat2, lng2){
+        this.clearRoute();
+        fetchRoute(lat1, lng1, lat2, lng2, function(coords){
+          routeObject = new ymaps.GeoObject(
+            { geometry: { type: 'LineString', coordinates: coords } },
+            { strokeColor: '#FFD700', strokeWidth: 5 });
+          map.geoObjects.add(routeObject);
+          try{ map.setBounds(routeObject.geometry.getBounds(), { checkZoomRange: true, zoomMargin: [50, 50, 50, 50] }); }catch(e){}
+        }, function(){
+          routeObject = new ymaps.GeoObject(
+            { geometry: { type: 'LineString', coordinates: [[lat1, lng1], [lat2, lng2]] } },
+            { strokeColor: '#FFD700', strokeWidth: 4, strokeStyle: 'dash' });
+          map.geoObjects.add(routeObject);
+          try{ map.setBounds([[lat1, lng1], [lat2, lng2]], { checkZoomRange: true, zoomMargin: [50, 50, 50, 50] }); }catch(e){}
+        });
+      },
+      setDriver: function(lat, lng){
+        if (!driverPlacemark){
+          driverPlacemark = new ymaps.Placemark([lat, lng], {}, {
+            iconLayout: ymaps.templateLayoutFactory.createClass(
+              '<div style=""margin-left:-15px;margin-top:-15px"">' + carSvg + '</div>'),
+            hideIconOnBalloonOpen: false
+          });
+          map.geoObjects.add(driverPlacemark);
+        } else driverPlacemark.geometry.setCoordinates([lat, lng]);
+      },
+      clearDriver: function(){ if (driverPlacemark){ map.geoObjects.remove(driverPlacemark); driverPlacemark = null; } },
+      clearRoute: function(){ if (routeObject){ map.geoObjects.remove(routeObject); routeObject = null; } }
+    };
+    flushQ();
+  });
+}
+
+// Яндекс грузится до 10 секунд; нет ответа — запускаем запасной движок
+if (window.ymaps) initYandex();
+else {
+  var tried = 0;
+  var boot = setInterval(function(){
+    if (window.ymaps){ clearInterval(boot); initYandex(); }
+    else if (++tried > 25){ clearInterval(boot); initLeaflet(); }
+  }, 400);
+}
+</script>
+</body>
+</html>";
+
+    // ── Движок Leaflet + OSM (когда провайдер на сервере не выбран) ─────────
+    private const string LeafletHtml = @"<!DOCTYPE html>
+<html>
+<head>
+<meta name='viewport' content='width=device-width,initial-scale=1.0'>
+<style>html,body,#map{margin:0;padding:0;width:100%;height:100%}</style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+" + SharedJs + @"
+initLeaflet();
+</script>
+</body>
+</html>";
 
     private async void HandleMapCallback(string url)
     {
