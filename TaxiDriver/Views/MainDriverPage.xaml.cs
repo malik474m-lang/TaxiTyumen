@@ -1687,16 +1687,22 @@ public partial class MainDriverPage : ContentPage
         {
             if (!_mapLoaded) return;
 
-            // Базовая карта TomTom включается только если сервис активен;
-            // иначе остаются тайлы OSM с офлайн-кешем города.
-            if (!string.IsNullOrEmpty(_baseMapTileUrl))
-            {
-                await RouteMap.EvaluateJavaScriptAsync(
-                    $"window.setBaseMap && window.setBaseMap('{MapAssets.JsArg(_baseMapTileUrl!)}')");
-            }
+            // Тайлы TomTom идут через локальный прокси приложения (с Referer
+            // домена): ключ, ограниченный по Referer в MyTomTom, отклоняет
+            // прямые запросы из WebView; заодно кеш с коротким TTL бережёт квоту.
+            LocalWebServer.SetTomTomTile("flow", _trafficTileUrl);
+            LocalWebServer.SetTomTomTile("incidents", _incidentsTileUrl);
+            LocalWebServer.SetTomTomTile("map", _baseMapTileUrl);
 
-            await ApplyOverlayAsync("flow", _trafficTileUrl, _trafficOn);
-            await ApplyOverlayAsync("incidents", _incidentsTileUrl, _incidentsOn);
+            // Базовая карта: TomTom только если сервис включён в админке,
+            // иначе возвращаем офлайн-тайлы OSM.
+            var baseLocal = LocalWebServer.TomTomLocalUrl("map");
+            var baseArg = baseLocal != null ? $"'{MapAssets.JsArg(baseLocal)}'" : "null";
+            await RouteMap.EvaluateJavaScriptAsync(
+                $"window.setBaseMap && window.setBaseMap({baseArg})");
+
+            await ApplyOverlayAsync("flow", LocalWebServer.TomTomLocalUrl("flow"), _trafficOn);
+            await ApplyOverlayAsync("incidents", LocalWebServer.TomTomLocalUrl("incidents"), _incidentsOn);
         }
         catch { }
     }

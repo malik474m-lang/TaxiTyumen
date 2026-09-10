@@ -18,7 +18,45 @@ public static class LocalWebServer
     private static string _tileRoot = string.Empty;
     private static volatile string _state = "{}";
     private static readonly HttpClient TileHttp = CreateTileHttp();
+    private static readonly HttpClient TtHttp = CreateTtHttp();
     private static readonly SemaphoreSlim TileGate = new(16, 16);
+
+    // ── Слои TomTom: тайлы ходят ЧЕРЕЗ ЭТОТ сервер ─────────────────────────
+    // У ключа TomTom могут стоять referer-ограничения (MyTomTom → Keys): прямые
+    // запросы из WebView пришли бы с origin http://127.0.0.1 и были бы отклонены
+    // («Request contains an invalid Referer header»). Через локальный прокси
+    // добавляем правильный Referer домена + файловый кеш с коротким TTL:
+    // картинка пробок освежается, а лимит тайлов тратится экономно.
+    private static readonly Dictionary<string, string> TtTemplates = new();
+
+    private static HttpClient CreateTtHttp()
+    {
+        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd(
+            "TaxiTyumen-Driver/4.0 (+https://taxi.event72.ru)");
+        http.DefaultRequestHeaders.Referrer = new Uri("https://taxi.event72.ru/");
+        return http;
+    }
+
+    /// Шаблон тайлов слоя TomTom (с ключом) из map-config; null — слой выключен.
+    public static void SetTomTomTile(string layer, string? templateUrl)
+    {
+        lock (TtTemplates)
+        {
+            if (string.IsNullOrEmpty(templateUrl)) TtTemplates.Remove(layer);
+            else TtTemplates[layer] = templateUrl;
+        }
+    }
+
+    private static string? TomTomTemplate(string layer)
+    {
+        lock (TtTemplates) return TtTemplates.TryGetValue(layer, out var t) ? t : null;
+    }
+
+    /// Локальный шаблон слоя для WebView: 127.0.0.1 — безопасно для referer-проверок.
+    public static string? TomTomLocalUrl(string layer)
+        => TomTomTemplate(layer) == null || !IsRunning ? null
+            : $"http://127.0.0.1:{Port}/tt/{layer}/{{z}}/{{x}}/{{y}}.png";
 
     public static int Port { get; private set; }
     public static bool IsRunning => _listener != null;
@@ -29,7 +67,7 @@ public static class LocalWebServer
     {
         var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         http.DefaultRequestHeaders.UserAgent.Add(
-            new ProductInfoHeaderValue("TaxiTyumen-Driver", "3.6"));
+            new ProductInfoHeaderValue("TaxiTyumen-Driver", "4.0"));
         http.DefaultRequestHeaders.UserAgent.Add(
             new ProductInfoHeaderValue("(+https://taxi.event72.ru)"));
         return http;
@@ -114,6 +152,25 @@ public static class LocalWebServer
                     return;
                 }
 
+                // /tt/{layer}/{z}/{x}/{y}.png — проксированные тайлы TomTom с кешем
+                if (TryParseTtTile(path, out var layer, out var tz, out var tx, out var ty))
+                {
+                    var ttBytes = await GetTtTileAsync(layer, tz, tx, ty);
+                    if (ttBytes != null)
+                    {
+                        // Пробки/происшествия живут минуты — браузер держит их недолго;
+                        // базовая карта TomTom — как обычные тайлы.
+                        var ttAge = layer is "flow" or "incidents" ? 240 : 604800;
+                        await WriteAsync(stream, 200, "image/png", ttBytes,
+                            noStore: false, maxAgeSeconds: ttAge);
+                    }
+                    else
+                    {
+                        await WriteAsync(stream, 200, "image/png", PlaceholderTile(), noStore: true);
+                    }
+                    return;
+                }
+
                 var root = Path.GetFullPath(_root);
                 var file = Path.GetFullPath(Path.Combine(_root, path));
                 if (!file.StartsWith(root, StringComparison.Ordinal))
@@ -142,6 +199,85 @@ public static class LocalWebServer
             && int.TryParse(p[2], out x)
             && int.TryParse(Path.GetFileNameWithoutExtension(p[3]), out y)
             && z is >= 0 and <= 19 && x >= 0 && y >= 0;
+    }
+
+    private static bool TryParseTtTile(
+        string path, out string layer, out int z, out int x, out int y)
+    {
+        layer = string.Empty; z = x = y = 0;
+        var p = path.Split('/');
+        if (p.Length != 5 || p[0] != "tt") return false;
+        if (p[1] != "flow" && p[1] != "incidents" && p[1] != "map") return false;
+        if (!int.TryParse(p[2], out z) || !int.TryParse(p[3], out x)
+            || !int.TryParse(Path.GetFileNameWithoutExtension(p[4]), out y)) return false;
+        if (z is < 0 or > 19 || x < 0 || y < 0) return false;
+        layer = p[1];
+        return true;
+    }
+
+    private static string TtPath(string layer, int z, int x, int y)
+        => Path.Combine(_tileRoot, "tt-" + layer, z.ToString(), x.ToString(), y + ".png");
+
+    /// Пробки/происшествия освежаются часто, статическая карта — редко.
+    private static TimeSpan TtTtl(string layer)
+        => layer is "flow" or "incidents" ? TimeSpan.FromMinutes(5) : TimeSpan.FromDays(30);
+
+    /// Тайл TomTom: кеш с TTL → сеть (Referer домена) → устаревшая копия из кеша.
+    public static async Task<byte[]?> GetTtTileAsync(
+        string layer, int z, int x, int y, CancellationToken ct = default)
+    {
+        var template = TomTomTemplate(layer);
+        if (template == null) return null;
+        var file = TtPath(layer, z, x, y);
+        try
+        {
+            if (File.Exists(file)
+                && DateTime.UtcNow - File.GetLastWriteTimeUtc(file) < TtTtl(layer))
+                return await File.ReadAllBytesAsync(file, ct);
+
+            await TileGate.WaitAsync(ct);
+            try
+            {
+                if (File.Exists(file)
+                    && DateTime.UtcNow - File.GetLastWriteTimeUtc(file) < TtTtl(layer))
+                    return await File.ReadAllBytesAsync(file, ct);
+
+                var ci = System.Globalization.CultureInfo.InvariantCulture;
+                var url = template
+                    .Replace("{z}", z.ToString(ci))
+                    .Replace("{x}", x.ToString(ci))
+                    .Replace("{y}", y.ToString(ci));
+                byte[]? bytes = null;
+                for (var attempt = 0; attempt < 2 && bytes == null; attempt++)
+                {
+                    try
+                    {
+                        using var response = await TtHttp.GetAsync(url, ct);
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            await Task.Delay(200, ct);
+                            continue;
+                        }
+                        var data = await response.Content.ReadAsByteArrayAsync(ct);
+                        if (data.Length > 100) bytes = data;
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch { await Task.Delay(200, ct); }
+                }
+                if (bytes != null)
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+                    await File.WriteAllBytesAsync(file, bytes, ct);
+                    return bytes;
+                }
+            }
+            finally { TileGate.Release(); }
+
+            // Сети нет или TomTom отказал: лучше устаревшая картинка, чем пустота
+            if (File.Exists(file)) return await File.ReadAllBytesAsync(file, ct);
+            return null;
+        }
+        catch { return null; }
     }
 
     private static string TilePath(int z, int x, int y)
@@ -257,11 +393,12 @@ public static class LocalWebServer
     }
 
     private static async Task WriteAsync(
-        NetworkStream stream, int code, string mime, byte[] body, bool noStore)
+        NetworkStream stream, int code, string mime, byte[] body, bool noStore,
+        int maxAgeSeconds = 604800)
     {
         var header = $"HTTP/1.1 {code} {(code == 200 ? "OK" : "Error")}\r\n"
             + $"Content-Type: {mime}\r\nContent-Length: {body.Length}\r\n"
-            + (noStore ? "Cache-Control: no-store\r\n" : "Cache-Control: public, max-age=604800\r\n")
+            + (noStore ? "Cache-Control: no-store\r\n" : $"Cache-Control: public, max-age={maxAgeSeconds}\r\n")
             + "Access-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n";
         await stream.WriteAsync(Encoding.ASCII.GetBytes(header));
         await stream.WriteAsync(body);

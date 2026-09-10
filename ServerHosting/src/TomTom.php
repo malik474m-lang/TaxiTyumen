@@ -678,9 +678,11 @@ final class TomTom
         if ($code === 401 || $code === 403) {
             return 'HTTP ' . $code . ': ключ отклонён TomTom'
                 . ($text !== '' ? ' — ' . $text : '')
-                . '. Проверьте: 1) ключ скопирован из кабинета MyTomTom → вкладка «Keys» '
-                . 'без кавычек и пробелов; 2) в кабинете для ключа включены нужные продукты '
-                . '(Routing, Search, Traffic, Map Display) либо выбрано «All APIs»';
+                . '. Проверьте: 1) ключ из кабинета MyTomTom, без кавычек и пробелов; '
+                . '2) для ключа включены продукты либо «All APIs»; '
+                . '3) если ключ ограничен по Referer — добавьте домен сервиса ('
+                . rtrim(self::referer(), '/') . ') в «Allowed referrers» MyTomTom '
+                . 'или снимите ограничение: сервер передаёт его в заголовке Referer';
         }
         if ($code === 429) {
             return 'HTTP 429: превышена частота запросов (QPS) — сервис восстановится сам';
@@ -792,6 +794,10 @@ final class TomTom
     ): array {
         $started = microtime(true);
         $headers[] = 'Accept: application/json';
+        // Ключ TomTom может быть ограничен по Referer в кабинете MyTomTom —
+        // без заголовка серверные вызовы получают "invalid Referer header" (403).
+        // Отправляем публичный домен сервиса, он и должен быть в списке разрешённых.
+        $headers[] = 'Referer: ' . self::referer();
 
         if (function_exists('curl_init')) {
             $ch = curl_init($url);
@@ -837,6 +843,15 @@ final class TomTom
         }
         return [$code, $raw !== false ? (string) $raw : 'Ошибка соединения',
             (int) round((microtime(true) - $started) * 1000)];
+    }
+
+    /** Домен сервиса для Referer: настраивается константой PUBLIC_BASE_URL. */
+    private static function referer(): string
+    {
+        $base = defined('PUBLIC_BASE_URL')
+            ? (string) PUBLIC_BASE_URL
+            : (getenv('PUBLIC_BASE_URL') ?: 'https://taxi.event72.ru');
+        return rtrim($base, '/') . '/';
     }
 
     private static function log(

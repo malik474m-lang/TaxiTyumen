@@ -18,4 +18,5 @@ define('TOMTOM_API_KEY', '');
 // https://developer.tech.yandex.ru/services/
 define('YANDEX_MAPS_API_KEY', '');
 define('CORS_ORIGIN', 'https://ваш-домен.ру');
+define('PUBLIC_BASE_URL', 'https://ваш-домен.ру');
 define('CITY_UTC_OFFSET', 5);

@@ -43,6 +43,10 @@ if (!defined('YANDEX_MAPS_API_KEY')) {
 // Тюмень UTC+5 — сдвиг для ценообразования/статистики
 if (!defined('CITY_UTC_OFFSET')) define('CITY_UTC_OFFSET', 5);
 
+// Публичный базовый URL сервиса: уходит в Referer внешним API, у которых
+// ключ может быть ограничен по Referer (TomTom). Укажите свой домен.
+if (!defined('PUBLIC_BASE_URL')) define('PUBLIC_BASE_URL', getenv('PUBLIC_BASE_URL') ?: 'https://taxi.event72.ru');
+
 // CORS: домен фронтенда (или '*' на время разработки)
 if (!defined('CORS_ORIGIN')) define('CORS_ORIGIN', getenv('CORS_ORIGIN') ?: '*');
 
