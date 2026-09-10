@@ -301,18 +301,16 @@ switch ($action) {
 
     case 'complete': {
         $finalPrice = (float) ($body['finalPrice'] ?? $order['estimated_price']) ?: (float) $order['estimated_price'];
-        // Фактическое расстояние по сохранённому GPS-треку
+        // Фактическое расстояние: по GPS-точкам, при включённом Snap to Roads —
+        // привязанное к дорожной сети (БЕЗ влияния на final_price — информационно)
         $trackStmt = $db->prepare('SELECT latitude,longitude FROM driver_location_history WHERE order_id=? ORDER BY timestamp');
         $trackStmt->execute([$id]);
         $track = $trackStmt->fetchAll();
-        $actualDistance = 0.0;
-        for ($i = 1; $i < count($track); $i++) {
-            $actualDistance += Taxi::getDistanceKm(
-                (float) $track[$i - 1]['latitude'], (float) $track[$i - 1]['longitude'],
-                (float) $track[$i]['latitude'], (float) $track[$i]['longitude']
-            );
-        }
-        $actualDistance = $actualDistance > 0 ? round($actualDistance, 2) : null;
+        $latlng = array_map(
+            fn($p) => [(float) $p['latitude'], (float) $p['longitude']], $track
+        );
+        $dist = TomTom::trackDistance($db, $latlng);
+        $actualDistance = $dist['km'] > 0 ? round($dist['km'], 2) : null;
         // Простой: закрываем открытый интервал и считаем поминутно по тарифу
         $tf = $db->prepare('SELECT free_waiting_minutes, paid_waiting_per_minute, commission_percent FROM tariffs WHERE type = ? LIMIT 1');
         $tf->execute([$order['tariff']]);

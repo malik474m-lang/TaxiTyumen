@@ -5,6 +5,7 @@ require_once __DIR__ . '/_init.php';
 
 $admin = admin_require($db, 'zones');
 $error = '';
+$isoDraft = null;
 Zones::ensureTables($db);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -52,6 +53,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
+        if ($cmd === 'isochrone') {
+            // Reachable Range (TomTom): полигон «куда доедем за N минут»
+            // с учётом пробок — готовая основа для зоны подачи/тарификации.
+            $minutes = max(1, min(60, (int) ($_POST['iso_minutes'] ?? 10)));
+            $address = trim((string) ($_POST['iso_address'] ?? ''));
+            $svc = ServiceSettings::get($db);
+            $lat = is_numeric($_POST['iso_lat'] ?? null)
+                ? (float) $_POST['iso_lat'] : (float) $svc['center_latitude'];
+            $lng = is_numeric($_POST['iso_lng'] ?? null)
+                ? (float) $_POST['iso_lng'] : (float) $svc['center_longitude'];
+            $resolved = null;
+            if ($address !== '') {
+                $hits = GeocodingService::search($db, $address);
+                if (empty($hits)) {
+                    throw new RuntimeException('Адрес не найден: ' . $address);
+                }
+                $lat = (float) $hits[0]['latitude'];
+                $lng = (float) $hits[0]['longitude'];
+                $resolved = (string) ($hits[0]['displayName'] ?? $address);
+            }
+            if (!TomTom::enabled($db, 'reachable_range')) {
+                throw new RuntimeException(
+                    'Сервис «Reachable Range» выключен. Включите его в разделе «TomTom».');
+            }
+            $polygon = TomTom::reachableRange($db, $lat, $lng, $minutes);
+            if ($polygon === null || count($polygon) < 3) {
+                throw new RuntimeException(
+                    'TomTom не вернул изохрону. Смотрите точную причину в «API и сервисы».');
+            }
+            $isoDraft = [
+                'name' => 'Изохрона ' . $minutes . ' мин'
+                    . ($resolved !== null ? ' — ' . mb_substr($resolved, 0, 60) : ''),
+                'points' => $polygon,
+                'center' => [$lat, $lng],
+                'minutes' => $minutes,
+            ];
+            // Без redirect: ниже страница отрисуется с черновиком в форме зоны
+        }
+
         if ($cmd === 'prices') {
             $saved = 0;
             foreach ((array) ($_POST['price'] ?? []) as $fromId => $toMap) {
@@ -83,6 +123,20 @@ $service = ServiceSettings::get($db);
 $editId = (string) ($_GET['edit'] ?? '');
 $editZone = null;
 foreach ($zones as $z) { if ($z['id'] === $editId) { $editZone = $z; break; } }
+
+// Полигон изохроны ведёт себя как черновик новой зоны: подставляется в те же
+// поля формы и ту же карту, что «Изменить», но с пустым id (сохранит как новую).
+$formZone = $editZone;
+if ($isoDraft !== null && $editZone === null) {
+    $formZone = [
+        'id' => '',
+        'name' => $isoDraft['name'],
+        'color' => '#a78bfa',
+        'priority' => 0,
+        'is_active' => 1,
+        'points' => $isoDraft['points'],
+    ];
+}
 
 layout_header('Зоны и цены', 'zones');
 ?>
@@ -142,9 +196,35 @@ layout_header('Зоны и цены', 'zones');
   <button class="btn" style="margin-top:12px">Сохранить настройки</button>
 </form>
 
+<?php $isoAvailable = TomTom::enabled($db, 'reachable_range'); ?>
 <div class="grid q2" style="margin-top:14px">
   <div class="card">
-    <h3 style="margin-bottom:10px"><?= $editZone ? 'Редактирование зоны' : 'Новая зона' ?></h3>
+    <h3 style="margin-bottom:10px">Изохрона: зона по времени в пути (TomTom)</h3>
+    <p class="mut" style="margin-bottom:10px">
+      Полигон «куда можно доехать за N минут» по живым пробкам. Построенный
+      полигон сам подставится в форму зоны ниже — останется назвать и сохранить.
+    </p>
+    <form method="post" class="flex" style="gap:10px;flex-wrap:wrap;align-items:end">
+      <input type="hidden" name="cmd" value="isochrone">
+      <label class="mut" style="flex:2;min-width:220px">Адрес или точка старта
+        <input name="iso_address" placeholder="Например: ж/д вокзал Тюмень (пусто — центр города)">
+      </label>
+      <label class="mut" style="width:140px">Время, минут
+        <input type="number" name="iso_minutes" min="1" max="60" value="10">
+      </label>
+      <button class="btn sm">Построить</button>
+    </form>
+    <?php if ($isoDraft !== null): ?>
+      <div class="flash" style="margin-top:10px">✓ Изохрона за <?= (int) $isoDraft['minutes'] ?> минут построена (<?= count($isoDraft['points']) ?> точек) — полигон в форме «Новая зона», проверьте и сохраните</div>
+    <?php elseif (!$isoAvailable): ?>
+      <div class="mut" style="font-size:12px;margin-top:8px;border-top:1px solid var(--line);padding-top:8px">
+        Сервис выключен — включите «Reachable Range» в разделе <a href="tomtom.php">TomTom</a> (нужен ключ).
+      </div>
+    <?php endif; ?>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:10px"><?= $isoDraft ? 'Новая зона из изохроны' : ($editZone ? 'Редактирование зоны' : 'Новая зона') ?></h3>
     <p class="mut" style="margin-bottom:10px">Кликайте по карте, чтобы поставить точки границы. Минимум 3 точки.
       Карту можно развернуть на весь экран — так точки ставить удобнее.</p>
     <style>
@@ -175,14 +255,14 @@ layout_header('Зоны и цены', 'zones');
     <form method="post" style="margin-top:12px">
       <input type="hidden" name="cmd" value="save_zone">
       <input type="hidden" name="id" value="<?= h($editZone['id'] ?? '') ?>">
-      <input type="hidden" name="points" id="pointsField" value="<?= h(json_encode($editZone['points'] ?? [], JSON_UNESCAPED_SLASHES)) ?>">
+      <input type="hidden" name="points" id="pointsField" value="<?= h(json_encode($formZone['points'] ?? [], JSON_UNESCAPED_SLASHES)) ?>">
       <div class="grid" style="grid-template-columns:2fr 1fr 1fr">
-        <label class="mut">Название<input name="name" value="<?= h($editZone['name'] ?? '') ?>" required></label>
-        <label class="mut">Цвет<input type="color" name="color" value="<?= h($editZone['color'] ?? '#38bdf8') ?>" style="height:42px;padding:3px"></label>
-        <label class="mut">Приоритет<input type="number" name="priority" value="<?= (int) ($editZone['priority'] ?? 0) ?>"></label>
+        <label class="mut">Название<input name="name" value="<?= h($formZone['name'] ?? '') ?>" required></label>
+        <label class="mut">Цвет<input type="color" name="color" value="<?= h($formZone['color'] ?? '#38bdf8') ?>" style="height:42px;padding:3px"></label>
+        <label class="mut">Приоритет<input type="number" name="priority" value="<?= (int) ($formZone['priority'] ?? 0) ?>"></label>
       </div>
       <div class="flex" style="margin-top:10px">
-        <label><input type="checkbox" name="is_active" value="1" <?= ($editZone['is_active'] ?? 1) ? 'checked' : '' ?> style="width:auto"> Активна</label>
+        <label><input type="checkbox" name="is_active" value="1" <?= ($formZone['is_active'] ?? 1) ? 'checked' : '' ?> style="width:auto"> Активна</label>
         <span class="mut" id="pointCount" style="font-size:12px"></span>
         <button type="button" class="btn ghost sm" onclick="clearPoints()">Очистить точки</button>
         <button class="btn sm" style="margin-left:auto">Сохранить зону</button>
@@ -250,7 +330,7 @@ layout_header('Зоны и цены', 'zones');
 var center = [<?= (float) $service['center_latitude'] ?>, <?= (float) $service['center_longitude'] ?>];
 var existing = <?= json_encode(array_map(fn($z) => ['name'=>$z['name'],'color'=>$z['color'],'points'=>$z['points'],'id'=>$z['id']], $zones), JSON_UNESCAPED_UNICODE) ?>;
 var editId = <?= json_encode($editZone['id'] ?? null) ?>;
-var points = <?= json_encode($editZone['points'] ?? [], JSON_UNESCAPED_SLASHES) ?>;
+var points = <?= json_encode($formZone['points'] ?? [], JSON_UNESCAPED_SLASHES) ?>;
 var map, draft;
 var pointMarks = [];
 

@@ -72,7 +72,8 @@ final class AutoCall
         $rejected->execute([$order['id']]);
         $rejectedIds = array_map(fn(array $r) => $r['driver_id'], $rejected->fetchAll());
 
-        $best = null;
+        // Кандидаты в радиусе: сначала по расстоянию по прямой…
+        $candidates = [];
         foreach ($free as $d) {
             if (in_array($d['id'], $rejectedIds, true) || $d['balance'] < $d['min_balance_for_orders']) {
                 continue;
@@ -81,12 +82,50 @@ final class AutoCall
                 (float) $order['pickup_latitude'], (float) $order['pickup_longitude'],
                 (float) $d['latitude'], (float) $d['longitude']
             );
-            if ($dist <= (float) $settings['auto_assign_radius_km'] && ($best === null || $dist < $best['dist'])) {
-                $best = ['driver' => $d, 'dist' => $dist];
+            if ($dist <= (float) $settings['auto_assign_radius_km']) {
+                $candidates[] = ['driver' => $d, 'dist' => $dist];
             }
         }
-        if (!$best) {
+        if (!$candidates) {
             return false;
+        }
+
+        // Ближайший по расстоянию — базовый выбор
+        $closest = 0;
+        foreach ($candidates as $i => $c) {
+            if ($c['dist'] < $candidates[$closest]['dist']) {
+                $closest = $i;
+            }
+        }
+        $best = $candidates[$closest];
+
+        // …а если включён Matrix Routing — по реальному времени подачи с учётом
+        // пробок (последний штрих близнеца быстрее и честнее, чем «по прямой»).
+        // Matrix выключен или не ответил — назначаем ближайшего, как раньше.
+        if (count($candidates) > 1) {
+            $times = TomTom::travelTimes(
+                $db,
+                array_map(
+                    fn($c) => [(float) $c['driver']['latitude'], (float) $c['driver']['longitude']],
+                    $candidates
+                ),
+                (float) $order['pickup_latitude'],
+                (float) $order['pickup_longitude']
+            );
+            if (is_array($times)) {
+                $bestSec = null;
+                $bestIdx = $closest;
+                foreach ($times as $i => $sec) {
+                    if ($sec === null) continue;
+                    if ($bestSec === null || $sec < $bestSec) {
+                        $bestSec = $sec;
+                        $bestIdx = $i;
+                    }
+                }
+                if ($bestSec !== null) {
+                    $best = $candidates[$bestIdx];
+                }
+            }
         }
         $db->prepare(
             "UPDATE orders SET driver_id = ?, status = 'driver_assigned', accepted_at = ? WHERE id = ?"

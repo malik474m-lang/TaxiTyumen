@@ -543,6 +543,52 @@ final class TomTom
         return $snapped;
     }
 
+    /**
+     * Километраж GPS-трека: суммарно по точкам + при включённом сервисе
+     * Snap to Roads — привязанный к дорожной сети вариант (честнее по перекосам
+     * и «скачкам» GPS). Возвращает оба километража и привязанную геометрию.
+     *
+     * @param array<int,array{0:float,1:float}> $points [[lat,lng], ...]
+     * @return array{km: float, kmGps: float, snapped: bool, geometry: ?array}
+     */
+    public static function trackDistance(\PDO $db, array $points): array
+    {
+        $rawKm = 0.0;
+        for ($i = 1; $i < count($points); $i++) {
+            $rawKm += Taxi::getDistanceKm(
+                (float) $points[$i - 1][0], (float) $points[$i - 1][1],
+                (float) $points[$i][0], (float) $points[$i][1]
+            );
+        }
+        $result = [
+            'km' => $rawKm,
+            'kmGps' => $rawKm,
+            'snapped' => false,
+            'geometry' => null,
+        ];
+        if (count($points) < 2 || !self::enabled($db, 'snap_to_roads')) {
+            return $result;
+        }
+        $snapped = self::snapToRoads($db, $points);
+        if (!is_array($snapped) || count($snapped) < 2) {
+            return $result;
+        }
+        $snapKm = 0.0;
+        for ($i = 1; $i < count($snapped); $i++) {
+            $snapKm += Taxi::getDistanceKm(
+                (float) $snapped[$i - 1][0], (float) $snapped[$i - 1][1],
+                (float) $snapped[$i][0], (float) $snapped[$i][1]
+            );
+        }
+        if ($snapKm <= 0) {
+            return $result;
+        }
+        $result['km'] = $snapKm;
+        $result['snapped'] = true;
+        $result['geometry'] = $snapped;
+        return $result;
+    }
+
     // ── Изохроны ─────────────────────────────────────────────────────────
 
     /** Полигон досягаемости за N минут: [[lat,lng], ...] или null. */
