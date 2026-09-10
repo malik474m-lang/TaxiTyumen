@@ -281,8 +281,12 @@ final class TomTom
                 . '/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=' . $key,
             'traffic_incidents' => self::BASE
                 . '/traffic/map/4/tile/incidents/s3/{z}/{x}/{y}.png?key=' . $key,
+            // tileSize=256: по умолчанию Map Display отдаёт 512px, а источник
+            // MapLibre в приложении объявлен под 256 — без явного параметра
+            // базовая карта TomTom рендерилась бы растянутой и «со швами».
             'map_tiles' => self::BASE
-                . '/map/1/tile/basic/main/{z}/{x}/{y}.png?key=' . $key,
+                . '/map/1/tile/basic/main/{z}/{x}/{y}.png?tileSize=256'
+                . '&view=Unified&language=ru-RU&key=' . $key,
             default => null,
         };
     }
