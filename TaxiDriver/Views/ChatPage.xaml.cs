@@ -30,6 +30,10 @@ public partial class ChatPage : ContentPage
         _userId = userId;
         _role = role;
 
+        // Точный id пользователя — из токена: после авто-входа в приложении
+        // хранился driverId, и сервер отклонял сообщения (403)
+        _userId = api.TokenUserId() ?? userId;
+
         _signalR.ChatMessageReceived += OnChatMessageReceived;
 
         _ = LoadMessagesAsync();
@@ -118,26 +122,37 @@ public partial class ChatPage : ContentPage
         if (string.IsNullOrEmpty(text)) return;
 
         MessageEntry.Text = "";
-
-        try
-        {
-            await _api.SendChatMessageAsync(_orderId, _userId, _role, text);
-        }
-        catch { }
+        await SendAsync(text);
     }
 
     private async void OnQuickPhrases(object? sender, EventArgs e)
     {
+        // Кнопка быстрых фраз была без подписи и выглядела пустой
         var result = await DisplayActionSheet(
             "Быстрые фразы", "Отмена", null, _quickPhrases);
 
         if (!string.IsNullOrEmpty(result) && result != "Отмена")
+            await SendAsync(result);
+    }
+
+    /// Единая отправка: ошибку показываем, список сразу обновляем —
+    /// раньше сбой сервера молча проглатывался и чат выглядел «нерабочим».
+    private async Task SendAsync(string text)
+    {
+        try
         {
-            try
+            var (ok, error) = await _api.SendChatMessageAsync(_orderId, _userId, _role, text);
+            if (!ok)
             {
-                await _api.SendChatMessageAsync(_orderId, _userId, _role, result);
+                await DisplayAlert("Сообщение не отправлено",
+                    error ?? "Сервер не принял сообщение", "OK");
+                return;
             }
-            catch { }
+            await LoadMessagesAsync();
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlert("Сообщение не отправлено", ex.Message, "OK");
         }
     }
 

@@ -91,6 +91,8 @@ public partial class MainDriverPage : ContentPage
                 {
                     if (_isOnline && _activeOrder == null)
                         await LoadAvailableOrdersAsync();
+                    else if (_activeOrder != null)
+                        await CheckActiveOrderAliveAsync();   // клиент мог отменить заказ
                     await LoadSosAlertsAsync();   // чужие тревоги — тем же тиком (5 с)
                 }
                 catch { }
@@ -887,6 +889,35 @@ public partial class MainDriverPage : ContentPage
             UpdateWaitingUi(order);
             return true;
         });
+    }
+
+    /// Заказ мог быть отменён клиентом или снят оператором, пока он открыт
+    /// у водителя. Тогда карточку закрываем сами — без «Отказаться», который
+    /// возвращал бы отменённый заказ диспетчеру.
+    private async Task CheckActiveOrderAliveAsync()
+    {
+        try
+        {
+            if (_activeOrder == null || _auth.DriverId == null) return;
+
+            var fresh = await _api.GetCurrentOrderAsync(_auth.DriverId.Value);
+            var stillMine = fresh != null && fresh.Id == _activeOrder.Id;
+            if (stillMine)
+            {
+                var status = NormStatus(fresh!.Status);
+                if (status is not ("cancelled" or "completed")) return;
+            }
+
+            // Сервер больше не считает заказ активным для этого водителя
+            var number = _activeOrder.OrderNumber;
+            await OnOrderCompleted();
+            await SafeAlertAsync("Заказ отменён",
+                $"Заказ {number} отменён клиентом или диспетчером. Вы снова на линии.");
+        }
+        catch
+        {
+            // Сеть недоступна — карточку не трогаем, проверим на следующем тике
+        }
     }
 
     /// Подтягивает актуальное состояние ожидания с сервера.

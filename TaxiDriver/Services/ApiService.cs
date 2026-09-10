@@ -263,15 +263,54 @@ public class ApiService
         await _http.PutAsJsonAsync($"drivers/{driverId}/status", status);
     }
 
-    public async Task SendChatMessageAsync(Guid orderId, Guid senderId, string senderRole, string text)
+    /// Отправка сообщения в чат заказа.
+    /// senderId ОБЯЗАН совпадать с uid токена, иначе сервер отвечает 403
+    /// «Нельзя писать от чужого имени» — поэтому берём id из самого токена.
+    public async Task<(bool Ok, string? Error)> SendChatMessageAsync(
+        Guid orderId, Guid senderId, string senderRole, string text)
     {
-        await _http.PostAsJsonAsync("chat/send", new
+        var uid = TokenUserId() ?? senderId;
+        var resp = await _http.PostAsJsonAsync("chat/send", new
         {
             OrderId = orderId,
-            SenderId = senderId,
+            SenderId = uid,
             SenderRole = senderRole,
             Text = text
         });
+        if (resp.IsSuccessStatusCode) return (true, null);
+
+        var raw = await resp.Content.ReadAsStringAsync();
+        return (false, ExplainError(raw, resp.StatusCode));
+    }
+
+    /// uid (идентификатор пользователя) из HMAC-токена сессии:
+    /// payload — base64url(JSON) до точки. Работает и после авто-входа,
+    /// когда точный userId в приложении не сохранился.
+    public Guid? TokenUserId()
+    {
+        try
+        {
+            var token = _http.DefaultRequestHeaders.Authorization?.Parameter;
+            if (string.IsNullOrWhiteSpace(token)) return null;
+            var body = token.Split('.')[0].Replace('-', '+').Replace('_', '/');
+            body = body.PadRight(body.Length + (4 - body.Length % 4) % 4, '=');
+            using var doc = JsonDocument.Parse(Convert.FromBase64String(body));
+            return doc.RootElement.TryGetProperty("uid", out var uid)
+                && Guid.TryParse(uid.GetString(), out var parsed) ? parsed : null;
+        }
+        catch { return null; }
+    }
+
+    private static string ExplainError(string raw, System.Net.HttpStatusCode code)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            if (doc.RootElement.TryGetProperty("error", out var err))
+                return err.GetString() ?? raw;
+        }
+        catch { }
+        return string.IsNullOrWhiteSpace(raw) ? $"Сервер ответил {(int)code}" : raw;
     }
 
     public async Task<List<ChatMessageDto>> GetChatMessagesAsync(Guid orderId)

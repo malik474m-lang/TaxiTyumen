@@ -4,7 +4,7 @@
 		android:allowBackup="true"
 		android:icon="@mipmap/appicon"
 		android:roundIcon="@mipmap/appicon_round"
-		android:label="Такси Тюмень"
+		android:label="Заказ такси"
 		android:usesCleartextTraffic="false"
 		android:supportsRtl="true"></application>
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />

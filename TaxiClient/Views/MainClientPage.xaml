@@ -110,7 +110,8 @@
 
                 <!-- Опции: справочник и цены приходят с сервера (админка → «Опции заказа») -->
                 <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
-                    <HorizontalStackLayout x:Name="OptionsContainer" Spacing="16"/>
+                    <!-- Опции заказа — колонкой: длинные названия и цены не обрезаются -->
+                    <VerticalStackLayout x:Name="OptionsContainer" Spacing="2"/>
                 </ScrollView>
 
                 <HorizontalStackLayout Spacing="12">

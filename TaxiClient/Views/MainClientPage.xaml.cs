@@ -787,7 +787,7 @@ initLeaflet();
         _optionChecks.Clear();
         foreach (var opt in items)
         {
-            var check = new CheckBox { Color = Microsoft.Maui.Graphics.Color.FromArgb("#FFD700") };
+            var check = new CheckBox { Color = BrandingService.ParseColor(BrandingService.Current.PrimaryColor, "#FACC15") };
             check.CheckedChanged += OnOptionChanged;
             _optionChecks[opt.Code] = check;
             var label = new Label
@@ -797,8 +797,14 @@ initLeaflet();
                 FontSize = 13,
                 VerticalOptions = LayoutOptions.Center
             };
-            OptionsContainer.Children.Add(
-                new HorizontalStackLayout { Spacing = 6, Children = { check, label } });
+            // Каждая опция — своя строка (колонка), метка тянется на всю ширину
+            label.HorizontalOptions = LayoutOptions.Fill;
+            OptionsContainer.Children.Add(new HorizontalStackLayout
+            {
+                Spacing = 6,
+                Padding = new Thickness(0, 2),
+                Children = { check, label }
+            });
         }
     }
 

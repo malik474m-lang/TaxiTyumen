@@ -30,6 +30,10 @@ public partial class ChatPage : ContentPage
         _userId = userId;
         _role = role;
 
+        // id пользователя берём из токена — он всегда совпадает с тем,
+        // что проверяет сервер при отправке сообщения
+        _userId = api.TokenUserId() ?? userId;
+
         _signalR.ChatMessageReceived += OnChatMessageReceived;
 
         _ = LoadMessagesAsync();
@@ -121,9 +125,19 @@ public partial class ChatPage : ContentPage
 
         try
         {
-            await _api.SendChatMessageAsync(_orderId, _userId, _role, text);
+            var (ok, error) = await _api.SendChatMessageAsync(_orderId, _userId, _role, text);
+            if (!ok)
+            {
+                await DisplayAlert("Сообщение не отправлено",
+                    error ?? "Сервер не принял сообщение", "OK");
+                return;
+            }
+            await LoadMessagesAsync();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            await DisplayAlert("Сообщение не отправлено", ex.Message, "OK");
+        }
     }
 
     private async void OnQuickPhrases(object? sender, EventArgs e)
@@ -135,9 +149,19 @@ public partial class ChatPage : ContentPage
         {
             try
             {
-                await _api.SendChatMessageAsync(_orderId, _userId, _role, result);
+                var (ok, error) = await _api.SendChatMessageAsync(_orderId, _userId, _role, result);
+                if (!ok)
+                {
+                    await DisplayAlert("Сообщение не отправлено",
+                        error ?? "Сервер не принял сообщение", "OK");
+                    return;
+                }
+                await LoadMessagesAsync();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                await DisplayAlert("Сообщение не отправлено", ex.Message, "OK");
+            }
         }
     }
 

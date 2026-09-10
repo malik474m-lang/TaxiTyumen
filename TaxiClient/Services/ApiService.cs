@@ -169,15 +169,46 @@ public class ApiService
         });
     }
 
-    public async Task SendChatMessageAsync(Guid orderId, Guid senderId, string senderRole, string text)
+    /// Отправка сообщения в чат заказа. senderId обязан совпадать с uid
+    /// токена (иначе сервер отвечает 403), поэтому берём его из токена.
+    public async Task<(bool Ok, string? Error)> SendChatMessageAsync(
+        Guid orderId, Guid senderId, string senderRole, string text)
     {
-        await _http.PostAsJsonAsync("chat/send", new
+        var uid = TokenUserId() ?? senderId;
+        var resp = await _http.PostAsJsonAsync("chat/send", new
         {
             OrderId = orderId,
-            SenderId = senderId,
+            SenderId = uid,
             SenderRole = senderRole,
             Text = text
         });
+        if (resp.IsSuccessStatusCode) return (true, null);
+
+        var raw = await resp.Content.ReadAsStringAsync();
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            if (doc.RootElement.TryGetProperty("error", out var err))
+                return (false, err.GetString() ?? raw);
+        }
+        catch { }
+        return (false, string.IsNullOrWhiteSpace(raw) ? $"Сервер ответил {(int)resp.StatusCode}" : raw);
+    }
+
+    /// uid пользователя из HMAC-токена сессии (payload до точки).
+    public Guid? TokenUserId()
+    {
+        try
+        {
+            var token = _http.DefaultRequestHeaders.Authorization?.Parameter;
+            if (string.IsNullOrWhiteSpace(token)) return null;
+            var body = token.Split('.')[0].Replace('-', '+').Replace('_', '/');
+            body = body.PadRight(body.Length + (4 - body.Length % 4) % 4, '=');
+            using var doc = JsonDocument.Parse(Convert.FromBase64String(body));
+            return doc.RootElement.TryGetProperty("uid", out var uid)
+                && Guid.TryParse(uid.GetString(), out var parsed) ? parsed : null;
+        }
+        catch { return null; }
     }
 
     public async Task<List<ChatMessageDto>> GetChatMessagesAsync(Guid orderId)

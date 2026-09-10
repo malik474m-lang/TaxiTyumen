@@ -14,7 +14,9 @@
         <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto"
               Padding="10" BackgroundColor="#252536">
 
-            <Button Grid.Column="0" Text=""
+            <Button Grid.Column="0" Text="⚡"
+                    ToolTipProperties.Text="Быстрые фразы"
+                    FontSize="18"
                     BackgroundColor="#333"
                     TextColor="White"
                     CornerRadius="20"
@@ -35,8 +37,8 @@
                        Completed="OnSendMessage"/>
             </Border>
 
-            <Button Grid.Column="2" Text=""
-                    BackgroundColor="#FFD700"
+            <Button Grid.Column="2" Text="➤"
+                    BackgroundColor="#FACC15"
                     TextColor="#1E1E2E"
                     CornerRadius="20"
                     WidthRequest="44"

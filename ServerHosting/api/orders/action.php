@@ -112,6 +112,18 @@ switch ($action) {
     case 'reject': {
         $driverId = (string) ($body['driverId'] ?? '');
         $reason = $body['reason'] ?? null;
+
+        // Заказ уже отменён клиентом/оператором или завершён: отказ водителя
+        // не должен возвращать его в поиск. Раньше статус переписывался на
+        // 'searching', и отменённый заказ «воскресал» у диспетчера как активный.
+        if (in_array($order['status'], ['cancelled', 'completed'], true)) {
+            if ($order['driver_id'] === $driverId) {
+                $db->prepare("UPDATE drivers SET status = 'available', current_order_id = NULL WHERE id = ?")
+                    ->execute([$driverId]);
+            }
+            $result();
+        }
+
         $db->prepare('INSERT INTO order_rejections (id, order_id, driver_id, reason) VALUES (?,?,?,?)')
             ->execute([Db::uuid(), $id, $driverId, $reason]);
 
@@ -367,6 +379,17 @@ switch ($action) {
         if (!empty($order['driver_id'])) {
             $db->prepare("UPDATE drivers SET status = 'available', current_order_id = NULL WHERE id = ?")
                 ->execute([$order['driver_id']]);
+            // Водителю уходит уведомление: приложение закроет карточку само
+            $du = $db->prepare('SELECT user_id FROM drivers WHERE id = ? LIMIT 1');
+            $du->execute([$order['driver_id']]);
+            $driverUserId = $du->fetchColumn();
+            if ($driverUserId) {
+                NotificationService::create(
+                    $db, (string) $driverUserId, 'OrderStatusChanged', 'Заказ отменён',
+                    'Клиент отменил заказ ' . ($order['order_number'] ?? ''), $id,
+                    ['orderId' => $id, 'status' => 'cancelled']
+                );
+            }
         }
         $fresh = $load();
         NotificationService::notifyClientOrderCancelled($db, $fresh, $body['reason'] ?? null);

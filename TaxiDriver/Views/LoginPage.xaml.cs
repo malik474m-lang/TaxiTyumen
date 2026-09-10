@@ -77,6 +77,7 @@ public partial class LoginPage : ContentPage
         {
             var token = await SecureStorage.GetAsync("token");
             var driverIdRaw = await SecureStorage.GetAsync("driver_id");
+            var userIdRaw = await SecureStorage.GetAsync("user_id");
             var userName = await SecureStorage.GetAsync("user_name");
 
             if (string.IsNullOrWhiteSpace(token) ||
@@ -91,9 +92,16 @@ public partial class LoginPage : ContentPage
             _api.SetToken(token);
             var names = (userName ?? "Водитель").Split(' ', 2);
 
+            // Настоящий userId: из хранилища, иначе из самого токена (uid).
+            // Раньше сюда подставлялся driverId, и сервер отклонял сообщения
+            // чата с 403 «Нельзя писать от чужого имени».
+            var userId = Guid.TryParse(userIdRaw, out var storedUserId)
+                ? storedUserId
+                : _api.TokenUserId() ?? driverId;
+
             var auth = new Models.AuthResponse
             {
-                UserId = driverId,           // точный userId не нужен для работы; авторитетный ID — у профиля водителя
+                UserId = userId,
                 Token = token,
                 FirstName = names[0],
                 LastName = names.Length > 1 ? names[1] : "",
@@ -155,6 +163,8 @@ public partial class LoginPage : ContentPage
             await SecureStorage.SetAsync("token", auth.Token);
             await SecureStorage.SetAsync("last_phone", PhoneEntry.Text.Trim());
             await SecureStorage.SetAsync("driver_id", auth.DriverId.ToString()!);
+            // userId нужен чату: сервер требует совпадения отправителя с токеном
+            await SecureStorage.SetAsync("user_id", auth.UserId.ToString());
             await SecureStorage.SetAsync("user_name",
                 $"{auth.FirstName} {auth.LastName}");
 
