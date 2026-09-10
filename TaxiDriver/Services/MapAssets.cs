@@ -32,13 +32,24 @@ public static class MapAssets
         foreach (var name in Files)
         {
             var target = Path.Combine(dir, name);
-            // Перезаписываем при обновлении приложения: сравниваем размер
             var needCopy = !File.Exists(target);
             using var src = await FileSystem.OpenAppPackageFileAsync($"map/{name}");
             if (!needCopy)
             {
-                try { needCopy = new FileInfo(target).Length != src.Length; }
-                catch { needCopy = true; }
+                if (name == "maplibre-gl.js")
+                {
+                    // Движок ~1 МБ: версия библиотеки всегда меняет размер
+                    try { needCopy = new FileInfo(target).Length != src.Length; }
+                    catch { needCopy = true; }
+                }
+                else
+                {
+                    // map.html и css весят килобайты: перезаписываем ВСЕГДА.
+                    // Раньше сравнивали размер — при совпадении размеров в кеше
+                    // оставалась прежняя страница, и карта выглядела «старой»
+                    // даже после обновления приложения.
+                    needCopy = true;
+                }
             }
             if (needCopy)
             {

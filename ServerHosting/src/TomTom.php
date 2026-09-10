@@ -102,6 +102,9 @@ final class TomTom
 
     private static ?array $cache = null;
 
+    /** Последняя ошибка вызова TomTom — показываем её в админке как есть. */
+    private static string $lastError = '';
+
     // ── Хранилище состояния ──────────────────────────────────────────────
 
     public static function ensureTables(\PDO $db): void
@@ -134,7 +137,17 @@ final class TomTom
 
     public static function apiKey(): string
     {
-        return function_exists('api_key') ? api_key(self::KEY_NAME) : '';
+        $raw = function_exists('api_key') ? api_key(self::KEY_NAME) : '';
+        // В админку ключ попадает ручной вставкой: срезаем кавычки, пробелы,
+        // а также типовые «пространства» пасты — «key=XXX» с портала разработчика
+        // или целиком вставленный URL тайла (и DaData лечилась так же).
+        $key = trim($raw, " \t\n\r\0\x0B\"'");
+        if (preg_match('/[?&]?key=([A-Za-z0-9_\-]{10,})/i', $key, $m)) {
+            $key = $m[1];
+        } elseif (preg_match('/^(?:api[\s_\-]?key|tomtom|consumer)[:\s=]+(.+)$/i', $key, $m)) {
+            $key = trim($m[1]);
+        }
+        return preg_replace('/\s+/', '', $key) ?? $key;
     }
 
     public static function hasKey(): bool
@@ -330,6 +343,7 @@ final class TomTom
         self::log($db, 'routing', count($points) . ' точек',
             $route ? 'success' : 'failed', $code, $raw, $ms);
         if (!$route) {
+            self::$lastError = self::explainError($code, $raw);
             return null;
         }
 
@@ -452,6 +466,7 @@ final class TomTom
         self::log($db, 'matrix', count($origins) . ' водителей',
             is_array($data) ? 'success' : 'failed', $code, $raw, $ms);
         if (!is_array($data)) {
+            self::$lastError = self::explainError($code, $raw);
             return null;
         }
 
@@ -500,7 +515,11 @@ final class TomTom
         }
         self::log($db, 'snapToRoads', count($points) . ' точек',
             $snapped ? 'success' : 'failed', $code, $raw, $ms);
-        return $snapped !== [] ? $snapped : null;
+        if ($snapped === []) {
+            self::$lastError = self::explainError($code, $raw);
+            return null;
+        }
+        return $snapped;
     }
 
     // ── Изохроны ─────────────────────────────────────────────────────────
@@ -525,6 +544,7 @@ final class TomTom
         self::log($db, 'reachableRange', "$lat,$lng · {$minutes} мин",
             is_array($boundary) ? 'success' : 'failed', $code, $raw, $ms);
         if (!is_array($boundary)) {
+            self::$lastError = self::explainError($code, $raw);
             return null;
         }
         $polygon = [];
@@ -566,6 +586,11 @@ final class TomTom
         [$code, $raw, $ms] = self::request($url);
         self::countUsage($db, 'search');
         $items = self::parseSearch($raw);
+        if ($items === []) {
+            self::$lastError = $code === 200
+                ? 'TomTom ответил 200 без совпадений (для такого запроса в регионе ничего нет)'
+                : self::explainError($code, $raw);
+        }
         self::log($db, 'search', $query, $items ? 'success' : 'failed', $code, $raw, $ms);
         return $items;
     }
@@ -589,6 +614,7 @@ final class TomTom
         self::log($db, 'reverseGeocode', "$lat,$lng",
             $addr ? 'success' : 'failed', $code, $raw, $ms);
         if (!$addr) {
+            self::$lastError = self::explainError($code, $raw);
             return null;
         }
         $address = $addr['address'] ?? [];
@@ -630,10 +656,60 @@ final class TomTom
         return $out;
     }
 
+    /**
+     * По коду и телу ответа возвращает понятную причину отказа:
+     * невалидный ключ / продукт не включён в кабинете / лимит / сеть.
+     */
+    private static function explainError(int $code, string $raw): string
+    {
+        $text = '';
+        $json = json_decode($raw, true);
+        if (is_array($json)) {
+            $text = (string) (
+                $json['errorText'] ?? $json['detailedError']['message']
+                ?? $json['error']['message'] ?? $json['message'] ?? ''
+            );
+        }
+        if ($text === '' && $raw !== '') {
+            $text = trim(mb_substr($raw, 0, 160));
+        }
+        $text = mb_substr($text, 0, 220);
+
+        if ($code === 401 || $code === 403) {
+            return 'HTTP ' . $code . ': ключ отклонён TomTom'
+                . ($text !== '' ? ' — ' . $text : '')
+                . '. Проверьте: 1) ключ скопирован из кабинета MyTomTom → вкладка «Keys» '
+                . 'без кавычек и пробелов; 2) в кабинете для ключа включены нужные продукты '
+                . '(Routing, Search, Traffic, Map Display) либо выбрано «All APIs»';
+        }
+        if ($code === 429) {
+            return 'HTTP 429: превышена частота запросов (QPS) — сервис восстановится сам';
+        }
+        if ($code === 402) {
+            return 'HTTP 402: исчерпана суточная квота TomTom — до полуночи UTC';
+        }
+        if ($code === 0) {
+            return 'Нет соединения с api.tomtom.com (проверьте исходящий HTTPS на хостинге)';
+        }
+        return 'HTTP ' . $code . ($text !== '' ? ' — ' . $text : '');
+    }
+
     // ── Диагностика для админки ──────────────────────────────────────────
 
-    /** Живая проверка сервиса: что ответил TomTom прямо сейчас. */
+    /** Живая проверка сервиса: ответ TomTom + точная причина отказа. */
     public static function diagnose(\PDO $db, string $service, array $svc = []): array
+    {
+        self::$lastError = '';
+        $result = self::diagnoseService($db, $service, $svc);
+        if (empty($result['ok']) && self::$lastError !== '') {
+            $result['message'] = trim((string) $result['message'], ' —')
+                . ' — ' . self::$lastError;
+        }
+        return $result;
+    }
+
+    /** Ядро проверки по каждому сервису. */
+    private static function diagnoseService(\PDO $db, string $service, array $svc = []): array
     {
         if (!self::hasKey()) {
             return ['ok' => false, 'message' => 'Ключ TomTom не задан («API-ключи»)'];
@@ -685,10 +761,13 @@ final class TomTom
                     $probe = str_replace(['{z}', '{x}', '{y}'], [(string) $z, (string) $x, (string) $y], $url);
                     [$code, $raw, $ms] = self::request($probe);
                     $ok = $code === 200 && strlen($raw) > 100;
+                    if (!$ok) {
+                        self::$lastError = self::explainError($code, $raw);
+                    }
                     self::log($db, $service, 'tile probe', $ok ? 'success' : 'failed',
                         $code, $ok ? '[png ' . strlen($raw) . ' байт]' : $raw, $ms);
                     return ['ok' => $ok,
-                        'message' => $ok ? ('Тайл получен, ' . strlen($raw) . ' байт') : ('HTTP ' . $code)];
+                        'message' => $ok ? ('Тайл получен, ' . strlen($raw) . ' байт') : 'Слой недоступен'];
             }
         } catch (\Throwable $e) {
             return ['ok' => false, 'message' => $e->getMessage()];
