@@ -491,10 +491,12 @@
                                TextColor="Gray"
                                FontSize="15"
                                HorizontalOptions="Center"/>
-                        <Label Text="Включите режим онлайн и ждите"
+                        <Label x:Name="NoOrdersHintLabel"
+                               Text="Включите режим онлайн и ждите"
                                TextColor="#555"
                                FontSize="12"
-                               HorizontalOptions="Center"/>
+                               HorizontalOptions="Center"
+                               HorizontalTextAlignment="Center"/>
                     </StackLayout>
                 </Border>
 

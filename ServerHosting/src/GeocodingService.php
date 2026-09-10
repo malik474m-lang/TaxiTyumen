@@ -491,8 +491,28 @@ final class GeocodingService
             'opencage' => self::searchOpenCage(
                 $db, $query, (string) $svc['city_name'], (string) $svc['region_name'], $svc
             ),
+            'tomtom' => TomTom::search($db, $query, $svc),
             default => [],
         };
+
+        // Точная причина пустого ответа TomTom: ключ, выключенный сервис
+        // или исчерпанная квота выглядели одинаково — «0 подсказок, 0 мс».
+        $hint = '';
+        if ($provider === 'tomtom' && $items === []) {
+            $services = TomTom::all($db);
+            if (!TomTom::hasKey()) {
+                $hint = 'Ключ TomTom не задан — внесите его в разделе «API-ключи»';
+            } elseif (empty($services['search']['enabled'])) {
+                $hint = 'Сервис «Search» выключен — включите его в разделе «TomTom»';
+            } elseif (TomTom::apiUsedToday($db) >= TomTom::FREE_DAILY_API) {
+                $hint = 'Исчерпана суточная квота TomTom ('
+                    . TomTom::FREE_DAILY_API . ' запросов) — сервис возобновится в полночь UTC';
+            } else {
+                $hint = 'TomTom ответил пусто: проверьте активацию Search API в кабинете '
+                    . 'developer.tomtom.com и журнал в разделе «API и сервисы»';
+            }
+        }
+
         return [
             'ok' => count($items) > 0,
             'code' => null,
@@ -500,7 +520,9 @@ final class GeocodingService
             'withCoordinates' => count(array_filter(
                 $items, fn(array $i) => !empty($i['latitude']) && !empty($i['longitude'])
             )),
-            'message' => $items ? 'Провайдер работает' : 'Провайдер не вернул подсказки',
+            'message' => $items
+                ? 'Провайдер работает'
+                : ('Провайдер не вернул подсказки' . ($hint !== '' ? ' · ' . $hint : '')),
             'durationMs' => (int) round((microtime(true) - $started) * 1000),
             'sample' => array_column(array_slice($items, 0, 3), 'displayName'),
         ];

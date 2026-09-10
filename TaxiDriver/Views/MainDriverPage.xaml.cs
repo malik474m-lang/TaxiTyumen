@@ -405,17 +405,19 @@ public partial class MainDriverPage : ContentPage
         if (_currentOrders.Count == 0)
         {
             NoOrdersPanel.IsVisible = true;
+            NoOrdersHintLabel.Text = "Включите режим онлайн и ждите";
             OrdersCountLabel.Text = "(0)";
             return;
         }
 
         List<OrderResponse> filtered;
+        var hasPosition = TryGetDriverPosition(out var myLat, out var myLng);
 
-        if (_radiusEnabled)
+        if (_radiusEnabled && hasPosition)
         {
             filtered = _currentOrders
                 .Where(o => GetDistanceKm(
-                    _location.CurrentLat, _location.CurrentLng,
+                    myLat, myLng,
                     o.PickupLatitude, o.PickupLongitude) <= _searchRadiusKm)
                 .ToList();
 
@@ -423,17 +425,28 @@ public partial class MainDriverPage : ContentPage
         }
         else
         {
+            // Без координат радиус не применяем: иначе расстояние считалось от
+            // точки (0,0) и из списка пропадали ВСЕ заказы.
             filtered = _currentOrders;
             OrdersCountLabel.Text = $"({_currentOrders.Count})";
         }
 
+        if (_radiusEnabled && !hasPosition)
+            NoOrdersHintLabel.Text = "Радиус не применён: ждём координаты GPS";
+
         if (filtered.Count == 0)
         {
             NoOrdersPanel.IsVisible = true;
+            // Объясняем, что заказы есть, но их скрыл фильтр
+            NoOrdersHintLabel.Text = _radiusEnabled && _currentOrders.Count > 0
+                ? $"Скрыто фильтром радиуса: {_currentOrders.Count}. "
+                  + $"Увеличьте радиус ({FormatRadius(_searchRadiusKm)}) или отключите фильтр."
+                : "Включите режим онлайн и ждите";
             return;
         }
 
         NoOrdersPanel.IsVisible = false;
+        NoOrdersHintLabel.Text = "Включите режим онлайн и ждите";
 
         // Звук при появлении новых заказов
         if (filtered.Count > _previousOrderCount && _previousOrderCount >= 0)
@@ -442,21 +455,23 @@ public partial class MainDriverPage : ContentPage
         }
         _previousOrderCount = filtered.Count;
 
+        // Сортируем именно отфильтрованный список: раньше здесь стоял
+        // _currentOrders, и радиус игнорировался — счётчик показывал
+        // «(N из M)», а на экран выводились все M заказов.
         IEnumerable<OrderResponse> sorted = filtered;
 
-        if (_sortMode == "nearby")
+        if (_sortMode == "nearby" && hasPosition)
         {
-            sorted = _currentOrders.OrderBy(o =>
-                GetDistanceKm(_location.CurrentLat, _location.CurrentLng,
-                    o.PickupLatitude, o.PickupLongitude));
+            sorted = filtered.OrderBy(o =>
+                GetDistanceKm(myLat, myLng, o.PickupLatitude, o.PickupLongitude));
         }
         else if (_sortMode == "old")
         {
-            sorted = _currentOrders.OrderBy(o => o.CreatedAt);
+            sorted = filtered.OrderBy(o => o.CreatedAt);
         }
         else if (_sortMode == "expensive")
         {
-            sorted = _currentOrders.OrderByDescending(o => o.EstimatedPrice);
+            sorted = filtered.OrderByDescending(o => o.EstimatedPrice);
         }
 
         foreach (var order in sorted)
@@ -522,8 +537,9 @@ public partial class MainDriverPage : ContentPage
                 ? "#FF9800"
                 : "#F44336";
 
+        TryGetDriverPosition(out var cardLat, out var cardLng);
         var distanceToDriver = GetDistanceKm(
-            _location.CurrentLat, _location.CurrentLng,
+            cardLat, cardLng,
             order.PickupLatitude, order.PickupLongitude);
 
         var timeRow = new Grid
@@ -1144,7 +1160,9 @@ public partial class MainDriverPage : ContentPage
     {
         OrdersList.Children.Clear();
         NoOrdersPanel.IsVisible = true;
+        NoOrdersHintLabel.Text = "Включите режим онлайн и ждите";
         OrdersCountLabel.Text = "(0)";
+        _previousOrderCount = 0;
     }
 
     // ==========================
@@ -1823,6 +1841,30 @@ public partial class MainDriverPage : ContentPage
         SortExpensiveBtn.TextColor = _sortMode == "expensive" ? Color.FromArgb("#1E1E2E") : Colors.White;
     }
 
+    /// Лучшая известная позиция водителя: свежий GPS-фикс, иначе последняя
+    /// точка карты. false — координат нет вовсе (фильтр по радиусу применять
+    /// нельзя: расстояние считалось бы от нулевого меридиана).
+    private bool TryGetDriverPosition(out double lat, out double lng)
+    {
+        lat = _location.CurrentLat;
+        lng = _location.CurrentLng;
+
+        if (!IsValidCoordinate(lat, lng))
+        {
+            lat = _mapDriverLat;
+            lng = _mapDriverLng;
+        }
+        return IsValidCoordinate(lat, lng);
+    }
+
+    private static bool IsValidCoordinate(double lat, double lng)
+        => !double.IsNaN(lat) && !double.IsNaN(lng)
+           && Math.Abs(lat) > 0.0001 && Math.Abs(lng) > 0.0001
+           && Math.Abs(lat) <= 90 && Math.Abs(lng) <= 180;
+
+    private static string FormatRadius(double km)
+        => km < 0.5 ? (km * 1000).ToString("F0") + " м" : km.ToString("F1") + " км";
+
     private double GetDistanceKm(double lat1, double lng1, double lat2, double lng2)
     {
         const double R = 6371.0;
@@ -2089,11 +2131,7 @@ public partial class MainDriverPage : ContentPage
             RadiusSlider.MinimumTrackColor = Color.FromArgb("#FFD700");
             RadiusSlider.ThumbColor = Color.FromArgb("#FFD700");
 
-            if (_searchRadiusKm < 0.5)
-                RadiusValueLabel.Text = (_searchRadiusKm * 1000).ToString("F0") + " м";
-            else
-                RadiusValueLabel.Text = _searchRadiusKm.ToString("F1") + " км";
-
+            RadiusValueLabel.Text = FormatRadius(_searchRadiusKm);
             RadiusValueLabel.TextColor = Color.FromArgb("#FFD700");
         }
         else
@@ -2169,13 +2207,11 @@ public partial class MainDriverPage : ContentPage
         private void OnRadiusChanged(object? sender, ValueChangedEventArgs e)
     {
         _searchRadiusKm = Math.Round(e.NewValue, 1);
+        RadiusValueLabel.Text = FormatRadius(_searchRadiusKm);
 
-        if (_searchRadiusKm < 0.5)
-            RadiusValueLabel.Text = (_searchRadiusKm * 1000).ToString("F0") + " м";
-        else
-            RadiusValueLabel.Text = _searchRadiusKm.ToString("F1") + " км";
-
-        if (_currentOrders.Count > 0)
+        // Перерисовываем всегда: если фильтр скрыл все заказы, список пуст,
+        // и по условию _currentOrders.Count > 0 экран раньше не обновлялся.
+        if (_radiusEnabled)
             RenderOrders(_currentOrders);
     }
         private async void OnRefreshOrders(object? sender, EventArgs e)
