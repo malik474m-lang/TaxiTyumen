@@ -48,6 +48,16 @@ var map = new maplibregl.Map({
   },
   center: [65.5272, 57.1522], zoom: 12, attributionControl: { compact: true }
 });
+// Явно включаем сенсорные жесты (на случай, если WebView/скролл их глушат):
+// свести/развести — масштаб, тащить — перемещение, двойной тап — зум.
+// Наклон карты отключаем — водителю важнее стабильная плоскость.
+try {
+  map.touchZoomRotate.enable();
+  map.dragPan.enable();
+  map.doubleClickZoom.enable();
+  map.touchPitch.disable();
+} catch (e) { console.warn('touch config', e); }
+
 // Позиция обязана быть top-left|top-right|bottom-left|bottom-right:
 // значение 'right' роняло инициализацию карты (appendChild of undefined),
 // из-за чего window.setRoute не создавался и карта оставалась пустой.

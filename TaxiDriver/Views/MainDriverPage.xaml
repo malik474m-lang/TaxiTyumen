@@ -550,5 +550,38 @@
                 HeightRequest="44"
                 FontSize="14"
                 Clicked="OnRefreshOrders"/>
+
+        <!-- Полноэкранный слой карты: WebView переносится СЮДА целиком,
+             поэтому кнопки «Пробки/ДТП/Озвучка» и карточка заказа остаются
+             в обычном режиме и не едут вместе с картой. Жесты пальцами
+             (масштаб, перемещение) работают, т.к. оверлей вне скролла. -->
+        <Grid x:Name="MapFullscreenOverlay"
+              Grid.Row="0" Grid.RowSpan="5" ZIndex="100"
+              BackgroundColor="#0A0A0C"
+              IsVisible="False">
+            <Grid x:Name="MapFullscreenHost" />
+            <Button x:Name="MapCollapseBtn"
+                    Text="✕"
+                    FontSize="20"
+                    BackgroundColor="#CC252536"
+                    TextColor="White"
+                    CornerRadius="22"
+                    HeightRequest="44"
+                    WidthRequest="44"
+                    Margin="12"
+                    HorizontalOptions="Start"
+                    VerticalOptions="Start"
+                    Clicked="OnToggleMapFullscreen"/>
+            <Label x:Name="MapFullscreenHint"
+                   Text="Жесты: свести/развести — масштаб · тащить — карта · ✕ — свернуть"
+                   TextColor="#E4E4E7"
+                   BackgroundColor="#CC18181B"
+                   FontSize="11"
+                   Padding="12,7"
+                   Margin="64,12,12,0"
+                   HorizontalOptions="Start"
+                   VerticalOptions="Start"
+                   IsVisible="False"/>
+        </Grid>
     </Grid>
 </ContentPage>

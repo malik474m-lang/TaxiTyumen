@@ -1590,27 +1590,32 @@ public partial class MainDriverPage : ContentPage
         catch { }
     }
 
-    /// Разворот карты: увеличиваем ТОТ ЖЕ WebView, ничего не пересоздавая.
+    /// Разворот карты на весь экран: переносим ТОТ ЖЕ WebView в отдельный
+    /// оверлей (вне скролла) и обратно. Кнопки «Пробки/ДТП/Озвучка» и карточка
+    /// заказа остаются в обычном режиме — карта разворачивается одна, и в
+    /// оверлее жесты пальцами (масштаб/перемещение) ничем не перехватываются.
     private async void OnToggleMapFullscreen(object? sender, EventArgs e)
     {
         try
         {
             _mapFullscreen = !_mapFullscreen;
 
-            // В полноэкранном режиме прячем только шапку и статистику:
-            // кнопки этапа/простоя остаются под картой и доступны водителю.
-            HeaderBorder.IsVisible = !_mapFullscreen;
-            StatsGrid.IsVisible = !_mapFullscreen;
-
-            MapContainer.HeightRequest = _mapFullscreen
-                ? Math.Max(420, Height - 40)
-                : 340;
-            MapExpandBtn.Text = _mapFullscreen ? "✕" : "⛶";
-
             if (_mapFullscreen)
-                await MainScroll.ScrollToAsync(MapContainer, ScrollToPosition.Start, false);
+            {
+                MapContainer.Children.Remove(RouteMap);
+                MapFullscreenHost.Children.Add(RouteMap);
+                MapFullscreenOverlay.IsVisible = true;
+                MapFullscreenHint.IsVisible = true;
+            }
+            else
+            {
+                MapFullscreenHost.Children.Remove(RouteMap);
+                MapContainer.Children.Insert(0, RouteMap);
+                MapFullscreenOverlay.IsVisible = false;
+                MapFullscreenHint.IsVisible = false;
+            }
 
-            // Новый размер окна + режим слежения за машиной
+            // Новый размер холста + режим следования камеры за машиной
             await Task.Delay(120);
             await RouteMap.EvaluateJavaScriptAsync("window.mapResize && window.mapResize()");
             _mapRouteJson = string.Empty;
