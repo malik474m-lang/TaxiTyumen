@@ -183,7 +183,10 @@ function insideVectorPack(){
 function syncRasterVisibility(){
   try{
     if (!vectorAdded || !map.getLayer('osm')) return;
-    var vis = (insideVectorPack() && !window._ttBase) ? 'none' : 'visible';
+    // Растр гасим только на детальных зумах внутри пакета: ниже z10
+    // векторные слои скромнее (облегчённый Natural Earth), их несёт растр
+    var vis = (insideVectorPack() && map.getZoom() >= 10 && !window._ttBase)
+      ? 'none' : 'visible';
     if (map.getLayoutProperty('osm', 'visibility') !== vis)
       map.setLayoutProperty('osm', 'visibility', vis);
   }catch(e){}
