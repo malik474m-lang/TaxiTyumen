@@ -240,6 +240,16 @@
                                         HeightRequest="34"
                                         Padding="12,0"
                                         Clicked="OnToggleTraffic"/>
+                                <Button x:Name="MapIncidentsBtn"
+                                        Text="ДТП"
+                                        FontSize="11"
+                                        FontAttributes="Bold"
+                                        BackgroundColor="#CC252536"
+                                        TextColor="White"
+                                        CornerRadius="10"
+                                        HeightRequest="34"
+                                        Padding="12,0"
+                                        Clicked="OnToggleIncidents"/>
                                 <Button x:Name="MapVoiceBtn"
                                         Text="Озвучка"
                                         FontSize="11"

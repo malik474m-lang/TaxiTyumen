@@ -36,6 +36,13 @@ final class GeoProviders
             'keyName' => 'opencage',
             'defaultOrder' => 40,
         ],
+        'tomtom' => [
+            'label' => 'TomTom Search',
+            'hint' => 'Поиск адресов и объектов TomTom. Работает, если в разделе «TomTom» '
+                . 'включены сервисы Search / Reverse Geocoding.',
+            'keyName' => 'tomtom_traffic',
+            'defaultOrder' => 50,
+        ],
     ];
 
     private static ?array $cache = null;

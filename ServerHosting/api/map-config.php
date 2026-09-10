@@ -6,13 +6,12 @@ require_once __DIR__ . '/_bootstrap.php';
 
 $service = ServiceSettings::get($db);
 
-// Слой пробок (TomTom Traffic Flow Tiles) для MapLibre в приложении водителя.
-// Ключ намеренно отдаётся приложению — как публичный JS-ключ Яндекс Карт.
-$tomtom = api_key('tomtom_traffic');
-$trafficTileUrl = $tomtom !== ''
-    ? 'https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key='
-      . rawurlencode($tomtom) . '&thickness=10'
-    : null;
+// Слои TomTom для MapLibre в приложении водителя. Состав определяет админка
+// («TomTom»): выключенный сервис не отдаётся вовсе. Ключ намеренно попадает
+// в приложение — как публичный JS-ключ Яндекс Карт.
+$trafficTileUrl = TomTom::tileUrl($db, 'traffic_flow');
+$incidentsTileUrl = TomTom::tileUrl($db, 'traffic_incidents');
+$baseTileUrl = TomTom::tileUrl($db, 'map_tiles');
 
 Response::json([
     'provider' => 'yandex',
@@ -23,7 +22,17 @@ Response::json([
     'city' => $service['city_name'],
     'traffic' => [
         'provider' => 'tomtom',
-        'configured' => $tomtom !== '',
+        'configured' => $trafficTileUrl !== null,
         'tileUrl' => $trafficTileUrl,
+    ],
+    'incidents' => [
+        'provider' => 'tomtom',
+        'configured' => $incidentsTileUrl !== null,
+        'tileUrl' => $incidentsTileUrl,
+    ],
+    'baseMap' => [
+        'provider' => 'tomtom',
+        'configured' => $baseTileUrl !== null,
+        'tileUrl' => $baseTileUrl,
     ],
 ]);

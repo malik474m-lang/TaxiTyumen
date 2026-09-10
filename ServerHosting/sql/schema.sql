@@ -433,6 +433,23 @@ CREATE TABLE IF NOT EXISTS events (
   INDEX (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Сервисы TomTom: что включено (админка → «TomTom»); ключ — в api_settings
+CREATE TABLE IF NOT EXISTS tomtom_services (
+  service_key VARCHAR(40) PRIMARY KEY,       -- traffic_flow | routing | search | ...
+  is_enabled  TINYINT(1) NOT NULL DEFAULT 0,
+  updated_at  DATETIME NULL,
+  updated_by  CHAR(36) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Расход бесплатной квоты TomTom по суткам (2500 нетайловых запросов)
+CREATE TABLE IF NOT EXISTS tomtom_usage (
+  usage_date  DATE NOT NULL,
+  service_key VARCHAR(40) NOT NULL,
+  kind        VARCHAR(10) NOT NULL DEFAULT 'api',
+  counter     INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (usage_date, service_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Провайдеры геокодинга: включение и порядок опроса (админка → «Геокодинг»)
 CREATE TABLE IF NOT EXISTS geo_providers (
   provider   VARCHAR(30) PRIMARY KEY,          -- dadata | photon | yandex | opencage

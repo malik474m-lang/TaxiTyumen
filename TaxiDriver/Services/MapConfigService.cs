@@ -19,6 +19,8 @@ public static class MapConfigService
     private sealed class MapConfigDto
     {
         [JsonPropertyName("traffic")] public TrafficDto? Traffic { get; set; }
+        [JsonPropertyName("incidents")] public TrafficDto? Incidents { get; set; }
+        [JsonPropertyName("baseMap")] public TrafficDto? BaseMap { get; set; }
     }
 
     private static MapConfigDto? _cache;
@@ -26,8 +28,16 @@ public static class MapConfigService
     /// Сброс кеша — следующий запрос пойдёт на сервер (повтор после ошибки сети).
     public static void Reset() => _cache = null;
 
-    /// URL тайлов пробок или null (ключ не задан / сервер недоступен).
-    public static async Task<string?> GetTrafficTileUrlAsync()
+    /// URL тайлов пробок или null (сервис выключен в админке / сервер недоступен).
+    public static Task<string?> GetTrafficTileUrlAsync() => GetLayerAsync(c => c.Traffic);
+
+    /// URL слоя дорожных происшествий (ДТП, перекрытия) или null.
+    public static Task<string?> GetIncidentsTileUrlAsync() => GetLayerAsync(c => c.Incidents);
+
+    /// URL базовой карты TomTom или null (тогда работают тайлы OSM).
+    public static Task<string?> GetBaseMapTileUrlAsync() => GetLayerAsync(c => c.BaseMap);
+
+    private static async Task<string?> GetLayerAsync(Func<MapConfigDto, TrafficDto?> pick)
     {
         if (_cache == null)
         {
@@ -45,9 +55,10 @@ public static class MapConfigService
                 _cache = null;   // не запоминаем промах — дадим шанс сети
             }
         }
-        var traffic = _cache?.Traffic;
-        return traffic is { Configured: true } && !string.IsNullOrEmpty(traffic.TileUrl)
-            ? traffic.TileUrl
+        if (_cache == null) return null;
+        var layer = pick(_cache);
+        return layer is { Configured: true } && !string.IsNullOrEmpty(layer.TileUrl)
+            ? layer.TileUrl
             : null;
     }
 }

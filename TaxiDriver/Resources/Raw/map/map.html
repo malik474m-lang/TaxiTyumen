@@ -87,33 +87,49 @@ try {
 
 var meMarker = null, markers = [], routeReady = false, lastData = null;
 
-/* ---------- Пробки: растровый слой (TomTom Traffic Flow) поверх OSM,
-   но ПОД линией маршрута. Управляется из приложения: setTraffic(url, show). */
-var TRAFFIC_SRC = 'traffic-src', TRAFFIC_LAYER = 'traffic';
-window.setTraffic = function(tileUrl, show){
+/* ---------- Слои TomTom (пробки, происшествия) поверх OSM, но ПОД линией
+   маршрута. Приложение управляет ими через setOverlay(id, url, show). */
+function overlayIds(id){ return { src: 'tt-' + id + '-src', layer: 'tt-' + id }; }
+
+window.setOverlay = function(id, tileUrl, show){
   try{
-    var has = !!map.getLayer(TRAFFIC_LAYER);
+    var ids = overlayIds(id);
+    var has = !!map.getLayer(ids.layer);
     if (!show || !tileUrl){
-      if (has) map.removeLayer(TRAFFIC_LAYER);
-      if (map.getSource(TRAFFIC_SRC)) map.removeSource(TRAFFIC_SRC);
+      if (has) map.removeLayer(ids.layer);
+      if (map.getSource(ids.src)) map.removeSource(ids.src);
       return 'off';
     }
     if (!map.isStyleLoaded()){
-      map.once('idle', function(){ window.setTraffic(tileUrl, show); });
+      map.once('idle', function(){ window.setOverlay(id, tileUrl, show); });
       return 'wait';
     }
     if (!has){
-      if (!map.getSource(TRAFFIC_SRC))
-        map.addSource(TRAFFIC_SRC, { type: 'raster', tiles: [tileUrl], tileSize: 256,
+      if (!map.getSource(ids.src))
+        map.addSource(ids.src, { type: 'raster', tiles: [tileUrl], tileSize: 256,
           maxzoom: 19, attribution: '© TomTom' });
-      map.addLayer({ id: TRAFFIC_LAYER, type: 'raster', source: TRAFFIC_SRC,
-        paint: { 'raster-opacity': 0.85, 'raster-fade-duration': 0 } },
-        map.getLayer('route-line') ? 'route-line' : undefined);
+      // Происшествия рисуем выше пробок, но обе — под линией маршрута
+      var before = map.getLayer('route-line') ? 'route-line' : undefined;
+      map.addLayer({ id: ids.layer, type: 'raster', source: ids.src,
+        paint: { 'raster-opacity': id === 'incidents' ? 1 : 0.85,
+                 'raster-fade-duration': 0 } }, before);
     } else {
-      var src = map.getSource(TRAFFIC_SRC);
+      var src = map.getSource(ids.src);
       if (src && src.setTiles) src.setTiles([tileUrl]);
     }
     return 'on';
+  }catch(e){ return 'err:' + e.message; }
+};
+
+/* Совместимость с прежним вызовом приложения */
+window.setTraffic = function(tileUrl, show){ return window.setOverlay('flow', tileUrl, show); };
+
+/* Базовая карта: тайлы TomTom вместо OSM (офлайн-кеш работает только с OSM) */
+window.setBaseMap = function(tileUrl){
+  try{
+    var src = map.getSource('osm');
+    if (src && src.setTiles) src.setTiles([tileUrl || TILE]);
+    return 'ok';
   }catch(e){ return 'err:' + e.message; }
 };
 

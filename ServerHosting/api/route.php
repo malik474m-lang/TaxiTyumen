@@ -32,6 +32,24 @@ if (count($points) > 12) {
 // подсказки). И то, и другое отдаёт ОДИН запрос к OSRM — это ещё и быстрее
 // прежних двух (geometry + route).
 $withSteps = (string) ($_GET['steps'] ?? '') === '1';
+
+// Приоритет — маршрут TomTom с живыми пробками (включается в админке «TomTom»):
+// время в пути учитывает реальную обстановку, манёвры сразу на русском.
+// Сервис выключен, не ответил или исчерпал квоту — тихо уходим на OSRM.
+$tt = TomTom::route($db, $points, $withSteps);
+if ($tt !== null) {
+    Response::json([
+        'geometry' => $tt['geometry'],
+        'distanceKm' => $tt['distanceKm'],
+        'durationMinutes' => $tt['durationMinutes'],
+        'trafficDelayMinutes' => $tt['trafficDelayMinutes'],
+        'byRoads' => true,
+        'points' => count($points),
+        'steps' => $tt['steps'],
+        'provider' => 'tomtom',
+    ]);
+}
+
 if ($withSteps) {
     $bundle = Taxi::getRouteBundleThrough($points);
     if ($bundle !== null) {

@@ -51,8 +51,9 @@ public partial class MainDriverPage : ContentPage
         BrandingService.Updated += b =>
             MainThread.BeginInvokeOnMainThread(() => Title = b.ServiceName);
 
-        // Пробки и озвучка: отражаем сохранённое состояние, конфиг — в фоне
+        // Слои карты и озвучка: отражаем сохранённое состояние, конфиг — в фоне
         UpdateTrafficButton();
+        UpdateIncidentsButton();
         UpdateVoiceButton();
         _ = EnsureTrafficConfigAsync();
 
@@ -1371,10 +1372,10 @@ public partial class MainDriverPage : ContentPage
                 await Task.Delay(700);
             }
 
-            // Слой пробок: URL приходит с сервера (api/map-config.php),
+            // Слои TomTom: состав приходит с сервера (api/map-config.php),
             // применяем когда страница карты точно загружена
             await EnsureTrafficConfigAsync();
-            if (_trafficOn) await ApplyTrafficToMapAsync();
+            await ApplyLayersToMapAsync();
 
             _mapOrder = order;
             _mapToPickup = NormStatus(order.Status) != "inprogress";
@@ -1600,17 +1601,25 @@ public partial class MainDriverPage : ContentPage
         catch { }
     }
 
-    // ── Пробки (слой TomTom) и озвучка маршрута ─────────────────────────
+    // ── Слои TomTom (пробки, происшествия) и озвучка маршрута ───────────
     private string? _trafficTileUrl;
+    private string? _incidentsTileUrl;
+    private string? _baseMapTileUrl;
     private bool _trafficConfigLoaded;
     private bool _trafficOn = Preferences.Get("map_traffic", false);
+    private bool _incidentsOn = Preferences.Get("map_incidents", false);
 
+    /// Состав слоёв определяет админка («TomTom»): выключенный сервис
+    /// не приходит вовсе — соответствующая кнопка остаётся неактивной.
     private async Task EnsureTrafficConfigAsync()
     {
         if (_trafficConfigLoaded) return;
         _trafficConfigLoaded = true;
         _trafficTileUrl = await MapConfigService.GetTrafficTileUrlAsync();
+        _incidentsTileUrl = await MapConfigService.GetIncidentsTileUrlAsync();
+        _baseMapTileUrl = await MapConfigService.GetBaseMapTileUrlAsync();
         UpdateTrafficButton();
+        UpdateIncidentsButton();
     }
 
     private void UpdateTrafficButton()
@@ -1622,6 +1631,20 @@ public partial class MainDriverPage : ContentPage
             MapTrafficBtn.Opacity = configured ? 1 : 0.6;
             MapTrafficBtn.BackgroundColor = _trafficOn && configured
                 ? Color.FromArgb("#CCB45309")
+                : Color.FromArgb("#CC252536");
+        }
+        catch { }
+    }
+
+    private void UpdateIncidentsButton()
+    {
+        try
+        {
+            var configured = !string.IsNullOrEmpty(_incidentsTileUrl);
+            MapIncidentsBtn.Text = _incidentsOn && configured ? "ДТП · вкл" : "ДТП";
+            MapIncidentsBtn.Opacity = configured ? 1 : 0.6;
+            MapIncidentsBtn.BackgroundColor = _incidentsOn && configured
+                ? Color.FromArgb("#CCB91C1C")
                 : Color.FromArgb("#CC252536");
         }
         catch { }
@@ -1639,18 +1662,33 @@ public partial class MainDriverPage : ContentPage
         catch { }
     }
 
-    private async Task ApplyTrafficToMapAsync()
+    /// Применение всех слоёв разом: базовая карта + пробки + происшествия.
+    private async Task ApplyLayersToMapAsync()
     {
         try
         {
             if (!_mapLoaded) return;
-            var arg = _trafficOn && !string.IsNullOrEmpty(_trafficTileUrl)
-                ? $"'{MapAssets.JsArg(_trafficTileUrl!)}'"
-                : "null";
-            await RouteMap.EvaluateJavaScriptAsync(
-                $"window.setTraffic && window.setTraffic({arg}, {(_trafficOn ? "true" : "false")})");
+
+            // Базовая карта TomTom включается только если сервис активен;
+            // иначе остаются тайлы OSM с офлайн-кешем города.
+            if (!string.IsNullOrEmpty(_baseMapTileUrl))
+            {
+                await RouteMap.EvaluateJavaScriptAsync(
+                    $"window.setBaseMap && window.setBaseMap('{MapAssets.JsArg(_baseMapTileUrl!)}')");
+            }
+
+            await ApplyOverlayAsync("flow", _trafficTileUrl, _trafficOn);
+            await ApplyOverlayAsync("incidents", _incidentsTileUrl, _incidentsOn);
         }
         catch { }
+    }
+
+    private async Task ApplyOverlayAsync(string id, string? tileUrl, bool show)
+    {
+        var on = show && !string.IsNullOrEmpty(tileUrl);
+        var arg = on ? $"'{MapAssets.JsArg(tileUrl!)}'" : "null";
+        await RouteMap.EvaluateJavaScriptAsync(
+            $"window.setOverlay && window.setOverlay('{id}', {arg}, {(on ? "true" : "false")})");
     }
 
     private async void OnToggleTraffic(object? sender, EventArgs e)
@@ -1668,8 +1706,9 @@ public partial class MainDriverPage : ContentPage
             if (string.IsNullOrEmpty(_trafficTileUrl))
             {
                 await DisplayAlert("Пробки",
-                    "Слой пробок не настроен. Укажите ключ TomTom в админке: " +
-                    "«API-ключи» → TomTom Traffic (бесплатно: developer.tomtom.com).",
+                    "Слой пробок недоступен. Проверьте админку: «TomTom» → " +
+                    "Traffic Flow должен быть включён, а ключ задан в «API-ключах» " +
+                    "(бесплатно: developer.tomtom.com).",
                     "OK");
                 return;
             }
@@ -1677,7 +1716,34 @@ public partial class MainDriverPage : ContentPage
             _trafficOn = !_trafficOn;
             Preferences.Set("map_traffic", _trafficOn);
             UpdateTrafficButton();
-            await ApplyTrafficToMapAsync();
+            await ApplyLayersToMapAsync();
+        }
+        catch { }
+    }
+
+    private async void OnToggleIncidents(object? sender, EventArgs e)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(_incidentsTileUrl))
+            {
+                _trafficConfigLoaded = false;
+                MapConfigService.Reset();
+                await EnsureTrafficConfigAsync();
+            }
+            if (string.IsNullOrEmpty(_incidentsTileUrl))
+            {
+                await DisplayAlert("Дорожные происшествия",
+                    "Слой выключен. Включите его в админке: «TomTom» → " +
+                    "Traffic Incidents (нужен ключ TomTom).",
+                    "OK");
+                return;
+            }
+
+            _incidentsOn = !_incidentsOn;
+            Preferences.Set("map_incidents", _incidentsOn);
+            UpdateIncidentsButton();
+            await ApplyLayersToMapAsync();
         }
         catch { }
     }

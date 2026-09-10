@@ -33,6 +33,7 @@ final class GeocodingService
                 'photon'   => self::searchPhoton($db, $query, $svc),
                 'yandex'   => self::searchYandex($db, $query, $city, $region, $svc),
                 'opencage' => self::searchOpenCage($db, $query, $city, $region, $svc),
+                'tomtom'   => TomTom::search($db, $query, $svc),
                 default    => [],
             };
             $results = self::mergeUnique($results, $items);
@@ -327,6 +328,7 @@ final class GeocodingService
                 'photon'   => self::reversePhoton($db, $lat, $lng),
                 'yandex'   => self::reverseYandex($db, $lat, $lng),
                 'opencage' => self::reverseOpenCage($db, $lat, $lng),
+                'tomtom'   => TomTom::reverse($db, $lat, $lng),
                 default    => null,
             };
             if ($item !== null) return $item;
