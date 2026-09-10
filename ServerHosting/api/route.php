@@ -28,6 +28,26 @@ if (count($points) > 12) {
     $points = array_slice($points, 0, 12);
 }
 
+// steps=1 — приложению водителя нужны и геометрия, и манёвры (голосовые
+// подсказки). И то, и другое отдаёт ОДИН запрос к OSRM — это ещё и быстрее
+// прежних двух (geometry + route).
+$withSteps = (string) ($_GET['steps'] ?? '') === '1';
+if ($withSteps) {
+    $bundle = Taxi::getRouteBundleThrough($points);
+    if ($bundle !== null) {
+        Response::json([
+            'geometry' => $bundle['geometry'],
+            'distanceKm' => $bundle['distanceKm'],
+            'durationMinutes' => $bundle['durationMinutes'],
+            'byRoads' => count($bundle['geometry']) > count($points),
+            'points' => count($points),
+            'steps' => $bundle['steps'],
+        ]);
+    }
+    // Маршрутизатор не ответил: уходим на прежний путь — маршрут без озвучки
+    // лучше, чем отсутствие маршрута.
+}
+
 $geometry = Taxi::getRouteGeometryThrough($points);
 $route = Taxi::getRouteThrough($points);
 

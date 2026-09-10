@@ -8,6 +8,7 @@ require_once dirname(__DIR__) . '/config.php';
 if (!defined('DADATA_API_KEY')) define('DADATA_API_KEY', getenv('DADATA_API_KEY') ?: '');
 if (!defined('YANDEX_MAPS_API_KEY')) define('YANDEX_MAPS_API_KEY', getenv('YANDEX_MAPS_API_KEY') ?: '');
 if (!defined('OPENCAGE_API_KEY')) define('OPENCAGE_API_KEY', getenv('OPENCAGE_API_KEY') ?: '');
+if (!defined('TOMTOM_API_KEY')) define('TOMTOM_API_KEY', getenv('TOMTOM_API_KEY') ?: '');
 foreach (glob(dirname(__DIR__) . '/src/*.php') as $file) {
     require_once $file;
 }

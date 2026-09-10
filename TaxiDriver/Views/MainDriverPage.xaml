@@ -223,6 +223,34 @@
                                    HorizontalOptions="Start"
                                    VerticalOptions="Start"
                                    IsVisible="False"/>
+
+                            <!-- Пробки (TomTom) и озвучка маршрута: справа,
+                                 НИЖЕ кнопок масштаба MapLibre, чтобы их не перекрывать -->
+                            <VerticalStackLayout HorizontalOptions="End"
+                                                 VerticalOptions="Start"
+                                                 Margin="8,100,8,8"
+                                                 Spacing="6">
+                                <Button x:Name="MapTrafficBtn"
+                                        Text="Пробки"
+                                        FontSize="11"
+                                        FontAttributes="Bold"
+                                        BackgroundColor="#CC252536"
+                                        TextColor="White"
+                                        CornerRadius="10"
+                                        HeightRequest="34"
+                                        Padding="12,0"
+                                        Clicked="OnToggleTraffic"/>
+                                <Button x:Name="MapVoiceBtn"
+                                        Text="Озвучка"
+                                        FontSize="11"
+                                        FontAttributes="Bold"
+                                        BackgroundColor="#CC252536"
+                                        TextColor="White"
+                                        CornerRadius="10"
+                                        HeightRequest="34"
+                                        Padding="12,0"
+                                        Clicked="OnToggleVoice"/>
+                            </VerticalStackLayout>
                         </Grid>
 
                         <!-- Явный статус: видно, получил ли клиент дорожную геометрию -->

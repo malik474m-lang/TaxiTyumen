@@ -51,6 +51,11 @@ public partial class MainDriverPage : ContentPage
         BrandingService.Updated += b =>
             MainThread.BeginInvokeOnMainThread(() => Title = b.ServiceName);
 
+        // Пробки и озвучка: отражаем сохранённое состояние, конфиг — в фоне
+        UpdateTrafficButton();
+        UpdateVoiceButton();
+        _ = EnsureTrafficConfigAsync();
+
         DriverNameLabel.Text = $"{auth.FirstName} {auth.LastName}";
         StatusLabel.Text = "Не в сети";
 
@@ -1333,6 +1338,8 @@ public partial class MainDriverPage : ContentPage
             catch { }
 
             PushDriverPositionToMaps(lat, lng);
+            // Голосовые подсказки по манёврам активного маршрута
+            VoiceNavigator.OnPosition(lat, lng, _location.CurrentSpeed);
 
         });
     }
@@ -1363,6 +1370,11 @@ public partial class MainDriverPage : ContentPage
                 _mapLoaded = true;
                 await Task.Delay(700);
             }
+
+            // Слой пробок: URL приходит с сервера (api/map-config.php),
+            // применяем когда страница карты точно загружена
+            await EnsureTrafficConfigAsync();
+            if (_trafficOn) await ApplyTrafficToMapAsync();
 
             _mapOrder = order;
             _mapToPickup = NormStatus(order.Status) != "inprogress";
@@ -1467,6 +1479,7 @@ public partial class MainDriverPage : ContentPage
 
     /// Кеш дорожной геометрии: ключ маршрута → точки по улицам.
     private readonly Dictionary<string, List<List<double>>> _roadCache = new();
+    private readonly Dictionary<string, List<RouteStep>> _stepsCache = new();
 
     /// Полный маршрут заказа по дорогам:
     /// машина → подача → ВСЕ промежуточные точки → назначение.
@@ -1488,13 +1501,22 @@ public partial class MainDriverPage : ContentPage
         if (points.Count < 2) return null;
 
         var key = string.Join("|", points.Select(p => $"{p.Lat:F4},{p.Lng:F4}"));
-        if (_roadCache.TryGetValue(key, out var cached)) return cached;
+        if (_roadCache.TryGetValue(key, out var cached))
+        {
+            // Маршрут тот же — манёвры берём из кэша (SetRoute по ключу
+            // отсечёт дубль и не сбросит уже озвученное)
+            VoiceNavigator.SetRoute(
+                _stepsCache.TryGetValue(key, out var cachedSteps) ? cachedSteps : null, key);
+            return cached;
+        }
 
-        var geometry = await _api.GetRoadRouteAsync(points);
-        if (geometry is not { Count: > 2 }) return null;
+        var result = await _api.GetRoadRouteAsync(points);
+        if (result?.Geometry is not { Count: > 2 }) return null;
 
-        _roadCache[key] = geometry;
-        return geometry;
+        _roadCache[key] = result.Geometry;
+        _stepsCache[key] = result.Steps;
+        VoiceNavigator.SetRoute(result.Steps, key);
+        return result.Geometry;
     }
 
     private static void AddPoint(List<(double Lat, double Lng)> points, double lat, double lng)
@@ -1578,6 +1600,98 @@ public partial class MainDriverPage : ContentPage
         catch { }
     }
 
+    // ── Пробки (слой TomTom) и озвучка маршрута ─────────────────────────
+    private string? _trafficTileUrl;
+    private bool _trafficConfigLoaded;
+    private bool _trafficOn = Preferences.Get("map_traffic", false);
+
+    private async Task EnsureTrafficConfigAsync()
+    {
+        if (_trafficConfigLoaded) return;
+        _trafficConfigLoaded = true;
+        _trafficTileUrl = await MapConfigService.GetTrafficTileUrlAsync();
+        UpdateTrafficButton();
+    }
+
+    private void UpdateTrafficButton()
+    {
+        try
+        {
+            var configured = !string.IsNullOrEmpty(_trafficTileUrl);
+            MapTrafficBtn.Text = _trafficOn && configured ? "Пробки · вкл" : "Пробки";
+            MapTrafficBtn.Opacity = configured ? 1 : 0.6;
+            MapTrafficBtn.BackgroundColor = _trafficOn && configured
+                ? Color.FromArgb("#CCB45309")
+                : Color.FromArgb("#CC252536");
+        }
+        catch { }
+    }
+
+    private void UpdateVoiceButton()
+    {
+        try
+        {
+            MapVoiceBtn.Text = VoiceNavigator.Enabled ? "Озвучка · вкл" : "Озвучка";
+            MapVoiceBtn.BackgroundColor = VoiceNavigator.Enabled
+                ? Color.FromArgb("#CC1D4ED8")
+                : Color.FromArgb("#CC252536");
+        }
+        catch { }
+    }
+
+    private async Task ApplyTrafficToMapAsync()
+    {
+        try
+        {
+            if (!_mapLoaded) return;
+            var arg = _trafficOn && !string.IsNullOrEmpty(_trafficTileUrl)
+                ? $"'{MapAssets.JsArg(_trafficTileUrl!)}'"
+                : "null";
+            await RouteMap.EvaluateJavaScriptAsync(
+                $"window.setTraffic && window.setTraffic({arg}, {(_trafficOn ? "true" : "false")})");
+        }
+        catch { }
+    }
+
+    private async void OnToggleTraffic(object? sender, EventArgs e)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(_trafficTileUrl))
+            {
+                // Повторяем запрос: прошлый мог упасть из-за сети,
+                // а ключ админ мог добавить только что
+                _trafficConfigLoaded = false;
+                MapConfigService.Reset();
+                await EnsureTrafficConfigAsync();
+            }
+            if (string.IsNullOrEmpty(_trafficTileUrl))
+            {
+                await DisplayAlert("Пробки",
+                    "Слой пробок не настроен. Укажите ключ TomTom в админке: " +
+                    "«API-ключи» → TomTom Traffic (бесплатно: developer.tomtom.com).",
+                    "OK");
+                return;
+            }
+
+            _trafficOn = !_trafficOn;
+            Preferences.Set("map_traffic", _trafficOn);
+            UpdateTrafficButton();
+            await ApplyTrafficToMapAsync();
+        }
+        catch { }
+    }
+
+    private void OnToggleVoice(object? sender, EventArgs e)
+    {
+        VoiceNavigator.Enabled = !VoiceNavigator.Enabled;
+        UpdateVoiceButton();
+        if (VoiceNavigator.Enabled)
+            VoiceNavigator.SpeakText("Озвучка маршрута включена");
+        else
+            NavigatorOverlay.Toast("Озвучка маршрута выключена");
+    }
+
     private void HideRouteMap()
     {
         try
@@ -1587,6 +1701,7 @@ public partial class MainDriverPage : ContentPage
             _mapRouteJson = string.Empty;
             _mapOrder = null;
             _roadGeometry = null;
+            VoiceNavigator.Clear();
             LocalWebServer.SetState("{}");
             if (_mapFullscreen) OnToggleMapFullscreen(null, EventArgs.Empty);
         }

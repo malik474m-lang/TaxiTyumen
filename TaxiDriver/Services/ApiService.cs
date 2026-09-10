@@ -73,9 +73,10 @@ public class ApiService
         return await response.Content.ReadFromJsonAsync<List<OrderResponse>>(_json) ?? new();
     }
 
-    /// Геометрия маршрута ПО ДОРОГАМ через сервер (OSRM).
-    /// Без неё линия рисовалась напрямую — через озёра и дворы.
-    public async Task<List<List<double>>?> GetRoadRouteAsync(
+    /// Геометрия маршрута ПО ДОРОГАМ через сервер (OSRM) + манёвры
+    /// для голосового навигатора (один OSRM-запрос на сервере: шаги «в подарок»).
+    /// Без геометрии линия рисовалась напрямую — через озёра и дворы.
+    public async Task<RoadRouteResult?> GetRoadRouteAsync(
         IEnumerable<(double Lat, double Lng)> points)
     {
         try
@@ -87,13 +88,18 @@ public class ApiService
             if (string.IsNullOrEmpty(query)) return null;
 
             var resp = await _http.GetFromJsonAsync<RoadRouteResponse>(
-                $"route?points={Uri.EscapeDataString(query)}", _json);
+                $"route?points={Uri.EscapeDataString(query)}&steps=1", _json);
             if (resp?.Geometry is not { Count: > 1 }) return null;
 
             // byRoads=false — сервер вернул отрезок-заглушку (маршрутизатор
             // недоступен). Такую «прямую через озеро» не показываем.
             LastRouteByRoads = resp.ByRoads;
-            return resp.ByRoads ? resp.Geometry : null;
+            if (!resp.ByRoads) return null;
+            return new RoadRouteResult
+            {
+                Geometry = resp.Geometry,
+                Steps = resp.Steps ?? new(),
+            };
         }
         catch { return null; }
     }
@@ -101,9 +107,17 @@ public class ApiService
     /// Построил ли сервер последний маршрут по дорогам.
     public bool LastRouteByRoads { get; private set; } = true;
 
+    /// Результат маршрутизации: линия дороги + лента манёвров для озвучки.
+    public class RoadRouteResult
+    {
+        public List<List<double>>? Geometry { get; set; }
+        public List<RouteStep> Steps { get; set; } = new();
+    }
+
     private class RoadRouteResponse
     {
         public List<List<double>>? Geometry { get; set; }
+        public List<RouteStep>? Steps { get; set; }
         public bool ByRoads { get; set; }
     }
 

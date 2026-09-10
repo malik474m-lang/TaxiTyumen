@@ -87,6 +87,36 @@ try {
 
 var meMarker = null, markers = [], routeReady = false, lastData = null;
 
+/* ---------- Пробки: растровый слой (TomTom Traffic Flow) поверх OSM,
+   но ПОД линией маршрута. Управляется из приложения: setTraffic(url, show). */
+var TRAFFIC_SRC = 'traffic-src', TRAFFIC_LAYER = 'traffic';
+window.setTraffic = function(tileUrl, show){
+  try{
+    var has = !!map.getLayer(TRAFFIC_LAYER);
+    if (!show || !tileUrl){
+      if (has) map.removeLayer(TRAFFIC_LAYER);
+      if (map.getSource(TRAFFIC_SRC)) map.removeSource(TRAFFIC_SRC);
+      return 'off';
+    }
+    if (!map.isStyleLoaded()){
+      map.once('idle', function(){ window.setTraffic(tileUrl, show); });
+      return 'wait';
+    }
+    if (!has){
+      if (!map.getSource(TRAFFIC_SRC))
+        map.addSource(TRAFFIC_SRC, { type: 'raster', tiles: [tileUrl], tileSize: 256,
+          maxzoom: 19, attribution: '© TomTom' });
+      map.addLayer({ id: TRAFFIC_LAYER, type: 'raster', source: TRAFFIC_SRC,
+        paint: { 'raster-opacity': 0.85, 'raster-fade-duration': 0 } },
+        map.getLayer('route-line') ? 'route-line' : undefined);
+    } else {
+      var src = map.getSource(TRAFFIC_SRC);
+      if (src && src.setTiles) src.setTiles([tileUrl]);
+    }
+    return 'on';
+  }catch(e){ return 'err:' + e.message; }
+};
+
 function el(cls){ var d = document.createElement('div'); d.className = 'mk ' + cls; return d; }
 
 function clearMarkers(){ markers.forEach(function(m){ m.remove(); }); markers = []; }

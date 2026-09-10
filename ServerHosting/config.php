@@ -30,6 +30,10 @@ if (!defined('DADATA_API_KEY')) define('DADATA_API_KEY', getenv('DADATA_API_KEY'
 // геокодинга (OSM, РФ покрыта хорошо). Получить ключ: opencagedata.com
 if (!defined('OPENCAGE_API_KEY')) define('OPENCAGE_API_KEY', getenv('OPENCAGE_API_KEY') ?: '');
 
+// (опционально) TomTom Traffic API — растровый слой пробок в приложении водителя
+// Получить ключ: https://developer.tomtom.com/ (бесплатно 2500 запросов/сутки)
+if (!defined('TOMTOM_API_KEY')) define('TOMTOM_API_KEY', getenv('TOMTOM_API_KEY') ?: '');
+
 // Яндекс Карты JavaScript API 2.1 — публичный ключ с ограничением по домену
 // Получить: https://developer.tech.yandex.ru/services/
 if (!defined('YANDEX_MAPS_API_KEY')) {

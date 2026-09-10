@@ -12,6 +12,8 @@ define('SMS_API_ID', '');
 define('DADATA_API_KEY', '');
 // Независимый резервный геокодер (OSM): https://opencagedata.com/
 define('OPENCAGE_API_KEY', '');
+// Слой пробок в приложении водителя: https://developer.tomtom.com/
+define('TOMTOM_API_KEY', '');
 // Публичный JS API-ключ Яндекс Карт; ограничьте доменом taxi.event72.ru в кабинете
 // https://developer.tech.yandex.ru/services/
 define('YANDEX_MAPS_API_KEY', '');

@@ -175,6 +175,76 @@ final class Taxi
         return null;
     }
 
+    /**
+     * Полный маршрут одним запросом к OSRM: геометрия + дистанция + манёвры.
+     * Манёвры (steps=true) нужны приложению водителя для голосовых подсказок.
+     * Возвращает null, если маршрутизатор недоступен (вызывающий код решает,
+     * чем заменить: у route.php есть прежний пошаговый путь с фолбэками).
+     *
+     * @param array<int,array{0:float,1:float}> $points [[lat,lng], ...]
+     * @return array{geometry: array, distanceKm: float, durationMinutes: int, steps: array}|null
+     */
+    public static function getRouteBundleThrough(array $points): ?array
+    {
+        $points = array_values(array_filter(
+            $points,
+            fn($p) => is_array($p) && count($p) >= 2
+                && (float) $p[0] != 0.0 && (float) $p[1] != 0.0
+        ));
+        if (count($points) < 2) {
+            return null;
+        }
+        $coords = [];
+        foreach ($points as $p) {
+            $coords[] = sprintf('%F,%F', (float) $p[1], (float) $p[0]);
+        }
+        $json = self::osrmRequest(
+            '/route/v1/driving/' . implode(';', $coords)
+            . '?overview=full&geometries=geojson&steps=true', 9
+        );
+        $route = $json['routes'][0] ?? null;
+        if (!$route) {
+            return null;
+        }
+
+        $geometry = [];
+        foreach (($route['geometry']['coordinates'] ?? []) as $c) {
+            if (is_array($c) && count($c) >= 2) {
+                $geometry[] = [(float) $c[1], (float) $c[0]];
+            }
+        }
+        if (count($geometry) < 2) {
+            return null;
+        }
+
+        // Манёвры всех участков пути в единую ленту (точка — начало манёвра)
+        $steps = [];
+        foreach (($route['legs'] ?? []) as $leg) {
+            foreach (($leg['steps'] ?? []) as $st) {
+                $m = $st['maneuver'] ?? [];
+                $loc = $m['location'] ?? null;
+                if (!is_array($loc) || count($loc) < 2) {
+                    continue;
+                }
+                $steps[] = [
+                    'loc' => [(float) $loc[1], (float) $loc[0]],
+                    'type' => (string) ($m['type'] ?? ''),
+                    'modifier' => (string) ($m['modifier'] ?? ''),
+                    'exit' => isset($m['exit']) ? (int) $m['exit'] : null,
+                    'name' => (string) ($st['name'] ?? ''),
+                    'distance' => (float) ($st['distance'] ?? 0),
+                ];
+            }
+        }
+
+        return [
+            'geometry' => $geometry,
+            'distanceKm' => round(((float) ($route['distance'] ?? 0)) / 1000, 1),
+            'durationMinutes' => (int) ceil(((float) ($route['duration'] ?? 0)) / 60),
+            'steps' => $steps,
+        ];
+    }
+
     public static function getRouteGeometryThrough(array $points): array
     {
         $points = array_values(array_filter(

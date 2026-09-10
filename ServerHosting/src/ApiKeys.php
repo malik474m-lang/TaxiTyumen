@@ -32,6 +32,13 @@ final class ApiKeys
             'public' => false,
             'multi' => true,
         ],
+        'tomtom_traffic' => [
+            'label' => 'TomTom Traffic (слой пробок в приложении водителя)',
+            'const' => 'TOMTOM_API_KEY',
+            'hint' => 'developer.tomtom.com → Traffic API (бесплатно 2500 запросов/сутки). '
+                . 'Как и JS-ключ Яндекса, попадает в приложение — ограничьте расход квотой в кабинете TomTom.',
+            'public' => true,   // URL тайлов с ключом отдаётся приложению водителя
+        ],
         'sms_ru' => [
             'label' => 'sms.ru (SMS-коды и рассылки)',
             'const' => 'SMS_API_ID',
