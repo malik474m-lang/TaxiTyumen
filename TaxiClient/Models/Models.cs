@@ -1,3 +1,6 @@
+using System.Text.Json.Serialization;
+using TaxiClient.Services;
+
 namespace TaxiClient.Models;
 
 public class LoginRequest
@@ -58,6 +61,9 @@ public class OrderResponse
 
     public PaymentInfoDto? Payment { get; set; }
     public DriverInfo? Driver { get; set; }
+
+    // Сервер отдаёт MySQL-дату («2026-09-10 08:00:00») — гибкий конвертер
+    [JsonConverter(typeof(FlexibleDateTimeConverter))]
     public DateTime CreatedAt { get; set; }
 }
 
@@ -146,6 +152,8 @@ public class ChatMessageDto
     public string SenderRole { get; set; } = "";
     public string SenderName { get; set; } = "";
     public string Text { get; set; } = "";
+
+    [JsonConverter(typeof(FlexibleDateTimeConverter))]
     public DateTime CreatedAt { get; set; }
     public bool IsRead { get; set; }
 }

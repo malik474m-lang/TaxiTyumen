@@ -9,8 +9,8 @@
     <Nullable>enable</Nullable>
     <ApplicationTitle>Такси Тюмень</ApplicationTitle>
     <ApplicationId>ru.taxityumen.client</ApplicationId>
-    <ApplicationDisplayVersion>1.2</ApplicationDisplayVersion>
-    <ApplicationVersion>3</ApplicationVersion>
+    <ApplicationDisplayVersion>1.3</ApplicationDisplayVersion>
+    <ApplicationVersion>4</ApplicationVersion>
     <WindowsPackageType>None</WindowsPackageType>
     <SkipValidateMauiImplicitPackageReferences>true</SkipValidateMauiImplicitPackageReferences>
 
