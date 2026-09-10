@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net10.0-windows10.0.19041.0</TargetFrameworks>
+    <TargetFrameworks>net10.0-android;net10.0-windows10.0.19041.0</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <RootNamespace>TaxiClient</RootNamespace>
     <UseMaui>true</UseMaui>
@@ -13,7 +13,25 @@
     <ApplicationVersion>1</ApplicationVersion>
     <WindowsPackageType>None</WindowsPackageType>
     <SkipValidateMauiImplicitPackageReferences>true</SkipValidateMauiImplicitPackageReferences>
+
+    <!-- Android: минимум Android 8.0 (API 26), как у приложения водителя -->
+    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
+
+    <!-- Отключаем авто-сплэш — ниже свой, с тёмным фоном -->
+    <MauiSplashInclude></MauiSplashInclude>
   </PropertyGroup>
+
+  <!-- Android Release: сборка быстрее (без AOT), сборки внутрь APK -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' and $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
+    <RunAOTCompilation>false</RunAOTCompilation>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Иконка и сплэш — общие с брендом сервиса -->
+    <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#FFD700" />
+    <MauiSplash Include="Resources\Splash\splash.svg" Color="#0A0A0C" BaseSize="200,200" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.0" />
     <PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="10.0.0" />

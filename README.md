@@ -43,6 +43,17 @@
 ## Приложение водителя (Android)
 
 Сборка APK и установка на телефон: [`TaxiDriver/ANDROID.md`](TaxiDriver/ANDROID.md)
+
+## Приложение клиента (Android)
+
+Сборка APK — одним скриптом (обновляет репозиторий и собирает Release):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build-client.ps1
+```
+
+APK появится в `TaxiTyumen\TaxiClient\bin\Release\net10.0-android\`.
+Приложение сразу работает с боевым сервером `taxi.event72.ru`.
 Офлайн-карта города (OpenStreetMap → PMTiles) и домапливание Тюмени:
 [`TaxiDriver/maps/README.md`](TaxiDriver/maps/README.md)
 Инструкция для водителя по работе с приложением: [`TaxiDriver/USER-GUIDE.md`](TaxiDriver/USER-GUIDE.md)
