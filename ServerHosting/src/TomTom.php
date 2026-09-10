@@ -523,9 +523,11 @@ final class TomTom
         self::countUsage($db, 'snap_to_roads');
         $json = json_decode($raw, true);
 
-        // Ответ — GeoJSON: склеиваем координаты всех фрагментов трека
+        // Ответ — GeoJSON. Вложенность у разных развёртываний отличается:
+        // route.features[]  ИЛИ  route[] (плоский список Feature) — читаем оба.
+        $features = $json['route']['features'] ?? $json['route'] ?? [];
         $snapped = [];
-        foreach (($json['route']['features'] ?? []) as $feature) {
+        foreach (is_array($features) ? $features : [] as $feature) {
             foreach (($feature['geometry']['coordinates'] ?? []) as $c) {
                 if (is_array($c) && count($c) >= 2) {
                     $snapped[] = [(float) $c[1], (float) $c[0]];
