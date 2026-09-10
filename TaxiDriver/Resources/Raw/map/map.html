@@ -58,6 +58,22 @@ try {
   map.touchPitch.disable();
 } catch (e) { console.warn('touch config', e); }
 
+/* -- Ручной режим камеры --------------------------------------------------
+   Жест пользователя приостанавливает автокамеру (следование за машиной и
+   автообзор маршрута): карту можно свободно приблизить к точке назначения
+   и рассмотреть её. Каждый новый жест продлевает паузу. Камера вернётся
+   к машине сама через HOLD_MS без жестов либо сразу по кнопке «где я». */
+var HOLD_MS = 20000;
+var cameraHoldUntil = 0;
+function holdCamera(){ cameraHoldUntil = Date.now() + HOLD_MS; }
+function cameraHeld(){ return Date.now() < cameraHoldUntil; }
+function releaseCamera(){ cameraHoldUntil = 0; }
+['dragstart', 'zoomstart', 'rotatestart', 'pitchstart'].forEach(function(ev){
+  map.on(ev, function(e){ if (e && e.originalEvent) holdCamera(); });
+});
+// Кнопка «моё местоположение» — явное возвращение в режим следования
+try { map.on('trackuserlocationstart', function(){ releaseCamera(); }); } catch (e) {}
+
 // Позиция обязана быть top-left|top-right|bottom-left|bottom-right:
 // значение 'right' роняло инициализацию карты (appendChild of undefined),
 // из-за чего window.setRoute не создавался и карта оставалась пустой.
@@ -165,6 +181,7 @@ window.setRoute = function(json){
 
     clearMarkers();
     var pts = [];
+    var fitPts = [];   // смысловые точки — ключ автофита (линия не участвует)
 
     if (d.stops) d.stops.forEach(function(s, i){
       markers.push(new maplibregl.Marker({ element: el('s') })
@@ -172,18 +189,21 @@ window.setRoute = function(json){
         .setPopup(new maplibregl.Popup().setText((i + 1) + '. ' + (s.label || '')))
         .addTo(map));
       pts.push([s.lng, s.lat]);
+      fitPts.push([s.lng, s.lat]);
     });
     if (d.target){
       markers.push(new maplibregl.Marker({ element: el('a') })
         .setLngLat([d.target.lng, d.target.lat])
         .setPopup(new maplibregl.Popup().setText(d.target.label || 'Точка')).addTo(map));
       pts.push([d.target.lng, d.target.lat]);
+      fitPts.push([d.target.lng, d.target.lat]);
     }
     if (d.finish){
       markers.push(new maplibregl.Marker({ element: el('b') })
         .setLngLat([d.finish.lng, d.finish.lat])
         .setPopup(new maplibregl.Popup().setText('Финиш')).addTo(map));
       pts.push([d.finish.lng, d.finish.lat]);
+      fitPts.push([d.finish.lng, d.finish.lat]);
     }
 
     /* Линия маршрута по дорогам (геометрия пришла вместе с заказом → офлайн) */
@@ -209,14 +229,18 @@ window.setRoute = function(json){
       }
     }
 
-    // Подгоняем камеру под маршрут только при его смене: иначе каждая
-    // новая точка GPS сбрасывала масштаб и «дёргала» карту.
-    var routeKey = JSON.stringify(pts);
-    if (pts.length && routeKey !== window._fitKey){
+    // Автофит ТОЛЬКО при смене смысловых точек (подача/назначение/остановки):
+    // обновление дорожной линии под едущую машину и GPS-тики больше не
+    // сбрасывают масштаб и центр — конечную точку можно спокойно приблизить.
+    var routeKey = JSON.stringify(fitPts);
+    if (routeKey !== window._fitKey){
       window._fitKey = routeKey;
-      var b = pts.reduce(function(acc, c){ return acc.extend(c); },
-        new maplibregl.LngLatBounds(pts[0], pts[0]));
-      map.fitBounds(b, { padding: 60, maxZoom: 16, duration: 0 });
+      releaseCamera(); // новый этап/заказ — обзор даже из ручного режима
+      if (pts.length){
+        var b = pts.reduce(function(acc, c){ return acc.extend(c); },
+          new maplibregl.LngLatBounds(pts[0], pts[0]));
+        map.fitBounds(b, { padding: 60, maxZoom: 16, duration: 0 });
+      }
     }
     routeReady = true;
     return 'ok';
@@ -268,13 +292,13 @@ window.updateDriver = function(lat, lng, follow, bearing){
         src.setData(src._data);
       }
     }
-    if (follow) map.easeTo({ center: ll, duration: 300 });
+    if (follow && !cameraHeld()) map.easeTo({ center: ll, duration: 300 });
     return 'ok';
   }catch(e){ return 'err:' + e.message; }
 };
 
 window.mapCenter = function(lat, lng){
-  try{ map.easeTo({ center: [Number(lng), Number(lat)], zoom: 15, duration: 300 }); }catch(e){}
+  try{ releaseCamera(); map.easeTo({ center: [Number(lng), Number(lat)], zoom: 15, duration: 300 }); }catch(e){}
 };
 window.mapResize = function(){ try{ map.resize(); }catch(e){} };
 
