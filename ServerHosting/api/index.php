@@ -16,6 +16,7 @@ Response::json([
         'POST /api/auth/register.php',
         'POST /api/auth/sms.php (action=send|verify)',
         'POST /api/auth/password.php (Bearer)',
+        'POST /api/auth/reset.php (action=send|confirm — восстановление пароля по SMS)',
         'GET  /api/orders/?view=active|available|history|all|clientActive|driverCurrent|today',
         'POST /api/orders/ (создание, client)',
         'POST /api/orders/operator.php (operator/admin)',

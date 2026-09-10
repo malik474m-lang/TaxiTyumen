@@ -99,6 +99,13 @@ public partial class LoginPage : ContentPage
         }
     }
 
+    /// Восстановление пароля по SMS-коду (телефон подставляется в форму).
+    private async void OnForgotClicked(object sender, EventArgs e)
+    {
+        await Navigation.PushAsync(
+            new ResetPasswordPage(_api, PhoneEntry.Text?.Trim() ?? string.Empty));
+    }
+
     private async void OnRegisterClicked(object sender, EventArgs e)
     {
         try

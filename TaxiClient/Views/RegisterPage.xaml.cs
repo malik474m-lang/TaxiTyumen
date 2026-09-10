@@ -12,6 +12,20 @@ public partial class RegisterPage : ContentPage
         InitializeComponent();
         _api = api;
         _signalR = signalR;
+
+        // Брендинг: фирменный акцент и название сервиса, как на экране входа
+        ApplyBrand(BrandingService.Current);
+        BrandingService.Updated += b =>
+            MainThread.BeginInvokeOnMainThread(() => ApplyBrand(b));
+    }
+
+    private void ApplyBrand(BrandingData brand)
+    {
+        var accent = BrandingService.ParseColor(brand.PrimaryColor, "#FFD700");
+        var ink = BrandingService.ParseColor(brand.PrimaryTextColor, "#1E1E2E");
+        if (!string.IsNullOrWhiteSpace(brand.ServiceName)) Title = brand.ServiceName;
+        RegBtn.BackgroundColor = accent;
+        RegBtn.TextColor = ink;
     }
 
     private async void OnRegisterClicked(object sender, EventArgs e)

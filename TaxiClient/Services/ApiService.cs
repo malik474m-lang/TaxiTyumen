@@ -69,6 +69,29 @@ public class ApiService
         return auth;
     }
 
+    /// Восстановление пароля: отправка SMS-кода.
+    /// В демо-режиме (без sms.ru на сервере) код возвращается ответом.
+    public async Task<string?> RequestPasswordResetAsync(string phone)
+    {
+        var resp = await _http.PostAsJsonAsync("auth/reset", new { action = "send", phone });
+        var raw = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+            throw new Exception(raw);
+        using var doc = JsonDocument.Parse(raw);
+        return doc.RootElement.TryGetProperty("devCode", out var d) && d.ValueKind == JsonValueKind.String
+            ? d.GetString()
+            : null;
+    }
+
+    /// Восстановление пароля: установка нового пароля по SMS-коду.
+    public async Task ConfirmPasswordResetAsync(string phone, string code, string newPassword)
+    {
+        var resp = await _http.PostAsJsonAsync("auth/reset",
+            new { action = "confirm", phone, code, newPassword });
+        if (!resp.IsSuccessStatusCode)
+            throw new Exception(await resp.Content.ReadAsStringAsync());
+    }
+
     public async Task<List<PriceEstimate>> GetAllPricesAsync(
         double fromLat, double fromLng, double toLat, double toLng,
         IEnumerable<string>? options = null)
@@ -97,7 +120,10 @@ public class ApiService
 
     public async Task<OrderResponse?> CreateOrderAsync(CreateOrderRequest request)
     {
-        var resp = await _http.PostAsJsonAsync("orders", request);
+        // URL со слэшем: /api/orders — физический каталог на хостинге, и
+        // mod_dir отвечал 301 с потерей POST-тела и уходом на http://,
+        // который Android блокирует политикой cleartext (connection failure)
+        var resp = await _http.PostAsJsonAsync("orders/", request);
         if (!resp.IsSuccessStatusCode)
             throw new Exception(await resp.Content.ReadAsStringAsync());
         return await resp.Content.ReadFromJsonAsync<OrderResponse>(_json);

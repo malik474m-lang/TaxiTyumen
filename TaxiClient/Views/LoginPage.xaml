@@ -36,6 +36,10 @@
                     BackgroundColor="#FFD700" TextColor="#1E1E2E" HeightRequest="52"
                     CornerRadius="10" Margin="0,15,0,0" Clicked="OnLoginClicked"/>
 
+            <Button x:Name="ForgotBtn" Text="Забыли пароль?" FontSize="13"
+                    BackgroundColor="Transparent" TextColor="#B0BEC5"
+                    Margin="0,8,0,0" Clicked="OnForgotClicked"/>
+
             <Button x:Name="RegisterBtn" Text="Зарегистрироваться"
                     FontSize="14" BackgroundColor="Transparent" TextColor="#4FC3F7"
                     Margin="0,10,0,0" Clicked="OnRegisterClicked"/>

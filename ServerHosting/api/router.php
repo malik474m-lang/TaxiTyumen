@@ -55,6 +55,7 @@ if ($routeLower === 'auth/send-sms') {
     $dispatch($api . '/auth/sms.php', ['action' => 'send', 'phone' => $phone]);
 }
 if ($routeLower === 'auth/verify-sms') $dispatch($api . '/auth/sms.php', ['action' => 'verify']);
+if ($routeLower === 'auth/reset') $dispatch($api . '/auth/reset.php');
 if ($routeLower === 'auth/refresh') {
     $claims = Auth::decodeToken((string) ($body['token'] ?? ''), true);
     if (!$claims) Response::error('Невалидный токен', 401);

@@ -9,6 +9,16 @@ RedirectMatch 404 ^/ServerHosting/(src|sql)(/|$)
 
 RewriteEngine On
 
+# Схема за прокси (nginx → Apache): редиректы mod_dir должны оставаться на
+# https, иначе приложения на Android блокируют «открытый» http (connection failure)
+SetEnvIf X-Forwarded-Proto https HTTPS=on
+
+# Коллекции без слеша: /api/orders и /api/drivers — реальные каталоги, на них
+# mod_dir отвечал 301 и ТЕРЯЛ POST-тело (создание заказа падало в приложении).
+# Проксируем в router сами, ДО проверки -d
+RewriteRule ^api/orders$ ServerHosting/api/router.php?route=orders [L,QSA]
+RewriteRule ^api/drivers$ ServerHosting/api/router.php?route=drivers [L,QSA]
+
 # Уже существующие реальные файлы отдаём как есть
 RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d
