@@ -12,8 +12,8 @@
 
     <ApplicationTitle>Такси Тюмень - Водитель</ApplicationTitle>
     <ApplicationId>ru.taxityumen.driver</ApplicationId>
-    <ApplicationDisplayVersion>4.2</ApplicationDisplayVersion>
-    <ApplicationVersion>39</ApplicationVersion>
+    <ApplicationDisplayVersion>4.3</ApplicationDisplayVersion>
+    <ApplicationVersion>40</ApplicationVersion>
 
     <!-- Android: минимум Android 8.0 (API 26) -->
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
@@ -24,12 +24,18 @@
 
     <!-- Отключаем авто-сплэш с фиолетовым фоном — ниже свой, с тёмным фоном -->
     <MauiSplashInclude></MauiSplashInclude>
+
+    <!-- Офлайн-пакет карты (PMTiles) хранится в APK без сжатия: читается
+         произвольным доступом и копируется в память приложения мгновенно -->
+    <AndroidStoreUncompressedFileExtensions>.pmtiles</AndroidStoreUncompressedFileExtensions>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- Иконка приложения: такси-жёлтая плашка + тёмный глиф (генерирует mipmap/appicon[_round]) -->
     <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#FFD700" />
-    <!-- Карта MapLibre и её стили: работают офлайн из пакета приложения -->
+    <!-- Карта MapLibre, стили, шрифты подписей и офлайн-пакет векторных
+         тайлов (tyumen.pmtiles): всё работает без интернета из пакета APK.
+         Пакет и шрифты собираются скриптом TaxiDriver/maps/build-pmtiles.* -->
     <MauiAsset Include="Resources\Raw\map\**" LogicalName="map/%(Filename)%(Extension)" />
     <MauiSplash Include="Resources\Splash\splash.svg" Color="#0A0A0C" BaseSize="200,200" />
   </ItemGroup>

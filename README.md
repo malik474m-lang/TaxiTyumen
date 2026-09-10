@@ -43,6 +43,8 @@
 ## Приложение водителя (Android)
 
 Сборка APK и установка на телефон: [`TaxiDriver/ANDROID.md`](TaxiDriver/ANDROID.md)
+Офлайн-карта города (OpenStreetMap → PMTiles) и домапливание Тюмени:
+[`TaxiDriver/maps/README.md`](TaxiDriver/maps/README.md)
 Инструкция для водителя по работе с приложением: [`TaxiDriver/USER-GUIDE.md`](TaxiDriver/USER-GUIDE.md)
 
 ## Запуск .NET-решения

@@ -29,6 +29,41 @@ public static class LocalWebServer
     // картинка пробок освежается, а лимит тайлов тратится экономно.
     private static readonly Dictionary<string, string> TtTemplates = new();
 
+    // ── Офлайн-пакет векторных тайлов (OpenStreetMap → PMTiles) ────────────
+    // Файл лежит внутри приложения: карта Тюмени и Тюменского района работает
+    // полностью без интернета и без внешних сервисов (ODbL, без лимитов).
+    private static PmTilesArchive? _vector;
+
+    /// Подключить пакет карты. false — файла нет, остаёмся на растровых тайлах.
+    public static bool SetVectorPack(string path)
+    {
+        try
+        {
+            var archive = PmTilesArchive.Open(path);
+            if (archive == null) return false;
+            var previous = _vector;
+            _vector = archive;
+            previous?.Dispose();
+            return true;
+        }
+        catch { return false; }
+    }
+
+    public static bool VectorReady => _vector != null;
+
+    /// Описание пакета для карты: покрытие, зумы, готовность.
+    private static string MapInfoJson()
+    {
+        var v = _vector;
+        if (v == null) return "{\"vector\":false}";
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        return "{\"vector\":true,\"minzoom\":" + v.MinZoom
+            + ",\"maxzoom\":" + v.MaxZoom
+            + ",\"bounds\":[" + v.MinLon.ToString("F6", ci) + "," + v.MinLat.ToString("F6", ci)
+            + "," + v.MaxLon.ToString("F6", ci) + "," + v.MaxLat.ToString("F6", ci) + "]"
+            + ",\"sizeMb\":" + (v.FileSizeBytes / 1048576.0).ToString("F1", ci) + "}";
+    }
+
     private static HttpClient CreateTtHttp()
     {
         var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
@@ -133,6 +168,57 @@ public static class LocalWebServer
                     return;
                 }
 
+                // Состав офлайн-пакета: карта опрашивает его, пока пакет
+                // копируется из APK, и затем включает векторные слои
+                if (path == "mapinfo.json")
+                {
+                    await WriteAsync(stream, 200, "application/json; charset=utf-8",
+                        MapInfoJson(), noStore: true);
+                    return;
+                }
+
+                // /vector/z/x/y.pbf — векторный тайл из офлайн-пакета PMTiles
+                if (TryParseVectorTile(path, out var vz, out var vx, out var vy))
+                {
+                    var archive = _vector;
+                    var tile = archive?.GetTile(vz, vx, vy);
+                    if (tile != null && tile.Length > 0)
+                    {
+                        await WriteAsync(stream, 200, "application/x-protobuf", tile,
+                            noStore: false, maxAgeSeconds: 604800,
+                            contentEncoding: archive!.TileContentEncoding);
+                    }
+                    else
+                    {
+                        // 204 — «тайла нет» (за границей пакета): MapLibre
+                        // считает его пустым и не показывает ошибку
+                        await WriteAsync(stream, 204, "application/x-protobuf",
+                            Array.Empty<byte>(), noStore: false);
+                    }
+                    return;
+                }
+
+                // /fonts/{fontstack}/{range}.pbf — шрифты подписей карты
+                if (path.StartsWith("fonts/", StringComparison.Ordinal))
+                {
+                    var fontFile = Path.GetFullPath(Path.Combine(_root, path));
+                    if (fontFile.StartsWith(Path.GetFullPath(_root), StringComparison.Ordinal)
+                        && File.Exists(fontFile))
+                    {
+                        var fontBytes = await File.ReadAllBytesAsync(fontFile);
+                        // Шрифты OpenMapTiles распространяются gzip-сжатыми
+                        var gz = fontBytes.Length > 1 && fontBytes[0] == 0x1f && fontBytes[1] == 0x8b;
+                        await WriteAsync(stream, 200, "application/x-protobuf", fontBytes,
+                            noStore: false, maxAgeSeconds: 2592000,
+                            contentEncoding: gz ? "gzip" : string.Empty);
+                    }
+                    else
+                    {
+                        await WriteAsync(stream, 404, "text/plain", "no font", true);
+                    }
+                    return;
+                }
+
                 // /tile/z/x/y.png — файловый кеш; при наличии сети докачиваем
                 if (TryParseTile(path, out var z, out var x, out var y))
                 {
@@ -199,6 +285,17 @@ public static class LocalWebServer
             && int.TryParse(p[2], out x)
             && int.TryParse(Path.GetFileNameWithoutExtension(p[3]), out y)
             && z is >= 0 and <= 19 && x >= 0 && y >= 0;
+    }
+
+    private static bool TryParseVectorTile(string path, out int z, out int x, out int y)
+    {
+        z = x = y = 0;
+        var p = path.Split('/');
+        if (p.Length != 4 || p[0] != "vector") return false;
+        return int.TryParse(p[1], out z)
+            && int.TryParse(p[2], out x)
+            && int.TryParse(Path.GetFileNameWithoutExtension(p[3]), out y)
+            && z is >= 0 and <= 20 && x >= 0 && y >= 0;
     }
 
     private static bool TryParseTtTile(
@@ -394,10 +491,14 @@ public static class LocalWebServer
 
     private static async Task WriteAsync(
         NetworkStream stream, int code, string mime, byte[] body, bool noStore,
-        int maxAgeSeconds = 604800)
+        int maxAgeSeconds = 604800, string contentEncoding = "")
     {
-        var header = $"HTTP/1.1 {code} {(code == 200 ? "OK" : "Error")}\r\n"
+        var status = code switch { 200 => "OK", 204 => "No Content", 404 => "Not Found", _ => "Error" };
+        var header = $"HTTP/1.1 {code} {status}\r\n"
             + $"Content-Type: {mime}\r\nContent-Length: {body.Length}\r\n"
+            // Векторные тайлы и шрифты хранятся сжатыми — отдаём как есть,
+            // распаковкой занимается движок карты в WebView
+            + (string.IsNullOrEmpty(contentEncoding) ? "" : $"Content-Encoding: {contentEncoding}\r\n")
             + (noStore ? "Cache-Control: no-store\r\n" : $"Cache-Control: public, max-age={maxAgeSeconds}\r\n")
             + "Access-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n";
         await stream.WriteAsync(Encoding.ASCII.GetBytes(header));

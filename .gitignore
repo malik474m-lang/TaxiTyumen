@@ -20,5 +20,10 @@ crash.log
 *.appxbundle
 *.msixbundle
 
+## Офлайн-карта водителя (собирается TaxiDriver/maps/build-pmtiles.*)
+TaxiDriver/Resources/Raw/map/*.pmtiles
+TaxiDriver/Resources/Raw/map/font-*.pbf
+TaxiDriver/maps/work/
+
 ## Credentials
 firebase-credentials.json

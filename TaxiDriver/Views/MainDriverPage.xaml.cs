@@ -1435,7 +1435,10 @@ public partial class MainDriverPage : ContentPage
 
             if (_roadGeometry is { Count: > 2 })
             {
-                MapRouteStatusLabel.Text = $"Маршрут построен по дорогам · {_roadGeometry.Count} точек";
+                // Офлайн-пакет карты (OpenStreetMap) — карта города работает без сети
+                var offline = LocalWebServer.VectorReady ? " · офлайн-карта города" : string.Empty;
+                MapRouteStatusLabel.Text =
+                    $"Маршрут построен по дорогам · {_roadGeometry.Count} точек{offline}";
                 MapRouteStatusLabel.TextColor = Color.FromArgb("#4ADE80");
             }
             else

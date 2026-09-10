@@ -36,6 +36,8 @@ var map = new maplibregl.Map({
   container: 'map',
   style: {
     version: 8,
+    // Шрифты подписей векторной карты отдаёт локальный сервер приложения
+    glyphs: location.origin + '/fonts/{fontstack}/{range}.pbf',
     sources: { osm: { type: 'raster', tiles: [TILE], tileSize: 256, maxzoom: 19,
       attribution: '© OpenStreetMap' } },
     layers: [
@@ -155,9 +157,86 @@ window.setBaseMap = function(tileUrl){
   try{
     var src = map.getSource('osm');
     if (src && src.setTiles) src.setTiles([tileUrl || TILE]);
+    // Подложка TomTom включена — растровый слой не гасим даже там,
+    // где есть офлайн-пакет: водитель выбрал её сознательно
+    window._ttBase = !!tileUrl;
+    syncRasterVisibility();
     return 'ok';
   }catch(e){ return 'err:' + e.message; }
 };
+
+/* ---------- Офлайн-пакет векторных тайлов (OpenStreetMap → PMTiles) -------
+   Пакет Тюмени и Тюменского района лежит внутри приложения и отдаётся
+   локальным сервером: карта работает без интернета, без ключей и лимитов.
+   Пока пакет копируется из APK, показываются растровые тайлы; как только
+   он готов — добавляются векторные слои, а внутри покрытия растр гасится
+   (иначе подписи задваиваются). За пределами района — снова растр. */
+var vectorBounds = null, vectorAdded = false, vectorTries = 0;
+
+function insideVectorPack(){
+  if (!vectorBounds) return false;
+  var c = map.getCenter();
+  return c.lng >= vectorBounds[0] && c.lng <= vectorBounds[2]
+      && c.lat >= vectorBounds[1] && c.lat <= vectorBounds[3];
+}
+
+function syncRasterVisibility(){
+  try{
+    if (!vectorAdded || !map.getLayer('osm')) return;
+    var vis = (insideVectorPack() && !window._ttBase) ? 'none' : 'visible';
+    if (map.getLayoutProperty('osm', 'visibility') !== vis)
+      map.setLayoutProperty('osm', 'visibility', vis);
+  }catch(e){}
+}
+
+function addVectorLayers(info){
+  if (vectorAdded) return;
+  fetch('style-vector.json', { cache: 'no-store' })
+    .then(function(r){ return r.json(); })
+    .then(function(style){
+      var layers = (style && style.sourceLayers) || [];
+      if (!layers.length) return;
+
+      if (!map.getSource('omt')){
+        map.addSource('omt', {
+          type: 'vector',
+          tiles: [location.origin + '/vector/{z}/{x}/{y}.pbf'],
+          minzoom: 0,
+          maxzoom: info.maxzoom || 14,
+          bounds: info.bounds,
+          attribution: '© OpenStreetMap'
+        });
+      }
+      // Линия маршрута и слои пробок остаются выше карты
+      var before = map.getLayer('route-line') ? 'route-line' : undefined;
+      layers.forEach(function(l){
+        if (map.getLayer(l.id)) return;
+        try{ map.addLayer(l, before); }catch(e){ console.warn('vector layer ' + l.id, e); }
+      });
+
+      vectorAdded = true;
+      vectorBounds = info.bounds || null;
+      syncRasterVisibility();
+    })
+    .catch(function(e){ console.warn('style-vector', e); });
+}
+
+function initVectorPack(){
+  fetch('/mapinfo.json?t=' + Date.now(), { cache: 'no-store' })
+    .then(function(r){ return r.json(); })
+    .then(function(info){
+      if (info && info.vector){
+        if (map.isStyleLoaded()) addVectorLayers(info);
+        else map.once('idle', function(){ addVectorLayers(info); });
+        return;
+      }
+      // Пакет ещё копируется из APK (десятки МБ) — ждём
+      if (++vectorTries < 40) setTimeout(initVectorPack, 3000);
+    })
+    .catch(function(){ if (++vectorTries < 40) setTimeout(initVectorPack, 3000); });
+}
+
+map.on('moveend', syncRasterVisibility);
 
 function el(cls){ var d = document.createElement('div'); d.className = 'mk ' + cls; return d; }
 
@@ -327,6 +406,7 @@ map.on('load', function(){
   document.getElementById('fatal').style.display = 'none';
   if (lastData) window.setRoute(lastData);
   startStatePolling();
+  initVectorPack();
 });
 
 /* Данные берём сами с локального сервера приложения: это работает всегда,
