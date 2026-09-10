@@ -36,6 +36,11 @@ public partial class MainClientPage : ContentPage
         _api = api;
         _signalR = signalR;
 
+        // Бренд сервиса из админки: заголовок следует за названием сервиса
+        Title = BrandingService.Current.ServiceName;
+        BrandingService.Updated += b =>
+            MainThread.BeginInvokeOnMainThread(() => Title = b.ServiceName);
+
         try
         {
             _geo = new GeocodingService();

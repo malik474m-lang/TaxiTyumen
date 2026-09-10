@@ -9,17 +9,20 @@
         <VerticalStackLayout Padding="40" Spacing="0"
                              VerticalOptions="Center">
 
-            <!-- Логотип -->
-            <Label Text="" FontSize="64"
-                   HorizontalOptions="Center"/>
+            <!-- Логотип и название приходят с сервера (админка: «Брендинг»/«Бренд сервиса») -->
+            <Image x:Name="LogoImage" HeightRequest="88" WidthRequest="88"
+                   Aspect="AspectFit" HorizontalOptions="Center"
+                   IsVisible="False" Margin="0,0,0,8"/>
 
-            <Label Text="Такси Тюмень"
+            <Label x:Name="BrandNameLabel"
+                   Text="Такси Тюмень"
                    FontSize="28" FontAttributes="Bold"
                    TextColor="#FFD700"
                    HorizontalOptions="Center"
                    Margin="0,0,0,4"/>
 
-            <Label Text="Приложение водителя"
+            <Label x:Name="BrandSubtitleLabel"
+                   Text="Приложение водителя"
                    FontSize="14" TextColor="Gray"
                    HorizontalOptions="Center"
                    Margin="0,0,0,40"/>

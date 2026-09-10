@@ -46,6 +46,11 @@ public partial class MainDriverPage : ContentPage
         _location = location;
         _auth = auth;
 
+        // Бренд сервиса из админки в заголовке страницы
+        Title = BrandingService.Current.ServiceName;
+        BrandingService.Updated += b =>
+            MainThread.BeginInvokeOnMainThread(() => Title = b.ServiceName);
+
         DriverNameLabel.Text = $"{auth.FirstName} {auth.LastName}";
         StatusLabel.Text = "Не в сети";
 

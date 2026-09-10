@@ -14,7 +14,48 @@ public partial class LoginPage : ContentPage
         _api = api;
         _signalR = signalR;
         _location = location;
+
+        // Бренд сервиса из админки: применяем текущий и следим за обновлениями
+        ApplyBrand(BrandingService.Current);
+        BrandingService.Updated += b =>
+            MainThread.BeginInvokeOnMainThread(() => ApplyBrand(b));
+
         Loaded += OnPageLoaded;
+    }
+
+    /// Применение бренда: название сервиса, подзаголовок приложения,
+    /// фирменные цвета и логотип (если загружен в админке).
+    private void ApplyBrand(BrandingData brand)
+    {
+        var accent = BrandingService.ParseColor(brand.PrimaryColor, "#FFD700");
+        var ink = BrandingService.ParseColor(brand.PrimaryTextColor, "#1E1E2E");
+
+        if (!string.IsNullOrWhiteSpace(brand.ServiceName))
+        {
+            BrandNameLabel.Text = brand.ServiceName;
+            Title = brand.ServiceName;
+        }
+        if (!string.IsNullOrWhiteSpace(brand.AppName))
+            BrandSubtitleLabel.Text = brand.AppName;
+
+        BrandNameLabel.TextColor = accent;
+        LoginBtn.BackgroundColor = accent;
+        LoginBtn.TextColor = ink;
+        LoadingIndicator.Color = accent;
+
+        var logo = BrandingService.AbsoluteLogoUrl(brand);
+        if (logo != null)
+        {
+            LogoImage.Source = ImageSource.FromUri(new Uri(logo));
+            LogoImage.IsVisible = true;
+        }
+    }
+
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        // Освежаем бренд при каждом показе экрана входа
+        _ = BrandingService.LoadAsync();
     }
 
     /// Авто-вход по сохранённой сессии: токен и ID водителя восстанавливаются

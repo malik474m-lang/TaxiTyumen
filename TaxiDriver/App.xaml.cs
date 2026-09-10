@@ -51,6 +51,10 @@ public partial class App : Application
         _api = api;
         MainPage = new NavigationPage(loginPage);
 
+        // Бренд сервиса и оформление из админки: подтягиваем при старте,
+        // страницы обновляются через событие BrandingService.Updated
+        _ = BrandingService.LoadAsync();
+
 #if ANDROID
         RequestPostNotifications();
 #endif

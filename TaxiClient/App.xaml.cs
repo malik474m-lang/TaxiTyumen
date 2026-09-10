@@ -21,6 +21,10 @@ public partial class App : Application
         };
 
         MainPage = new NavigationPage(loginPage);
+
+        // Бренд сервиса и оформление из админки: подтягиваем при старте,
+        // страницы обновляются через событие BrandingService.Updated
+        _ = Services.BrandingService.LoadAsync();
     }
 
     public static void LogCrash(string source, Exception? ex)
