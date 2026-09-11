@@ -26,6 +26,35 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $apkDir = Join-Path $dir 'TaxiDriver\bin\Release\net10.0-android'
-Write-Host "`nГОТОВО. APK лежит здесь:" -ForegroundColor Green
-Get-ChildItem $apkDir -Recurse -Filter *.apk | Select-Object FullName, Length
+
+# Сборка создаёт ДВА apk: подписанный (*-Signed.apk, его можно ставить)
+# и неподписанный (*.apk — Android отвергнет: «пакет повреждён» / «не установлено»).
+# Неподписанный удаляем, чтобы его случайно не установить.
+Get-ChildItem $apkDir -Recurse -Filter *.apk |
+    Where-Object { $_.Name -notlike '*-Signed.apk' } |
+    Remove-Item -Force -ErrorAction SilentlyContinue
+
+$signed = @(Get-ChildItem $apkDir -Recurse -Filter *-Signed.apk)
+if ($signed.Count -eq 0) {
+    Write-Host "АПК собран, но подписанный файл не найден — пришлите список файлов из папки:" -ForegroundColor Red
+    Get-ChildItem $apkDir | Select-Object Name
+    exit 1
+}
+
+Write-Host "`nГОТОВО! Устанавливайте НА ТЕЛЕФОН ЭТОТ файл:" -ForegroundColor Green
+foreach ($f in $signed) {
+    Write-Host ("  {0}  ({1:N1} МБ)" -f $f.FullName, ($f.Length / 1MB)) -ForegroundColor Yellow
+}
+Write-Host @"
+
+Если не устанавливается (разбор типовых причин — в INSTALL-APK.md):
+  1. На телефоне удалите СТАРОЕ приложение, затем поставьте новое
+     (подпись сборки сменилась — поверх она не встанет);
+  2. Разрешите установку из источника: Настройки → Приложения →
+     «установка из неизвестных источников» для вашего файлового менеджера;
+  3. Если Google Play Protect пишет «небезопасно»: «Подробнее» →
+     «Установить в любом случае» (файл подписан отладочным ключом — это
+     нормально для установки с компьютера, вредоносного кода там нет).
+"@ -ForegroundColor DarkGray
+
 Start-Process explorer.exe $apkDir
