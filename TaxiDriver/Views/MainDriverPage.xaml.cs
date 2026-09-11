@@ -1139,6 +1139,26 @@ public partial class MainDriverPage : ContentPage
     {
         if (_activeOrder == null || _auth.DriverId == null) return;
 
+        // Заказ мог быть уже отменён клиентом/оператором: тогда «отказ» не
+        // нужен вовсе — раньше он возвращал отменённый заказ диспетчеру
+        // как активный. Сверяемся с сервером ДО отправки отказа.
+        try
+        {
+            var actual = await _api.GetCurrentOrderAsync(_auth.DriverId.Value);
+            if (actual == null || actual.Id != _activeOrder.Id)
+            {
+                var number = _activeOrder.OrderNumber;
+                await OnOrderCompleted();
+                await SafeAlertAsync("Заказ отменён",
+                    $"Заказ {number} уже отменён клиентом или диспетчером. Вы снова на линии.");
+                return;
+            }
+        }
+        catch
+        {
+            // Связи нет — продолжаем обычным путём, решение примет сервер
+        }
+
         var confirm = await DisplayAlert(
             "Отказ от заказа",
             "Отказаться от заказа? Он вернётся диспетчеру и будет предложен другим водителям.\n\n"

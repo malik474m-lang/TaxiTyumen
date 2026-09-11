@@ -21,7 +21,9 @@ public class ApiService
         _http = new HttpClient
         {
             BaseAddress = new Uri("https://taxi.event72.ru/api/"),
-            Timeout = TimeSpan.FromSeconds(10)
+            // Отмена и создание заказа тянут за собой SMS/уведомления —
+            // 10 секунд не хватало, запрос рвался по таймауту
+            Timeout = TimeSpan.FromSeconds(25)
         };
     }
 
@@ -160,13 +162,50 @@ public class ApiService
                ?? new List<HistoryItem>();
     }
 
-    public async Task CancelOrderAsync(Guid orderId, Guid userId, string reason)
+    /// Отмена заказа клиентом.
+    /// Раньше результат игнорировался: экран очищался всегда, а на сервере
+    /// заказ мог остаться активным (и висел у водителя). Теперь отмена
+    /// подтверждается сервером, а ошибка возвращается наверх.
+    public async Task<(bool Ok, string? Error)> CancelOrderAsync(
+        Guid orderId, Guid userId, string reason)
     {
-        await _http.PostAsJsonAsync($"orders/{orderId}/cancel", new CancelRequest
+        var resp = await _http.PostAsJsonAsync($"orders/{orderId}/cancel", new CancelRequest
         {
             Reason = reason,
             CancelledByUserId = userId
         });
+
+        if (resp.IsSuccessStatusCode)
+        {
+            // Сервер вернул карточку заказа — сверяем, что статус действительно
+            // сменился на «отменён» (страховка от «тихого» несрабатывания)
+            try
+            {
+                var raw = await resp.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(raw);
+                if (doc.RootElement.TryGetProperty("status", out var st))
+                {
+                    var status = (st.GetString() ?? string.Empty)
+                        .Replace("_", string.Empty).ToLowerInvariant();
+                    if (status.Length > 0 && status != "cancelled")
+                        return (false, "Сервер не подтвердил отмену (статус: " + st.GetString() + ")");
+                }
+            }
+            catch { /* тело не разобрали — считаем успехом по HTTP-коду */ }
+            return (true, null);
+        }
+
+        var body = await resp.Content.ReadAsStringAsync();
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var err))
+                return (false, err.GetString() ?? body);
+        }
+        catch { }
+        return (false, string.IsNullOrWhiteSpace(body)
+            ? $"Сервер ответил {(int)resp.StatusCode}"
+            : body);
     }
 
     /// Отправка сообщения в чат заказа. senderId обязан совпадать с uid

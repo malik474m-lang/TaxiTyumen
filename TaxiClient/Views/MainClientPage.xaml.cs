@@ -1142,13 +1142,36 @@ initLeaflet();
             if (!await DisplayAlert("Отмена", "Отменить заказ?", "Да", "Нет"))
                 return;
 
+            var userId = _api.CurrentUser?.UserId ?? Guid.Empty;
+            CancelBtn.IsEnabled = false;
             try
             {
-                await _api.CancelOrderAsync(_activeOrder.Id, _api.CurrentUser!.UserId, "Отменён клиентом");
-            }
-            catch { }
+                var (ok, error) = await _api.CancelOrderAsync(
+                    _activeOrder.Id, userId, "Отменён клиентом");
 
-            ResetToOrderScreen();
+                if (!ok)
+                {
+                    // Экран НЕ сбрасываем: заказ на сервере остался активным,
+                    // иначе клиент думает, что отменил, а водитель уже едет
+                    await DisplayAlert("Заказ не отменён",
+                        (error ?? "Сервер не подтвердил отмену.")
+                        + "\n\nПопробуйте ещё раз или позвоните диспетчеру.", "OK");
+                    return;
+                }
+
+                await DisplayAlert("Заказ отменён", "Заказ отменён. Водитель уведомлён.", "OK");
+                ResetToOrderScreen();
+            }
+            catch (Exception ex)
+            {
+                await DisplayAlert("Заказ не отменён",
+                    "Нет связи с сервером: " + ex.Message
+                    + "\n\nЗаказ остался активным — попробуйте ещё раз.", "OK");
+            }
+            finally
+            {
+                CancelBtn.IsEnabled = true;
+            }
         }
         catch { }
     }

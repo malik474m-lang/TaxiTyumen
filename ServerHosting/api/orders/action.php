@@ -116,11 +116,14 @@ switch ($action) {
         // Заказ уже отменён клиентом/оператором или завершён: отказ водителя
         // не должен возвращать его в поиск. Раньше статус переписывался на
         // 'searching', и отменённый заказ «воскресал» у диспетчера как активный.
-        if (in_array($order['status'], ['cancelled', 'completed'], true)) {
-            if ($order['driver_id'] === $driverId) {
-                $db->prepare("UPDATE drivers SET status = 'available', current_order_id = NULL WHERE id = ?")
-                    ->execute([$driverId]);
-            }
+        if (in_array($order['status'], ['cancelled', 'completed'], true)
+            || empty($order['driver_id'])
+            || $order['driver_id'] !== $driverId) {
+            // Освобождаем водителя, если заказ ещё числится за ним
+            $db->prepare(
+                "UPDATE drivers SET status = 'available', current_order_id = NULL
+                 WHERE id = ? AND (current_order_id = ? OR current_order_id IS NULL)"
+            )->execute([$driverId, $id]);
             $result();
         }
 
@@ -372,6 +375,15 @@ switch ($action) {
     }
 
     case 'cancel': {
+        // Завершённый заказ отменить нельзя — иначе «терялись» деньги и статистика
+        if ($order['status'] === 'completed') {
+            Response::error('Поездка уже завершена — отменить её нельзя', 409);
+        }
+        // Повторная отмена не ошибка: клиент мог нажать дважды или потерять ответ
+        if ($order['status'] === 'cancelled') {
+            $result();
+        }
+
         $db->prepare("UPDATE orders SET status='cancelled',cancelled_at=?,cancellation_reason=?,cancelled_by_user_id=? WHERE id=?")
             ->execute([Db::utcNow(), $body['reason'] ?? null, $claims['uid'], $id]);
         $db->prepare("UPDATE transactions SET status='refunded',completed_at=? WHERE order_id=?")
