@@ -10,8 +10,25 @@ final class SmsService
     public static function send(\PDO $db, string $phone, string $message): array
     {
         $phone = Auth::normalizePhone($phone);
+
+        // Встроенный шлюз (Android-телефон с SIM-картой) имеет приоритет:
+        // сообщение кладётся в очередь, телефон заберёт его и отправит сам.
+        try {
+            if (SmsGateway::isEnabled($db)) {
+                $id = SmsGateway::enqueue($db, $phone, $message, 'auto');
+                self::log($db, 'send', $phone, 'success', null,
+                    'Поставлено в очередь SMS-шлюза (' . $id . ')', 0);
+                return ['status' => 'sent', 'response' => 'queued:' . $id, 'gateway' => 'device'];
+            }
+        } catch (\Throwable $e) {
+            // Шлюз недоступен — молча уходим наsms.ru
+            self::log($db, 'send', $phone, 'failed', null,
+                'Ошибка SMS-шлюза: ' . $e->getMessage(), 0);
+        }
+
         if (api_key('sms_ru') === '') {
-            self::log($db, 'send', $phone, 'skipped', null, 'SMS_API_ID не настроен', 0);
+            self::log($db, 'send', $phone, 'skipped', null,
+                'SMS не отправлено: встроенный шлюз выключен и ключ sms.ru не задан', 0);
             return ['status' => 'skipped', 'response' => 'SMS_API_ID не настроен'];
         }
 
@@ -40,6 +57,23 @@ final class SmsService
 
     public static function check(\PDO $db): array
     {
+        // Включённый встроенный шлюз показываем как основной канал
+        try {
+            if (SmsGateway::isEnabled($db)) {
+                $gw = SmsGateway::settings($db);
+                $stats = SmsGateway::stats($db);
+                return [
+                    'configured' => true,
+                    'ok' => (bool) $gw['online'],
+                    'message' => $gw['online']
+                        ? 'SMS-шлюз: телефон на связи · отправлено сегодня ' . $stats['sentToday']
+                        : 'SMS-шлюз включён, но телефон не отвечает',
+                    'balance' => null,
+                ];
+            }
+        } catch (\Throwable) {
+        }
+
         if (api_key('sms_ru') === '') {
             return ['configured' => false, 'ok' => false, 'message' => 'SMS_API_ID не настроен'];
         }

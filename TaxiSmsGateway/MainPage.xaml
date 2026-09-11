@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="TaxiSmsGateway.MainPage"
+             Title="SMS-шлюз такси"
+             BackgroundColor="#0A0A0C">
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="14">
+
+            <Label Text="SMS-шлюз" FontSize="26" FontAttributes="Bold" TextColor="#FACC15"/>
+            <Label Text="Телефон принимает задания от сервера такси и отправляет SMS с этой SIM-карты"
+                   FontSize="13" TextColor="#A1A1AA"/>
+
+            <!-- Состояние -->
+            <Border BackgroundColor="#121216" Stroke="#2A2A32" Padding="14">
+                <Border.StrokeShape><RoundRectangle CornerRadius="12"/></Border.StrokeShape>
+                <VerticalStackLayout Spacing="6">
+                    <Label x:Name="StatusLabel" Text="Остановлен" FontSize="19"
+                           FontAttributes="Bold" TextColor="#FCA5A5"/>
+                    <Label x:Name="StatsLabel" Text="Отправлено: 0 · Ошибок: 0"
+                           FontSize="13" TextColor="#A1A1AA"/>
+                    <Label x:Name="LastLabel" Text="" FontSize="12" TextColor="#71717A"/>
+                </VerticalStackLayout>
+            </Border>
+
+            <Button x:Name="ToggleBtn" Text="Запустить шлюз" FontSize="17" FontAttributes="Bold"
+                    BackgroundColor="#FACC15" TextColor="#0A0A0C" HeightRequest="54"
+                    CornerRadius="12" Clicked="OnToggleClicked"/>
+
+            <!-- Настройки подключения -->
+            <Border BackgroundColor="#121216" Stroke="#2A2A32" Padding="14">
+                <Border.StrokeShape><RoundRectangle CornerRadius="12"/></Border.StrokeShape>
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Подключение к серверу" FontAttributes="Bold" TextColor="White"/>
+
+                    <Label Text="Адрес сервера" FontSize="12" TextColor="#A1A1AA"/>
+                    <Entry x:Name="ServerEntry" Placeholder="https://taxi.event72.ru"
+                           TextColor="White" PlaceholderColor="#52525B" BackgroundColor="#18181D"/>
+
+                    <Label Text="Токен устройства (админка → SMS-шлюз)" FontSize="12" TextColor="#A1A1AA"/>
+                    <Entry x:Name="TokenEntry" Placeholder="вставьте токен"
+                           TextColor="White" PlaceholderColor="#52525B" BackgroundColor="#18181D"/>
+
+                    <Label Text="Номер SIM-карты (необязательно)" FontSize="12" TextColor="#A1A1AA"/>
+                    <Entry x:Name="SimEntry" Placeholder="+7 9XX XXX-XX-XX" Keyboard="Telephone"
+                           TextColor="White" PlaceholderColor="#52525B" BackgroundColor="#18181D"/>
+
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,6,0,0">
+                        <Button Grid.Column="0" Text="Сохранить" BackgroundColor="#27272E"
+                                TextColor="White" CornerRadius="10" Clicked="OnSaveClicked"/>
+                        <Button Grid.Column="1" Text="Проверить связь" BackgroundColor="#27272E"
+                                TextColor="White" CornerRadius="10" Clicked="OnTestClicked"/>
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Журнал -->
+            <Border BackgroundColor="#121216" Stroke="#2A2A32" Padding="14">
+                <Border.StrokeShape><RoundRectangle CornerRadius="12"/></Border.StrokeShape>
+                <VerticalStackLayout Spacing="6">
+                    <Label Text="Журнал" FontAttributes="Bold" TextColor="White"/>
+                    <Label x:Name="LogLabel" Text="—" FontSize="12" TextColor="#A1A1AA"/>
+                </VerticalStackLayout>
+            </Border>
+
+            <Label Text="Не закрывайте приложение и отключите экономию батареи для него,
+иначе Android остановит фоновую работу."
+                   FontSize="11" TextColor="#71717A"/>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

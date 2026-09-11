@@ -132,6 +132,7 @@ final class Seed
         ApiKeys::ensureTables($db);
         KeyPool::ensureTables($db);
         GeoProviders::ensureTables($db);
+        SmsGateway::ensureTables($db);
         $exists = (int) $db->query("SELECT COUNT(*) FROM users WHERE role='superadmin'")->fetchColumn();
         $marker = Access::state($db, Access::MARKER_KEY);
         $recovery = defined('SUPERADMIN_RECOVERY') && SUPERADMIN_RECOVERY === true;

@@ -452,6 +452,35 @@ CREATE TABLE IF NOT EXISTS tomtom_usage (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Провайдеры геокодинга: включение и порядок опроса (админка → «Геокодинг»)
+-- Встроенный SMS-шлюз: Android-телефон с SIM-картой отправляет сообщения
+CREATE TABLE IF NOT EXISTS sms_gateway_settings (
+  id             TINYINT PRIMARY KEY DEFAULT 1,
+  enabled        TINYINT(1) NOT NULL DEFAULT 0,
+  device_token   VARCHAR(80)  NOT NULL DEFAULT '',
+  device_name    VARCHAR(120) NOT NULL DEFAULT '',
+  device_phone   VARCHAR(30)  NULL,
+  battery        INT          NULL,
+  last_seen_at   DATETIME     NULL,
+  poll_seconds   INT          NOT NULL DEFAULT 10,
+  daily_limit    INT          NOT NULL DEFAULT 0,
+  updated_at     DATETIME     NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS sms_gateway_queue (
+  id           CHAR(36) PRIMARY KEY,
+  phone        VARCHAR(30)  NOT NULL,
+  message      VARCHAR(1000) NOT NULL,
+  purpose      VARCHAR(40)  NOT NULL DEFAULT 'general',
+  status       ENUM('queued','sending','sent','failed','cancelled') NOT NULL DEFAULT 'queued',
+  attempts     INT          NOT NULL DEFAULT 0,
+  error        VARCHAR(500) NULL,
+  device_name  VARCHAR(120) NULL,
+  created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  taken_at     DATETIME     NULL,
+  sent_at      DATETIME     NULL,
+  INDEX (status), INDEX (created_at), INDEX (phone)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS geo_providers (
   provider   VARCHAR(30) PRIMARY KEY,          -- dadata | photon | yandex | opencage
   is_enabled TINYINT(1) NOT NULL DEFAULT 1,

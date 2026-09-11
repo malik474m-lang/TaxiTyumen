@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+	<application
+		android:allowBackup="true"
+		android:icon="@mipmap/appicon"
+		android:roundIcon="@mipmap/appicon_round"
+		android:label="SMS-шлюз такси"
+		android:usesCleartextTraffic="false"
+		android:supportsRtl="true"></application>
+
+	<uses-permission android:name="android.permission.INTERNET" />
+	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+	<!-- Отправка SMS с SIM-карты устройства (запрашивается в рантайме) -->
+	<uses-permission android:name="android.permission.SEND_SMS" />
+
+	<!-- Фоновая работа: процесс не должен засыпать между опросами сервера -->
+	<uses-permission android:name="android.permission.WAKE_LOCK" />
+	<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+	<!-- Устройство без телефонного модуля приложение просто не установит -->
+	<uses-feature android:name="android.hardware.telephony" android:required="true" />
+</manifest>

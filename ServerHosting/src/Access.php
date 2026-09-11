@@ -34,6 +34,7 @@ final class Access
         'export'    => ['label' => 'Экспорт CSV',    'file' => 'export.php',    'superadminOnly' => false, 'locked' => false],
         'autocall'  => ['label' => 'Автодозвон',     'file' => 'autocall.php',  'superadminOnly' => false, 'locked' => false],
         'telephony' => ['label' => 'Телефония',      'file' => 'telephony.php', 'superadminOnly' => false, 'locked' => false],
+        'smsgw'     => ['label' => 'SMS-шлюз',        'file' => 'sms-gateway.php','superadminOnly' => false, 'locked' => false],
         'branding'  => ['label' => 'Приложения',     'file' => 'branding.php',  'superadminOnly' => false, 'locked' => false],
         'services'  => ['label' => 'API и сервисы',  'file' => 'services.php',  'superadminOnly' => false, 'locked' => false],
         'apikeys'   => ['label' => 'API-ключи',      'file' => 'api-keys.php',  'superadminOnly' => true,  'locked' => false],

@@ -46,6 +46,7 @@ Response::json([
         'GET/PUT /api/autocall.php (staff)',
         'GET  /api/stats.php (admin)',
         'GET  /api/export/orders.php (admin, CSV)',
+        'GET/POST /api/sms-gateway.php (встроенный SMS-шлюз: poll/ack/heartbeat/status)',
         'GET  /api/events.php?since=',
     ],
 ]);

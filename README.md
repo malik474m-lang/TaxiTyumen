@@ -44,6 +44,12 @@
 
 Сборка APK и установка на телефон: [`TaxiDriver/ANDROID.md`](TaxiDriver/ANDROID.md)
 
+## SMS-шлюз (Android)
+
+Отправка SMS сервиса обычным телефоном с SIM-картой вместо платного провайдера:
+[`TaxiSmsGateway/README.md`](TaxiSmsGateway/README.md). Сборка:
+`powershell -ExecutionPolicy Bypass -File build-smsgateway.ps1`
+
 ## Приложение клиента (Android)
 
 Сборка APK — одним скриптом (обновляет репозиторий и собирает Release):
