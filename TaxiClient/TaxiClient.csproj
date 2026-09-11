@@ -10,8 +10,8 @@
     <!-- Название под иконкой на телефоне (бренд сервиса: heroTitle) -->
     <ApplicationTitle>Заказ такси</ApplicationTitle>
     <ApplicationId>ru.taxityumen.client</ApplicationId>
-    <ApplicationDisplayVersion>1.8</ApplicationDisplayVersion>
-    <ApplicationVersion>9</ApplicationVersion>
+    <ApplicationDisplayVersion>1.9</ApplicationDisplayVersion>
+    <ApplicationVersion>10</ApplicationVersion>
     <WindowsPackageType>None</WindowsPackageType>
     <SkipValidateMauiImplicitPackageReferences>true</SkipValidateMauiImplicitPackageReferences>
 

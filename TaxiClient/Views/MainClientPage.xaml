@@ -292,6 +292,29 @@
                        FontSize="14"
                        HorizontalOptions="Center"/>
 
+                <!-- Через сколько подъедет водитель: считается по дорогам
+                     от его текущего положения и обновляется каждые 15 секунд -->
+                <Border x:Name="ActiveEtaPanel" IsVisible="False"
+                        BackgroundColor="#12351E" Stroke="#4CAF50"
+                        StrokeThickness="1" Padding="12,10">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="10"/>
+                    </Border.StrokeShape>
+                    <StackLayout Spacing="2">
+                        <Label x:Name="ActiveEtaLabel"
+                               Text="Рассчитываем время подачи…"
+                               TextColor="#4ADE80"
+                               FontSize="17"
+                               FontAttributes="Bold"
+                               HorizontalOptions="Center"/>
+                        <Label x:Name="ActiveEtaHintLabel"
+                               Text="Машина на карте отмечена жёлтой стрелкой"
+                               TextColor="#8FBF9F"
+                               FontSize="11"
+                               HorizontalOptions="Center"/>
+                    </StackLayout>
+                </Border>
+
                 <BoxView HeightRequest="1" Color="#444"/>
 
                 <Border BackgroundColor="#2D2D3F" Padding="14,10">

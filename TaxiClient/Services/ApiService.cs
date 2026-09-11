@@ -126,6 +126,28 @@ public class ApiService
             throw new Exception(await resp.Content.ReadAsStringAsync());
     }
 
+    /// Время в пути по дорогам между двумя точками (минуты).
+    /// Используется для «водитель приедет через N мин»: сервер считает
+    /// маршрут через TomTom (с пробками) или OSRM.
+    public async Task<int?> GetEtaMinutesAsync(
+        double fromLat, double fromLng, double toLat, double toLng)
+    {
+        try
+        {
+            var points = string.Format(CultureInfo.InvariantCulture,
+                "{0},{1};{2},{3}", fromLat, fromLng, toLat, toLng);
+            var resp = await _http.GetAsync("route.php?points=" + Uri.EscapeDataString(points));
+            if (!resp.IsSuccessStatusCode) return null;
+
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            if (doc.RootElement.TryGetProperty("durationMinutes", out var d)
+                && d.ValueKind == JsonValueKind.Number)
+                return d.GetInt32();
+        }
+        catch { }
+        return null;
+    }
+
     /// Конфиг карты с сервера (админка → «API-ключи»): провайдер и ключ.
     public async Task<MapConfigDto?> GetMapConfigAsync()
     {

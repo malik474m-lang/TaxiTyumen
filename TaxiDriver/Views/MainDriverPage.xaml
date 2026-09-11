@@ -317,6 +317,31 @@
                                 <Label Grid.Column="1" x:Name="ActiveDestLabel" TextColor="LightGray" FontSize="14"/>
                             </Grid>
 
+                            <!-- Дополнительные условия заказа: детское кресло,
+                                 животное, багаж и прочее из справочника опций -->
+                            <Border x:Name="ActiveOptionsPanel" IsVisible="False"
+                                    BackgroundColor="#3A2E12" Stroke="#FFD700"
+                                    StrokeThickness="1" Padding="10,8">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="8"/>
+                                </Border.StrokeShape>
+                                <StackLayout Spacing="2">
+                                    <Label Text="⚠ Особые условия заказа:" TextColor="#FFD700"
+                                           FontSize="12" FontAttributes="Bold"/>
+                                    <Label x:Name="ActiveOptionsLabel" TextColor="White"
+                                           FontSize="14" FontAttributes="Bold"/>
+                                </StackLayout>
+                            </Border>
+
+                            <!-- Комментарий пассажира к заказу -->
+                            <StackLayout x:Name="ActiveCommentPanel" IsVisible="False" Spacing="2">
+                                <Label Text="Комментарий пассажира:" TextColor="#4FC3F7"
+                                       FontSize="12" FontAttributes="Bold"/>
+                                <Label x:Name="ActiveCommentLabel" TextColor="White" FontSize="13"/>
+                            </StackLayout>
+
+                            <Label x:Name="ActivePassengersLabel" TextColor="LightGray" FontSize="13"/>
+
                             <Grid ColumnDefinitions="*,*">
                                 <Label Grid.Column="0" x:Name="ActivePriceLabel" TextColor="#FFD700" FontSize="20" FontAttributes="Bold"/>
                                 <Label Grid.Column="1" x:Name="ActiveTariffLabel" TextColor="Gray" FontSize="14" HorizontalOptions="End"/>

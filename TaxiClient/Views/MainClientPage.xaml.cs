@@ -170,6 +170,9 @@ function drawRoute(a, b, c, d){ api('drawRoute', [a, b, c, d]); }
 function setDriver(lat, lng){ api('setDriver', [lat, lng]); }
 function clearDriver(){ api('clearDriver', []); }
 function clearRoute(){ api('clearRoute', []); }
+/* Показать машину и точку подачи в одном кадре: пассажир всегда видит,
+   где сейчас такси относительно него */
+function fitTwo(lat1, lng1, lat2, lng2){ api('fitTwo', [lat1, lng1, lat2, lng2]); }
 function flushQ(){
   try{ queue.forEach(function(it){ window.__impl[it[0]].apply(null, it[1]); }); }catch(e){}
   queue = [];
@@ -235,8 +238,12 @@ function initLeaflet(){
       },
       setDriver: function(lat, lng){
         if (!driverM){
-          driverM = L.marker([lat, lng], { icon: L.divIcon({ className: '', html: carSvg, iconSize: [30, 30] }) }).addTo(map);
+          driverM = L.marker([lat, lng], { icon: L.divIcon({ className: '', html: carSvg, iconSize: [30, 30] }) })
+            .addTo(map).bindPopup('Ваше такси');
         } else driverM.setLatLng([lat, lng]);
+      },
+      fitTwo: function(lat1, lng1, lat2, lng2){
+        try{ map.fitBounds([[lat1, lng1], [lat2, lng2]], { padding: [60, 60], maxZoom: 16 }); }catch(e){}
       },
       clearDriver: function(){ if (driverM){ map.removeLayer(driverM); driverM = null; } },
       clearRoute: function(){ if (routeLine){ map.removeLayer(routeLine); routeLine = null; } }
@@ -312,13 +319,19 @@ function initYandex(){
       },
       setDriver: function(lat, lng){
         if (!driverPlacemark){
-          driverPlacemark = new ymaps.Placemark([lat, lng], {}, {
+          driverPlacemark = new ymaps.Placemark([lat, lng], { hintContent: 'Ваше такси' }, {
             iconLayout: ymaps.templateLayoutFactory.createClass(
               '<div style=""margin-left:-15px;margin-top:-15px"">' + carSvg + '</div>'),
             hideIconOnBalloonOpen: false
           });
           map.geoObjects.add(driverPlacemark);
         } else driverPlacemark.geometry.setCoordinates([lat, lng]);
+      },
+      fitTwo: function(lat1, lng1, lat2, lng2){
+        try{
+          map.setBounds([[lat1, lng1], [lat2, lng2]],
+            { checkZoomRange: true, zoomMargin: [60, 60, 60, 60] });
+        }catch(e){}
       },
       clearDriver: function(){ if (driverPlacemark){ map.geoObjects.remove(driverPlacemark); driverPlacemark = null; } },
       clearRoute: function(){ if (routeObject){ map.geoObjects.remove(routeObject); routeObject = null; } }
@@ -1041,12 +1054,22 @@ initLeaflet();
             ActiveDestLabel.Text = " " + (order.DestinationAddress ?? "не указано");
 
             if (order.Driver != null)
+            {
                 ShowDriverInfo(order.Driver);
+
+                // Машина на карте сразу после назначения, не дожидаясь тика GPS
+                if (order.Driver.Latitude is { } dlat && order.Driver.Longitude is { } dlng
+                    && dlat != 0 && dlng != 0)
+                    OnDriverLocationUpdated(dlat, dlng);
+
+                EnsureEtaTimer();
+            }
             else
             {
                 ActiveDriverLabel.Text = "Ищем водителя...";
                 ActiveCarLabel.Text = "";
                 ActivePhoneLabel.Text = "";
+                ActiveEtaPanel.IsVisible = false;
             }
         }
         catch { }
@@ -1154,8 +1177,17 @@ initLeaflet();
         });
     }
 
+    // ── Где водитель и когда приедет ───────────────────────────────────────
+    private double _driverLat, _driverLng;
+    private DateTime _lastEtaAt = DateTime.MinValue;
+    private bool _etaTimerStarted;
+    private bool _arrivalNotified;
+
     private void OnDriverLocationUpdated(double lat, double lng)
     {
+        _driverLat = lat;
+        _driverLng = lng;
+
         MainThread.BeginInvokeOnMainThread(() =>
         {
             try
@@ -1163,8 +1195,111 @@ initLeaflet();
                 var la = lat.ToString(CultureInfo.InvariantCulture);
                 var lo = lng.ToString(CultureInfo.InvariantCulture);
                 MapWebView.EvaluateJavaScriptAsync($"setDriver({la},{lo})");
+
+                // Показываем машину и точку подачи в одном кадре: иначе водитель
+                // «уезжал» за край экрана и было непонятно, где он едет
+                if (_activeOrder != null && _pickupLat != 0 && _pickupLng != 0)
+                {
+                    var pla = _pickupLat.ToString(CultureInfo.InvariantCulture);
+                    var plo = _pickupLng.ToString(CultureInfo.InvariantCulture);
+                    MapWebView.EvaluateJavaScriptAsync($"fitTwo({la},{lo},{pla},{plo})");
+                }
             }
             catch { }
+        });
+
+        _ = UpdateEtaAsync();
+    }
+
+    /// «Водитель приедет через N минут»: считаем по дорогам от текущей позиции
+    /// машины до точки подачи (после посадки — до точки назначения).
+    private async Task UpdateEtaAsync(bool force = false)
+    {
+        try
+        {
+            if (_activeOrder == null || _driverLat == 0 || _driverLng == 0) return;
+            if (!force && (DateTime.UtcNow - _lastEtaAt).TotalSeconds < 15) return;
+            _lastEtaAt = DateTime.UtcNow;
+
+            var status = (_activeOrder.Status ?? string.Empty)
+                .Replace("_", string.Empty).ToLowerInvariant();
+
+            // Водитель на месте — время подачи больше не нужно
+            if (status == "driverarrived")
+            {
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    ActiveEtaPanel.IsVisible = true;
+                    ActiveEtaLabel.Text = "Водитель на месте — выходите";
+                    ActiveEtaHintLabel.Text = "Бесплатное ожидание уже идёт";
+                });
+                await NotifyArrivalOnceAsync();
+                return;
+            }
+
+            var inTrip = status == "inprogress";
+            var toLat = inTrip ? (_activeOrder.DestinationLatitude ?? 0) : _pickupLat;
+            var toLng = inTrip ? (_activeOrder.DestinationLongitude ?? 0) : _pickupLng;
+            if (toLat == 0 || toLng == 0) return;
+
+            var minutes = await _api.GetEtaMinutesAsync(_driverLat, _driverLng, toLat, toLng);
+
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                ActiveEtaPanel.IsVisible = true;
+                if (minutes == null)
+                {
+                    ActiveEtaLabel.Text = inTrip ? "В пути" : "Водитель едет к вам";
+                    ActiveEtaHintLabel.Text = "Время в пути уточняется";
+                    return;
+                }
+
+                var m = Math.Max(1, minutes.Value);
+                ActiveEtaLabel.Text = inTrip
+                    ? $"До места назначения ≈ {m} мин"
+                    : (m <= 1 ? "Водитель подъезжает" : $"Водитель приедет через ≈ {m} мин");
+                ActiveEtaHintLabel.Text = "Машина на карте отмечена жёлтой стрелкой";
+            });
+
+            // Заранее предупреждаем пассажира, чтобы он успел выйти
+            if (!inTrip && minutes is <= 2) await NotifyArrivalOnceAsync(soon: true);
+        }
+        catch { }
+    }
+
+    /// Одноразовое уведомление о прибытии (звук/вибрация + окно).
+    private async Task NotifyArrivalOnceAsync(bool soon = false)
+    {
+        if (_arrivalNotified) return;
+        _arrivalNotified = true;
+        try
+        {
+            try { Vibration.Vibrate(TimeSpan.FromMilliseconds(600)); } catch { }
+            await DisplayAlert(
+                soon ? "Такси почти на месте" : "Такси подъехало",
+                soon
+                    ? "Водитель будет у вас примерно через минуту — выходите."
+                    : "Водитель ждёт вас на месте подачи.",
+                "OK");
+        }
+        catch { }
+    }
+
+    /// Таймер обновления ETA: позиция водителя приходит не всегда регулярно,
+    /// поэтому пересчитываем время и по расписанию.
+    private void EnsureEtaTimer()
+    {
+        if (_etaTimerStarted) return;
+        _etaTimerStarted = true;
+        Dispatcher.StartTimer(TimeSpan.FromSeconds(15), () =>
+        {
+            if (_activeOrder == null)
+            {
+                _etaTimerStarted = false;
+                return false;
+            }
+            _ = UpdateEtaAsync(force: true);
+            return true;
         });
     }
 
@@ -1270,6 +1405,12 @@ initLeaflet();
 
             // Следующий заказ начинается с чистых полей
             ClearAddressFields();
+
+            // Сбрасываем состояние подачи: ETA, метка машины, разовые уведомления
+            ActiveEtaPanel.IsVisible = false;
+            _driverLat = 0;
+            _driverLng = 0;
+            _arrivalNotified = false;
 
             try { MapWebView.EvaluateJavaScriptAsync("clearDriver()"); } catch { }
             try { MapWebView.EvaluateJavaScriptAsync("clearRoute()"); } catch { }

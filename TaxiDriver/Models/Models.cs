@@ -17,6 +17,14 @@ public class AuthResponse
     public Guid? DriverId { get; set; }
 }
 
+/// Опция заказа из справочника: код, название и надбавка.
+public class OrderOptionDto
+{
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public decimal Price { get; set; }
+}
+
 public class OrderResponse
 {
     public Guid Id { get; set; }
@@ -40,6 +48,10 @@ public class OrderResponse
     public string? Comment { get; set; }
     public int PassengerCount { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+
+    /// Дополнительные условия заказа: детское кресло, перевозка животного,
+    /// багаж, курьерская доставка и т.п. (справочник — админка «Опции заказа»).
+    public List<OrderOptionDto> Options { get; set; } = new();
 
     // Предварительный заказ: время подачи и наценка
     public DateTimeOffset? ScheduledAt { get; set; }

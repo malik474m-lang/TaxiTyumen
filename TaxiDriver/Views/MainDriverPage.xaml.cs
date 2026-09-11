@@ -60,6 +60,7 @@ public partial class MainDriverPage : ContentPage
         DriverNameLabel.Text = $"{auth.FirstName} {auth.LastName}";
         StatusLabel.Text = "Не в сети";
 
+        _signalR.OrderStatusChanged += OnOrderStatusChangedFromServer;
         _signalR.NewOrderReceived += OnNewOrderFromSignalR;
         _signalR.ForceAssignedReceived += OnForceAssigned;
         _signalR.ChatMessageReceived += OnChatMessageOnMainPage;
@@ -626,6 +627,28 @@ public partial class MainDriverPage : ContentPage
 
         layout.Children.Add(priceGrid);
 
+        // Особые условия — до принятия заказа (детское кресло, животное и т.п.)
+        if (order.Options is { Count: > 0 })
+        {
+            layout.Children.Add(new Label
+            {
+                Text = "⚠ " + string.Join(", ", order.Options.Select(o => o.Name)),
+                TextColor = Color.FromArgb("#FFD700"),
+                FontSize = 13,
+                FontAttributes = FontAttributes.Bold
+            });
+        }
+
+        if (order.PassengerCount > 1)
+        {
+            layout.Children.Add(new Label
+            {
+                Text = $"Пассажиров: {order.PassengerCount}",
+                TextColor = Color.FromArgb("#BBB"),
+                FontSize = 12
+            });
+        }
+
         if (!string.IsNullOrEmpty(order.Comment))
         {
             layout.Children.Add(new Label
@@ -757,6 +780,36 @@ public partial class MainDriverPage : ContentPage
         ActiveDestLabel.Text = order.DestinationAddress ?? "не указано";
         if (!string.IsNullOrWhiteSpace(order.DestinationEntrance))
             ActiveDestLabel.Text += ", подъезд " + order.DestinationEntrance;
+        // Особые условия заказа (детское кресло, животное, багаж…) — крупно
+        // и с ценой: водитель должен видеть их до выезда, а не в чате
+        if (order.Options is { Count: > 0 })
+        {
+            ActiveOptionsPanel.IsVisible = true;
+            ActiveOptionsLabel.Text = string.Join("\n", order.Options.Select(o =>
+                o.Price > 0 ? $"• {o.Name} (+{o.Price:F0} ₽)" : $"• {o.Name}"));
+        }
+        else
+        {
+            ActiveOptionsPanel.IsVisible = false;
+            ActiveOptionsLabel.Text = string.Empty;
+        }
+
+        if (!string.IsNullOrWhiteSpace(order.Comment))
+        {
+            ActiveCommentPanel.IsVisible = true;
+            ActiveCommentLabel.Text = order.Comment;
+        }
+        else
+        {
+            ActiveCommentPanel.IsVisible = false;
+            ActiveCommentLabel.Text = string.Empty;
+        }
+
+        ActivePassengersLabel.Text = order.PassengerCount > 1
+            ? $"Пассажиров: {order.PassengerCount}"
+            : string.Empty;
+        ActivePassengersLabel.IsVisible = order.PassengerCount > 1;
+
         ActivePriceLabel.Text = order.EstimatedPrice.ToString("F0") + " ₽";
         ActiveTariffLabel.Text = order.TariffName;
 
@@ -891,6 +944,61 @@ public partial class MainDriverPage : ContentPage
         });
     }
 
+    /// Сервер сообщил о смене статуса заказа (уведомление приходит сразу,
+    /// не дожидаясь пятисекундного тика): отмену обрабатываем немедленно.
+    private void OnOrderStatusChangedFromServer(string payload)
+    {
+        try
+        {
+            if (_activeOrder == null || string.IsNullOrWhiteSpace(payload)) return;
+
+            using var doc = System.Text.Json.JsonDocument.Parse(payload);
+            var root = doc.RootElement;
+
+            var status = root.TryGetProperty("status", out var st)
+                ? NormStatus(st.GetString())
+                : string.Empty;
+            if (status is not ("cancelled" or "canceled")) return;
+
+            // Проверяем, что отменён именно наш заказ (если id пришёл)
+            if (root.TryGetProperty("orderId", out var oid)
+                && Guid.TryParse(oid.GetString(), out var cancelledId)
+                && cancelledId != _activeOrder.Id) return;
+
+            MainThread.BeginInvokeOnMainThread(async () => await HandleOrderCancelledAsync());
+        }
+        catch { }
+    }
+
+    /// Явное снятие отменённого заказа: карточка закрывается сама,
+    /// водитель получает заметное уведомление (звук + вибрация + окно).
+    private bool _cancelNoticeShown;
+
+    private async Task HandleOrderCancelledAsync(string? reason = null)
+    {
+        if (_activeOrder == null || _cancelNoticeShown) return;
+        _cancelNoticeShown = true;
+        try
+        {
+            var number = _activeOrder.OrderNumber;
+
+            // Заметно: вибрация + системный звук, экран мог быть в кармане
+            try { Vibration.Vibrate(TimeSpan.FromMilliseconds(800)); } catch { }
+            try { VoiceNavigator.SpeakText("Клиент отменил заказ"); } catch { }
+            NavigatorOverlay.Toast($"Заказ {number} отменён клиентом");
+
+            // Автоматически снимаем заявку: карточка, маршрут, простой, GPS-привязка
+            await OnOrderCompleted();
+
+            await SafeAlertAsync("❌ Клиент отменил заказ",
+                $"Заказ {number} отменён"
+                + (string.IsNullOrWhiteSpace(reason) ? "" : $" ({reason})")
+                + ".\n\nЗаявка снята автоматически — отказываться не нужно. Вы снова на линии.");
+        }
+        catch { }
+        finally { _cancelNoticeShown = false; }
+    }
+
     /// Заказ мог быть отменён клиентом или снят оператором, пока он открыт
     /// у водителя. Тогда карточку закрываем сами — без «Отказаться», который
     /// возвращал бы отменённый заказ диспетчеру.
@@ -909,10 +1017,7 @@ public partial class MainDriverPage : ContentPage
             }
 
             // Сервер больше не считает заказ активным для этого водителя
-            var number = _activeOrder.OrderNumber;
-            await OnOrderCompleted();
-            await SafeAlertAsync("Заказ отменён",
-                $"Заказ {number} отменён клиентом или диспетчером. Вы снова на линии.");
+            await HandleOrderCancelledAsync();
         }
         catch
         {
@@ -1858,6 +1963,12 @@ public partial class MainDriverPage : ContentPage
     }
 
     /// Карта маршрута в приложении: водитель → подача → (финиш)
+
+    protected override void OnDisappearing()
+    {
+        try { _signalR.OrderStatusChanged -= OnOrderStatusChangedFromServer; } catch { }
+        base.OnDisappearing();
+    }
 
     /// Аппаратная кнопка «Назад» сначала закрывает полноэкранную карту.
     protected override bool OnBackButtonPressed()
