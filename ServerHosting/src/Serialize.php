@@ -6,8 +6,66 @@ require_once __DIR__ . '/Taxi.php';
 
 final class Serialize
 {
+    /**
+     * Кем отменён заказ: клиентом, оператором, администратором или системой.
+     * Определяется по роли пользователя из cancelled_by_user_id; если автор
+     * не сохранён — по источнику заказа и признакам автоматической отмены.
+     *
+     * @return array{by:string,byText:string,byName:?string} by: client|operator|admin|superadmin|driver|system
+     */
+    public static function cancelledBy(\PDO $db, array $o): array
+    {
+        if (($o['status'] ?? '') !== 'cancelled') {
+            return ['by' => '', 'byText' => '', 'byName' => null];
+        }
+
+        $userId = $o['cancelled_by_user_id'] ?? null;
+        if ($userId) {
+            try {
+                $stmt = $db->prepare(
+                    'SELECT role, first_name, last_name FROM users WHERE id = ? LIMIT 1'
+                );
+                $stmt->execute([$userId]);
+                if ($row = $stmt->fetch()) {
+                    $role = (string) $row['role'];
+                    $name = trim((string) $row['first_name'] . ' ' . (string) $row['last_name']);
+                    // Заказчик — это клиент, оформивший заказ
+                    $isOwner = !empty($o['client_id']) && $o['client_id'] === $userId;
+                    $text = match (true) {
+                        $role === 'client' || $isOwner => 'Заказчиком',
+                        $role === 'operator' => 'Оператором',
+                        $role === 'admin', $role === 'superadmin' => 'Администратором',
+                        $role === 'driver' => 'Водителем',
+                        default => 'Пользователем',
+                    };
+                    return [
+                        'by' => $isOwner && $role === 'client' ? 'client' : $role,
+                        'byText' => $text . ($name !== '' ? ' · ' . $name : ''),
+                        'byName' => $name !== '' ? $name : null,
+                    ];
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        // Автор не сохранён: различаем автоматическую отмену и ручную
+        $reason = mb_strtolower((string) ($o['cancellation_reason'] ?? ''));
+        if ($reason !== '' && (
+            str_contains($reason, 'автомат')
+            || str_contains($reason, 'не найден')
+            || str_contains($reason, 'таймаут')
+            || str_contains($reason, 'систем')
+        )) {
+            return ['by' => 'system', 'byText' => 'Системой', 'byName' => null];
+        }
+
+        return ['by' => 'unknown', 'byText' => 'Не указано', 'byName' => null];
+    }
+
     public static function order(\PDO $db, array $o): array
     {
+        // Расшифровка автора отмены считается один раз на заказ
+        $cancelledBy = self::cancelledBy($db, $o);
         $driverInfo = null;
         $driverRow = null;
         if (!empty($o['driver_id'])) {
@@ -141,6 +199,10 @@ final class Serialize
             'clientReview' => $o['client_review'] ?? null,
             'driverReview' => $o['driver_review'] ?? null,
             'cancelledByUserId' => $o['cancelled_by_user_id'] ?? null,
+            // Кем отменён заказ: 'client' | 'operator' | 'admin' | 'driver' | 'system'
+            'cancelledBy' => $cancelledBy['by'],
+            'cancelledByText' => $cancelledBy['byText'],
+            'cancelledByName' => $cancelledBy['byName'],
             'transaction' => $transaction ? [
                 'id'=>$transaction['id'],'amount'=>(float)$transaction['amount'],
                 'method'=>$transaction['method'],'status'=>$transaction['status'],

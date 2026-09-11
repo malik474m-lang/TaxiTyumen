@@ -22,7 +22,8 @@ header('Content-Disposition: attachment; filename="taxi-tyumen-orders-' . gmdate
 
 echo "\xEF\xBB\xBF"; // BOM для Excel
 
-$header = ['Номер заказа', 'Дата создания', 'Статус', 'Откуда', 'Куда', 'Тариф', 'Оценка цены, руб',
+$header = ['Номер заказа', 'Дата создания', 'Статус', 'Кем отменён', 'Причина отмены',
+    'Откуда', 'Куда', 'Тариф', 'Оценка цены, руб',
     'Итог, руб', 'Оплата', 'Клиент', 'Телефон', 'Источник'];
 echo implode(';', array_map($escape, $header)) . "\r\n";
 
@@ -31,6 +32,8 @@ foreach ($rows as $o) {
         $o['order_number'],
         $fmt($o['created_at']),
         Taxi::STATUS_TEXT[$o['status']] ?? $o['status'],
+        Serialize::cancelledBy($db, $o)['byText'],
+        $o['cancellation_reason'] ?? '',
         $o['pickup_address'],
         $o['destination_address'] ?? '',
         Taxi::TARIFF_NAMES[$o['tariff']] ?? $o['tariff'],

@@ -95,6 +95,25 @@ $assignDrivers = $db->query(
      ORDER BY FIELD(d.status,'available','on_route','in_trip','busy','offline'),u.last_name"
 )->fetchAll();
 
+// Кем отменён заказ — показываем прямо в таблице (заказчик/оператор/админ)
+$cancelChip = function (array $o) use ($db): string {
+    if (($o['status'] ?? '') !== 'cancelled') return '';
+    $info = Serialize::cancelledBy($db, $o);
+    if ($info['byText'] === '') return '';
+    $cls = match ($info['by']) {
+        'client' => 'warn',
+        'operator', 'admin', 'superadmin' => 'violet',
+        'driver' => 'bad',
+        default => '',
+    };
+    $reason = trim((string) ($o['cancellation_reason'] ?? ''));
+    return '<div style="margin-top:4px"><span class="chip ' . $cls . '" title="'
+        . h($reason) . '">' . h($info['byText']) . '</span></div>'
+        . ($reason !== ''
+            ? '<div class="mut" style="font-size:11px;margin-top:2px">' . h($reason) . '</div>'
+            : '');
+};
+
 $statusChip = function (string $s): string {
     $cls = match ($s) {
         'completed' => 'ok',
@@ -140,7 +159,10 @@ layout_header('Заказы', 'orders');
         <div class="mut" style="font-size:11px"><?= h(fmt_date($o['created_at'])) ?> · <?= $o['source'] === 'operator_app' ? 'диспетчерская' : 'приложение' ?></div>
         <?php if ($esc): ?><span class="chip bad">эскалация</span><?php endif; ?>
       </td>
-      <td><?= $statusChip($o['status']) ?></td>
+      <td>
+        <?= $statusChip($o['status']) ?>
+        <?= $cancelChip($o) ?>
+      </td>
       <td>
         <div><b><?= h((string) $o['pickup_address']) ?></b></div>
         <div class="mut">→ <?= h((string) ($o['destination_address'] ?? '—')) ?></div>
