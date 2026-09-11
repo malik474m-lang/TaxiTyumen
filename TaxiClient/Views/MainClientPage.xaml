@@ -222,13 +222,25 @@
                         CornerRadius="14"
                         Clicked="OnOrderClicked"/>
 
-                <Button Text=" Мои поездки"
-                        BackgroundColor="#333"
-                        TextColor="White"
-                        CornerRadius="10"
-                        HeightRequest="42"
-                        FontSize="14"
-                        Clicked="OnHistoryClicked"/>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                    <Button Grid.Column="0"
+                            Text=" Мои поездки"
+                            BackgroundColor="#333"
+                            TextColor="White"
+                            CornerRadius="10"
+                            HeightRequest="42"
+                            FontSize="14"
+                            Clicked="OnHistoryClicked"/>
+                    <Button Grid.Column="1"
+                            Text=" Выйти"
+                            BackgroundColor="#2D2D3F"
+                            TextColor="#EF5350"
+                            CornerRadius="10"
+                            HeightRequest="42"
+                            Padding="16,0"
+                            FontSize="14"
+                            Clicked="OnLogoutClicked"/>
+                </Grid>
             </StackLayout>
 
             <!-- БАННЕР ЧАТА -->

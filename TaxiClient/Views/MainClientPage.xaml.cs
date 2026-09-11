@@ -1414,7 +1414,7 @@ initLeaflet();
             await DisplayAlert("Ошибка оплаты", ex.Message, "OK");
         }
     }
-private async void OnHistoryClicked(object? sender, EventArgs e)
+    private async void OnHistoryClicked(object? sender, EventArgs e)
     {
         try
         {
@@ -1424,5 +1424,25 @@ private async void OnHistoryClicked(object? sender, EventArgs e)
         {
             await DisplayAlert("Ошибка истории поездок", ex.Message, "OK");
         }
+    }
+
+    /// Выход из аккаунта: чистим сохранённую сессию и возвращаемся на экран входа
+    private async void OnLogoutClicked(object? sender, EventArgs e)
+    {
+        try
+        {
+            if (!await DisplayAlert("Выход", "Выйти из аккаунта?", "Выйти", "Отмена"))
+                return;
+
+            SecureStorage.Remove("token");
+            SecureStorage.Remove("user_id");
+            SecureStorage.Remove("user_name");
+            SecureStorage.Remove("role");
+            // last_phone оставляем, чтобы при следующем входе телефон уже был заполнен
+
+            Application.Current!.MainPage = new NavigationPage(
+                new LoginPage(_api, _signalR));
+        }
+        catch { }
     }
 }

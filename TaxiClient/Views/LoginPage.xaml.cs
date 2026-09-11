@@ -17,6 +17,73 @@ public partial class LoginPage : ContentPage
         ApplyBrand(BrandingService.Current);
         BrandingService.Updated += b =>
             MainThread.BeginInvokeOnMainThread(() => ApplyBrand(b));
+
+        Loaded += OnPageLoaded;
+    }
+
+    /// Авто-вход по сохранённой сессии: токен восстанавливается из защищённого
+    /// хранилища — ввод номера и пароля нужен только при первом входе.
+    private async void OnPageLoaded(object? sender, EventArgs e)
+    {
+        Loaded -= OnPageLoaded;
+
+        // Телефон из последнего входа подставляем сразу
+        try
+        {
+            var lastPhone = await SecureStorage.GetAsync("last_phone");
+            if (!string.IsNullOrWhiteSpace(lastPhone))
+                PhoneEntry.Text = lastPhone;
+        }
+        catch { }
+
+        try
+        {
+            var token = await SecureStorage.GetAsync("token");
+            var userIdRaw = await SecureStorage.GetAsync("user_id");
+            var userName = await SecureStorage.GetAsync("user_name");
+            var role = await SecureStorage.GetAsync("role");
+
+            if (string.IsNullOrWhiteSpace(token) ||
+                !Guid.TryParse(userIdRaw, out var userId))
+                return;
+
+            // Показываем индикатор загрузки, пока осуществляется авто-вход
+            Loading.IsVisible = true;
+            Loading.IsRunning = true;
+            LoginBtn.IsEnabled = false;
+
+            var names = (userName ?? "Клиент").Split(' ', 2);
+            var auth = new Models.AuthResponse
+            {
+                UserId = userId,
+                Token = token,
+                FirstName = names[0],
+                LastName = names.Length > 1 ? names[1] : "",
+                Phone = PhoneEntry.Text?.Trim() ?? "",
+                Role = role ?? "Client"
+            };
+
+            _api.RestoreSession(auth);
+
+            try
+            {
+                await _signalR.ConnectAsync(token);
+            }
+            catch
+            {
+                // SignalR недоступен — продолжаем без реалтайма
+            }
+
+            Application.Current!.MainPage = new NavigationPage(
+                new MainClientPage(_api, _signalR));
+        }
+        catch
+        {
+            // Сессия повреждена или токен протух — показываем обычный экран входа
+            Loading.IsRunning = false;
+            Loading.IsVisible = false;
+            LoginBtn.IsEnabled = true;
+        }
     }
 
     /// Применение бренда: название сервиса, подзаголовок приложения,

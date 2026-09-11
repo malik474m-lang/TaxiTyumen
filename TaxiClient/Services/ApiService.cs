@@ -33,6 +33,13 @@ public class ApiService
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
     }
 
+    /// Восстановление сессии из защищённого хранилища (авто-вход).
+    public void RestoreSession(AuthResponse auth)
+    {
+        CurrentUser = auth;
+        SetToken(auth.Token);
+    }
+
     public async Task<AuthResponse> LoginAsync(string phone, string password)
     {
         var resp = await _http.PostAsJsonAsync("auth/login",
@@ -46,6 +53,18 @@ public class ApiService
 
         CurrentUser = auth;
         SetToken(auth.Token);
+
+        // Сохраняем сессию в защищённом хранилище для авто-входа при следующем запуске
+        try
+        {
+            await SecureStorage.SetAsync("token", auth.Token);
+            await SecureStorage.SetAsync("last_phone", phone);
+            await SecureStorage.SetAsync("user_id", auth.UserId.ToString());
+            await SecureStorage.SetAsync("user_name", $"{auth.FirstName} {auth.LastName}".Trim());
+            await SecureStorage.SetAsync("role", auth.Role ?? "Client");
+        }
+        catch { }
+
         return auth;
     }
 
@@ -69,6 +88,18 @@ public class ApiService
 
         CurrentUser = auth;
         SetToken(auth.Token);
+
+        // Сохраняем сессию в защищённом хранилище для авто-входа при следующем запуске
+        try
+        {
+            await SecureStorage.SetAsync("token", auth.Token);
+            await SecureStorage.SetAsync("last_phone", phone);
+            await SecureStorage.SetAsync("user_id", auth.UserId.ToString());
+            await SecureStorage.SetAsync("user_name", $"{auth.FirstName} {auth.LastName}".Trim());
+            await SecureStorage.SetAsync("role", auth.Role ?? "Client");
+        }
+        catch { }
+
         return auth;
     }
 
