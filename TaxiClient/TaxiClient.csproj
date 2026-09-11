@@ -10,8 +10,8 @@
     <!-- Название под иконкой на телефоне (бренд сервиса: heroTitle) -->
     <ApplicationTitle>Заказ такси</ApplicationTitle>
     <ApplicationId>ru.taxityumen.client</ApplicationId>
-    <ApplicationDisplayVersion>1.5</ApplicationDisplayVersion>
-    <ApplicationVersion>6</ApplicationVersion>
+    <ApplicationDisplayVersion>1.6</ApplicationDisplayVersion>
+    <ApplicationVersion>7</ApplicationVersion>
     <WindowsPackageType>None</WindowsPackageType>
     <SkipValidateMauiImplicitPackageReferences>true</SkipValidateMauiImplicitPackageReferences>
 
@@ -29,7 +29,12 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- Иконка и сплэш — общие с брендом сервиса -->
-    <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#FACC15" />
+    <!-- Иконка приложения — картинка 50.png (из корня репозитория).
+         Задаётся ОДНИМ файлом: ForegroundScale намеренно не используем —
+         в .NET MAUI он ломается на системах с запятой в качестве
+         десятичного разделителя (русская локаль Windows) и увеличивает
+         картинку вместо уменьшения. Color — фон полей у краёв. -->
+    <MauiIcon Include="Resources\AppIcon\appicon50.png" Color="#FACC15" />
     <MauiSplash Include="Resources\Splash\splash.svg" Color="#0A0A0C" BaseSize="200,200" />
   </ItemGroup>
 

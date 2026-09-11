@@ -17,8 +17,9 @@ public partial class MainClientPage : ContentPage
     private readonly List<Entry> _stopEntries = new();
     private int _stopCount = 0;
 
-    private double _pickupLat = 57.1522;
-    private double _pickupLng = 65.5272;
+    // 0 — адрес ещё не выбран (карта центрируется по конфигурации сервиса)
+    private double _pickupLat = 0;
+    private double _pickupLng = 0;
     private double _destLat = 0;
     private double _destLng = 0;
 
@@ -63,7 +64,40 @@ public partial class MainClientPage : ContentPage
         BuildTariffButtons();
         _ = LoadOrderOptionsAsync();
 
-        PickupEntry.Text = "г. Тюмень, ул. Республики, 52";
+        // Поля адресов при старте пустые: раньше подставлялся демо-адрес,
+        // и пассажиру приходилось сначала его стирать.
+        ClearAddressFields();
+    }
+
+    /// Очистка адресов, координат и оценки цены — состояние «новый заказ».
+    private void ClearAddressFields()
+    {
+        try
+        {
+            // Флаги гасят автоподсказки: очистка не должна запускать поиск
+            _suppressPickup = true;
+            _suppressDest = true;
+            PickupEntry.Text = string.Empty;
+            DestEntry.Text = string.Empty;
+            EntranceEntry.Text = string.Empty;
+            _suppressPickup = false;
+            _suppressDest = false;
+
+            PickupSuggestions.IsVisible = false;
+            PickupSuggestions.Children.Clear();
+            DestSuggestions.IsVisible = false;
+            DestSuggestions.Children.Clear();
+
+            // Координаты «не заданы» — цена считается только по новым адресам
+            _pickupLat = 0;
+            _pickupLng = 0;
+            _destLat = 0;
+            _destLng = 0;
+
+            PriceLabel.Text = "—";
+            DistLabel.Text = "Укажите адреса подачи и назначения";
+        }
+        catch { }
     }
 
     // =========================
@@ -819,10 +853,16 @@ initLeaflet();
 
             if (_destLat == 0 || _destLng == 0)
             {
+                // Пустые поля — это норма (начало заказа), а не ошибка:
+                // подсказываем следующий шаг вместо «Ошибка геокодирования»
+                var pickupEmpty = string.IsNullOrWhiteSpace(PickupEntry.Text);
+                var destEmpty = string.IsNullOrWhiteSpace(DestEntry.Text);
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
-                    PriceLabel.Text = "Ошибка";
-                    DistLabel.Text = "Ошибка геокодирования";
+                    PriceLabel.Text = "—";
+                    DistLabel.Text = pickupEmpty || destEmpty
+                        ? "Укажите адреса подачи и назначения"
+                        : "Не удалось определить адрес назначения — выберите из подсказок";
                 });
                 return;
             }
@@ -892,7 +932,12 @@ initLeaflet();
     {
         if (string.IsNullOrWhiteSpace(PickupEntry.Text))
         {
-            await DisplayAlert("Ошибка", "Укажите адрес подачи", "OK");
+            await DisplayAlert("Адрес подачи", "Укажите, откуда вас забрать", "OK");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(DestEntry.Text))
+        {
+            await DisplayAlert("Адрес назначения", "Укажите, куда вас отвезти", "OK");
             return;
         }
 
@@ -903,6 +948,18 @@ initLeaflet();
         {
             if (_prices.Count == 0)
                 await SafeLoadPricesAsync();
+
+            if (_pickupLat == 0 || _pickupLng == 0)
+            {
+                await DisplayAlert(
+                    "Адрес подачи",
+                    "Не удалось определить адрес подачи. Выберите его из подсказок или уточните.",
+                    "OK");
+
+                OrderBtn.IsEnabled = true;
+                OrderBtn.Text = "  Заказать такси";
+                return;
+            }
 
             if (_destLat == 0 || _destLng == 0)
             {
@@ -1210,6 +1267,9 @@ initLeaflet();
             OrderBtn.IsEnabled = true;
             OrderBtn.Text = "  Заказать такси";
             CancelBtn.IsVisible = true;
+
+            // Следующий заказ начинается с чистых полей
+            ClearAddressFields();
 
             try { MapWebView.EvaluateJavaScriptAsync("clearDriver()"); } catch { }
             try { MapWebView.EvaluateJavaScriptAsync("clearRoute()"); } catch { }
