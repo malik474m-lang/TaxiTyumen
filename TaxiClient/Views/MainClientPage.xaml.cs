@@ -1068,7 +1068,7 @@ initLeaflet();
             {
                 ActiveDriverLabel.Text = "Ищем водителя...";
                 ActiveCarLabel.Text = "";
-                ActivePhoneLabel.Text = "";
+                ActivePlateLabel.Text = "";
                 ActiveEtaPanel.IsVisible = false;
             }
         }
@@ -1080,10 +1080,20 @@ initLeaflet();
         try
         {
             ActiveDriverLabel.Text = driver.FullName + "   " + driver.Rating.ToString("F1");
-            ActiveCarLabel.Text = !string.IsNullOrWhiteSpace(driver.CarDisplay)
+
+            // Марка, модель и цвет — без госномера в скобках: номер выводим
+            // отдельной крупной строкой (по нему пассажир и ищет машину)
+            var car = !string.IsNullOrWhiteSpace(driver.CarDisplay)
                 ? driver.CarDisplay
-                : driver.CarColor + " " + driver.CarBrand + " " + driver.CarModel + " (" + driver.LicensePlate + ")";
-            ActivePhoneLabel.Text = " " + driver.Phone;
+                : $"{driver.CarColor} {driver.CarBrand} {driver.CarModel}";
+            if (!string.IsNullOrWhiteSpace(driver.LicensePlate))
+                car = car.Replace("(" + driver.LicensePlate + ")", string.Empty).Trim();
+            ActiveCarLabel.Text = car;
+
+            // Телефон водителя пассажиру не показываем — связь через чат
+            ActivePlateLabel.Text = string.IsNullOrWhiteSpace(driver.LicensePlate)
+                ? string.Empty
+                : driver.LicensePlate.ToUpperInvariant();
         }
         catch { }
     }

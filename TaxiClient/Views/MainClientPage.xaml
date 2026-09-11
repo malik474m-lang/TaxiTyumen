@@ -332,9 +332,13 @@
                         <Label x:Name="ActiveCarLabel"
                                TextColor="LightGray"
                                FontSize="14"/>
-                        <Label x:Name="ActivePhoneLabel"
-                               TextColor="#4FC3F7"
-                               FontSize="14"/>
+                        <!-- Госномер машины крупно: по нему пассажир узнаёт
+                             свой автомобиль. Телефон водителя не показываем -->
+                        <Label x:Name="ActivePlateLabel"
+                               TextColor="#FFD700"
+                               FontSize="20"
+                               FontAttributes="Bold"
+                               CharacterSpacing="2"/>
                     </StackLayout>
                 </Border>
 
