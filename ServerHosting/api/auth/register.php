@@ -56,6 +56,26 @@ if ($role === 'driver') {
     ]);
 }
 
+// Приветственное SMS новому клиенту (вид 'registration' в настройках шлюза).
+// Отправка не должна мешать регистрации — любые сбои гасим.
+try {
+    if ($role === 'client') {
+        $service = ServiceSettings::get($db);
+        SmsService::send(
+            $db,
+            $phone,
+            sprintf(
+                '%s: регистрация завершена. Ваш логин — номер телефона %s.%s',
+                $service['sms_sender_name'],
+                $phone,
+                !empty($service['support_phone']) ? ' Поддержка: ' . $service['support_phone'] . '.' : ''
+            ),
+            'registration'
+        );
+    }
+} catch (\Throwable) {
+}
+
 $stmt = $db->prepare('SELECT * FROM users WHERE id = ?');
 $stmt->execute([$uid]);
 $user = $stmt->fetch();

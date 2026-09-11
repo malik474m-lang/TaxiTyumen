@@ -28,7 +28,8 @@ final class NotificationService
             $stmt->execute([$recipientId]);
             $phone = $stmt->fetchColumn();
             if ($phone) {
-                $result = SmsService::send($db, (string) $phone, $message);
+                // Ручные рассылки и уведомления оператора — вид 'admin'
+                $result = SmsService::send($db, (string) $phone, $message, 'admin');
                 $delivery = $result['status'];
                 $providerResponse = $result['response'] ?? null;
             } else {
@@ -166,7 +167,8 @@ final class NotificationService
                     $eta ? sprintf(', подача ~%d мин', $eta) : '',
                     $driver['name']
                 ),
-                'sms_on_assigned'
+                'sms_on_assigned',
+                'order_assigned'
             );
         }
     }
@@ -192,18 +194,32 @@ final class NotificationService
         );
 
         if ($driver) {
-            self::smsToClient($db, $order, $text, 'sms_on_arrived');
+            self::smsToClient($db, $order, $text, 'sms_on_arrived', 'order_arrived');
         }
     }
 
     public static function notifyClientTripCompleted(\PDO $db, array $order): void
     {
         if (!$order['client_id']) return;
+        $text = sprintf(
+            'Итоговая стоимость: %.0f ₽. Спасибо за поездку!',
+            $order['final_price'] ?? $order['estimated_price']
+        );
         self::create(
             $db, $order['client_id'], 'OrderStatusChanged', 'Поездка завершена',
-            sprintf('Итоговая стоимость: %.0f ₽. Спасибо за поездку!', $order['final_price'] ?? $order['estimated_price']),
+            $text,
             $order['id'], ['status' => 'Completed', 'finalPrice' => (float) ($order['final_price'] ?? $order['estimated_price'])]
         );
+
+        // SMS об итоговой сумме: вид 'order_completed' (в админке по умолчанию выключен)
+        try {
+            $phone = self::clientPhone($db, $order);
+            if ($phone && SmsGateway::isEnabled($db)
+                && SmsGateway::isPurposeEnabled($db, 'order_completed')) {
+                SmsService::send($db, $phone, $text, 'order_completed');
+            }
+        } catch (\Throwable) {
+        }
     }
 
     public static function notifyClientOrderCancelled(\PDO $db, array $order, ?string $reason): void
@@ -281,14 +297,19 @@ final class NotificationService
      * SMS пассажиру о статусе заказа. Управляется настройками сервиса
      * (sms_on_assigned / sms_on_arrived) — админ включает нужные события.
      */
-    private static function smsToClient(\PDO $db, array $order, string $text, string $settingKey): void
-    {
+    private static function smsToClient(
+        \PDO $db,
+        array $order,
+        string $text,
+        string $settingKey,
+        string $purpose = 'other'
+    ): void {
         try {
             $settings = ServiceSettings::get($db);
             if ((int) ($settings[$settingKey] ?? 0) !== 1) return;
             $phone = self::clientPhone($db, $order);
             if (!$phone) return;
-            SmsService::send($db, $phone, $text);
+            SmsService::send($db, $phone, $text, $purpose);
         } catch (\Throwable) {
             // SMS не должна ломать основной сценарий заказа
         }

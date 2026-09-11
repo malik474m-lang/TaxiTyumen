@@ -23,6 +23,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    if ($cmd === 'purposes') {
+        SmsGateway::savePurposes($db, (array) ($_POST['purpose'] ?? []));
+        header('Location: sms-gateway.php?ok=' . urlencode('Виды сообщений сохранены'));
+        exit;
+    }
+
     if ($cmd === 'token') {
         // Токен показывается один раз — сразу после генерации
         $newToken = SmsGateway::regenerateToken($db);
@@ -49,6 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $settings = SmsGateway::settings($db);
 $stats = SmsGateway::stats($db);
+$purposes = SmsGateway::purposes($db);
 SmsGateway::requeueStale($db);
 
 // Журнал очереди с фильтрами по датам и статусу
@@ -147,6 +154,31 @@ layout_header('SMS-шлюз', 'smsgw');
 </div>
 
 <div class="card" style="margin-top:18px">
+  <h3>Какие сообщения отправлять через шлюз</h3>
+  <p class="mut" style="font-size:12px;margin-top:4px">
+    Выключенный вид не отправляется совсем: сервис только сохраняет уведомление
+    в приложении. Изменения применяются сразу, пересборка приложений не нужна.
+  </p>
+  <form method="post" style="margin-top:12px">
+    <input type="hidden" name="cmd" value="purposes">
+    <div class="grid2" style="gap:10px">
+      <?php foreach (SmsGateway::PURPOSES as $key => $meta): ?>
+        <label class="mut" style="display:flex;gap:10px;align-items:flex-start;
+               padding:10px 12px;background:#18181d;border-radius:10px;border:1px solid var(--line)">
+          <input type="checkbox" name="purpose[]" value="<?= h($key) ?>"
+                 style="margin-top:3px" <?= !empty($purposes[$key]) ? 'checked' : '' ?>>
+          <span>
+            <b style="color:#f4f4f5"><?= h($meta[0]) ?></b>
+            <div class="mut" style="font-size:11px;margin-top:2px"><?= h($meta[1]) ?></div>
+          </span>
+        </label>
+      <?php endforeach; ?>
+    </div>
+    <button class="btn" style="margin-top:12px">Сохранить виды сообщений</button>
+  </form>
+</div>
+
+<div class="card" style="margin-top:18px">
   <h3>Очередь сообщений</h3>
   <div class="flex" style="gap:18px;margin-top:10px;flex-wrap:wrap">
     <div><div class="mut" style="font-size:11px">В очереди</div><b style="font-size:22px"><?= $stats['queued'] ?></b></div>
@@ -193,7 +225,9 @@ layout_header('SMS-шлюз', 'smsgw');
     <?php foreach ($queue as $q): ?>
       <tr>
         <td class="mut"><?= h(fmt_date($q['created_at'])) ?>
-          <div class="mut" style="font-size:11px"><?= h((string) $q['purpose']) ?></div>
+          <div class="mut" style="font-size:11px">
+            <?= h(SmsGateway::PURPOSES[$q['purpose']][0] ?? (string) $q['purpose']) ?>
+          </div>
         </td>
         <td><b><?= h($q['phone']) ?></b></td>
         <td style="max-width:340px"><?= h(mb_substr((string) $q['message'], 0, 160)) ?>

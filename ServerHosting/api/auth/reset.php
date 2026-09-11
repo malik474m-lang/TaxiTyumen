@@ -45,7 +45,7 @@ if ($action === 'send') {
         ->execute([$code, $expiry, $user['id']]);
 
     $service = ServiceSettings::get($db);
-    $sms = SmsService::send($db, $phone, "$code — код восстановления пароля " . $service['sms_sender_name']);
+    $sms = SmsService::send($db, $phone, "$code — код восстановления пароля " . $service['sms_sender_name'], 'password_reset');
     $sent = ($sms['status'] ?? '') === 'sent';
 
     error_log("[SMS] Код восстановления пароля для $phone: $code");

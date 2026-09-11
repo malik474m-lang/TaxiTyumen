@@ -316,6 +316,7 @@ h1{font-size:24px;font-weight:900;letter-spacing:-.02em;margin-bottom:4px}
 .bad{background:rgba(248,113,113,.12);color:#fca5a5}
 .info{background:rgba(56,189,248,.12);color:#7dd3fc}
 .violet{background:rgba(167,139,250,.12);color:#c4b5fd}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
 .datefilter{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0 0}
 .datefilter input[type=date]{background:#18181d;border:1px solid var(--line);color:#f4f4f5;
   border-radius:9px;padding:7px 10px;font:13px inherit;color-scheme:dark}

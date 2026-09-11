@@ -7,7 +7,11 @@ require_once __DIR__ . '/Db.php';
 
 final class SmsService
 {
-    public static function send(\PDO $db, string $phone, string $message): array
+    /**
+     * Отправка SMS. $purpose — вид сообщения (SmsGateway::PURPOSES):
+     * по нему администратор включает и выключает автоматические рассылки.
+     */
+    public static function send(\PDO $db, string $phone, string $message, string $purpose = 'other'): array
     {
         $phone = Auth::normalizePhone($phone);
 
@@ -15,13 +19,20 @@ final class SmsService
         // сообщение кладётся в очередь, телефон заберёт его и отправит сам.
         try {
             if (SmsGateway::isEnabled($db)) {
-                $id = SmsGateway::enqueue($db, $phone, $message, 'auto');
+                if (!SmsGateway::isPurposeEnabled($db, $purpose)) {
+                    // Вид сообщения выключен администратором — SMS не отправляем
+                    self::log($db, 'send', $phone, 'skipped', null,
+                        'Вид сообщения «' . $purpose . '» отключён в настройках SMS-шлюза', 0);
+                    return ['status' => 'skipped', 'response' => 'purpose_disabled:' . $purpose];
+                }
+
+                $id = SmsGateway::enqueue($db, $phone, $message, $purpose);
                 self::log($db, 'send', $phone, 'success', null,
-                    'Поставлено в очередь SMS-шлюза (' . $id . ')', 0);
+                    'Поставлено в очередь SMS-шлюза (' . $purpose . ', ' . $id . ')', 0);
                 return ['status' => 'sent', 'response' => 'queued:' . $id, 'gateway' => 'device'];
             }
         } catch (\Throwable $e) {
-            // Шлюз недоступен — молча уходим наsms.ru
+            // Шлюз недоступен — уходим на sms.ru
             self::log($db, 'send', $phone, 'failed', null,
                 'Ошибка SMS-шлюза: ' . $e->getMessage(), 0);
         }

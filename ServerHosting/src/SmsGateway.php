@@ -25,6 +25,59 @@ final class SmsGateway
     /** Максимум попыток отправки одного сообщения. */
     public const MAX_ATTEMPTS = 3;
 
+    /**
+     * Виды сообщений, которые сервис отправляет автоматически.
+     * Каждый вид включается и выключается отдельно в админке.
+     * Ключ => [название, пояснение, по умолчанию включён].
+     */
+    public const PURPOSES = [
+        'auth_code' => [
+            'Код входа по SMS',
+            'Одноразовый код при входе и регистрации по номеру телефона',
+            true,
+        ],
+        'registration' => [
+            'Регистрация нового клиента',
+            'Приветственное SMS после создания аккаунта в приложении',
+            true,
+        ],
+        'password_reset' => [
+            'Восстановление пароля',
+            'Код для смены пароля в приложении клиента',
+            true,
+        ],
+        'order_assigned' => [
+            'Водитель назначен',
+            'Марка, госномер и время подачи — сразу после принятия заказа',
+            true,
+        ],
+        'order_arrived' => [
+            'Такси прибыло',
+            'Сообщение пассажиру, когда водитель на месте подачи',
+            true,
+        ],
+        'order_completed' => [
+            'Поездка завершена',
+            'Итоговая стоимость поездки',
+            false,
+        ],
+        'admin' => [
+            'Сообщения из админки',
+            'Ручные рассылки и уведомления оператора',
+            true,
+        ],
+        'test' => [
+            'Проверочные сообщения',
+            'Тестовая отправка со страницы SMS-шлюза',
+            true,
+        ],
+        'other' => [
+            'Прочие уведомления',
+            'Служебные сообщения, не вошедшие в список выше',
+            true,
+        ],
+    ];
+
     public static function ensureTables(\PDO $db): void
     {
         $db->exec(
@@ -57,8 +110,22 @@ final class SmsGateway
                 INDEX (status), INDEX (created_at), INDEX (phone)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
         );
+        $db->exec(
+            "CREATE TABLE IF NOT EXISTS sms_gateway_purposes (
+                purpose    VARCHAR(40) PRIMARY KEY,
+                enabled    TINYINT(1) NOT NULL DEFAULT 1,
+                updated_at DATETIME NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+
         // Единственная строка настроек
         $db->exec('INSERT IGNORE INTO sms_gateway_settings (id, enabled) VALUES (1, 0)');
+
+        // Сид видов сообщений; повторный вызов не трогает выбор администратора
+        $seed = $db->prepare('INSERT IGNORE INTO sms_gateway_purposes (purpose, enabled) VALUES (?,?)');
+        foreach (self::PURPOSES as $key => $meta) {
+            $seed->execute([$key, $meta[2] ? 1 : 0]);
+        }
     }
 
     public static function settings(\PDO $db): array
@@ -72,6 +139,45 @@ final class SmsGateway
         $row['enabled'] = (bool) ($row['enabled'] ?? false);
         $row['online'] = self::isOnline($row);
         return $row;
+    }
+
+    /** Состояние всех видов сообщений: ключ => bool. */
+    public static function purposes(\PDO $db): array
+    {
+        self::ensureTables($db);
+        $rows = [];
+        try {
+            foreach ($db->query('SELECT purpose, enabled FROM sms_gateway_purposes')->fetchAll() as $row) {
+                $rows[(string) $row['purpose']] = (bool) $row['enabled'];
+            }
+        } catch (\Throwable) {
+        }
+
+        $out = [];
+        foreach (self::PURPOSES as $key => $meta) {
+            $out[$key] = $rows[$key] ?? (bool) $meta[2];
+        }
+        return $out;
+    }
+
+    /** Разрешён ли этот вид сообщений к отправке через шлюз. */
+    public static function isPurposeEnabled(\PDO $db, string $purpose): bool
+    {
+        $purpose = isset(self::PURPOSES[$purpose]) ? $purpose : 'other';
+        return self::purposes($db)[$purpose] ?? true;
+    }
+
+    /** Сохранение переключателей видов сообщений (из админки). */
+    public static function savePurposes(\PDO $db, array $enabledKeys): void
+    {
+        self::ensureTables($db);
+        $stmt = $db->prepare(
+            'INSERT INTO sms_gateway_purposes (purpose, enabled, updated_at) VALUES (?,?,?)
+             ON DUPLICATE KEY UPDATE enabled=VALUES(enabled), updated_at=VALUES(updated_at)'
+        );
+        foreach (array_keys(self::PURPOSES) as $key) {
+            $stmt->execute([$key, in_array($key, $enabledKeys, true) ? 1 : 0, Db::utcNow()]);
+        }
     }
 
     public static function isEnabled(\PDO $db): bool
