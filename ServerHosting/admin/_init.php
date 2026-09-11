@@ -159,6 +159,89 @@ function city_today_start_utc(): string
     return gmdate('Y-m-d H:i:s', strtotime($localDate . ' 00:00:00') - $offset);
 }
 
+// ── Фильтр по датам (общий для журналов и списков) ──────────────────────────
+
+/**
+ * Разбирает ?from=ГГГГ-ММ-ДД&to=ГГГГ-ММ-ДД и готовит условие для SQL.
+ * Даты вводятся в местном времени города, а в базе метки хранятся в UTC —
+ * границы пересчитываются, иначе «вчера» захватывало бы лишние часы.
+ *
+ * @return array{from:string,to:string,sql:string,params:array<int,string>,active:bool}
+ */
+function date_filter(string $column, string $defaultPreset = ''): array
+{
+    $from = trim((string) ($_GET['from'] ?? ''));
+    $to = trim((string) ($_GET['to'] ?? ''));
+    $preset = trim((string) ($_GET['period'] ?? $defaultPreset));
+
+    // Быстрые кнопки: сегодня / 7 дней / 30 дней
+    if ($preset !== '' && $from === '' && $to === '') {
+        $days = match ($preset) {
+            'today' => 0,
+            'week' => 6,
+            'month' => 29,
+            default => null,
+        };
+        if ($days !== null) {
+            $offset = city_offset_seconds();
+            $to = gmdate('Y-m-d', time() + $offset);
+            $from = gmdate('Y-m-d', time() + $offset - $days * 86400);
+        }
+    }
+
+    $valid = fn(string $d): bool => (bool) preg_match('/^\d{4}-\d{2}-\d{2}$/', $d);
+    $sql = '';
+    $params = [];
+    $offset = city_offset_seconds();
+
+    if ($valid($from)) {
+        $sql .= " AND $column >= ?";
+        $params[] = gmdate('Y-m-d H:i:s', strtotime($from . ' 00:00:00') - $offset);
+    }
+    if ($valid($to)) {
+        $sql .= " AND $column <= ?";
+        $params[] = gmdate('Y-m-d H:i:s', strtotime($to . ' 23:59:59') - $offset);
+    }
+
+    return [
+        'from' => $valid($from) ? $from : '',
+        'to' => $valid($to) ? $to : '',
+        'sql' => $sql,
+        'params' => $params,
+        'active' => $params !== [],
+    ];
+}
+
+/**
+ * Панель фильтра: период «с … по …», быстрые кнопки и сброс.
+ * $keep — параметры страницы, которые надо сохранить (например, status/type).
+ */
+function date_filter_form(array $filter, array $keep = []): void
+{
+    $qs = function (array $extra) use ($keep): string {
+        $params = array_filter($keep, fn($v) => $v !== '' && $v !== null);
+        return http_build_query(array_merge($params, $extra));
+    };
+    ?>
+    <form method="get" class="datefilter">
+      <?php foreach ($keep as $k => $v): if ($v === '' || $v === null) continue; ?>
+        <input type="hidden" name="<?= h((string) $k) ?>" value="<?= h((string) $v) ?>">
+      <?php endforeach; ?>
+      <span class="mut" style="font-size:12px">Период:</span>
+      <input type="date" name="from" value="<?= h($filter['from']) ?>">
+      <span class="mut">—</span>
+      <input type="date" name="to" value="<?= h($filter['to']) ?>">
+      <button class="btn sm">Показать</button>
+      <a class="btn sm ghost" href="?<?= h($qs(['period' => 'today'])) ?>">Сегодня</a>
+      <a class="btn sm ghost" href="?<?= h($qs(['period' => 'week'])) ?>">7 дней</a>
+      <a class="btn sm ghost" href="?<?= h($qs(['period' => 'month'])) ?>">30 дней</a>
+      <?php if ($filter['active']): ?>
+        <a class="btn sm ghost" href="?<?= h($qs([])) ?>">Сбросить</a>
+      <?php endif; ?>
+    </form>
+    <?php
+}
+
 // ── Фирменный лэйаут ────────────────────────────────────────────────────────
 
 function layout_header(string $title, string $active): void
@@ -182,6 +265,25 @@ function layout_header(string $title, string $active): void
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= h($title) ?> — <?= h($service['service_name']) ?></title>
+<?php
+// Favicon: логотип бренда из админки, иначе — фирменный SVG со знаком такси
+$favicon = null;
+try {
+    $logo = $db->query("SELECT logo_path FROM branding_settings WHERE app='client' AND logo_path IS NOT NULL LIMIT 1")->fetchColumn();
+    if ($logo) $favicon = '/api/branding-logo.php?app=client';
+} catch (\Throwable) {
+}
+?>
+<?php if ($favicon): ?>
+<link rel="icon" href="<?= h($favicon) ?>">
+<?php else: ?>
+<link rel="icon" href="data:image/svg+xml,<?= rawurlencode(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+    . '<rect width="64" height="64" rx="14" fill="#facc15"/>'
+    . '<text x="32" y="45" font-family="Segoe UI,Arial" font-size="34" font-weight="bold"'
+    . ' text-anchor="middle" fill="#0a0a0c">T</text></svg>'
+) ?>">
+<?php endif; ?>
 <style>
 :root{--brand:#facc15;--ink:#0a0a0c;--panel:#121216;--line:rgba(255,255,255,.08)}
 *{box-sizing:border-box;margin:0}
@@ -214,6 +316,9 @@ h1{font-size:24px;font-weight:900;letter-spacing:-.02em;margin-bottom:4px}
 .bad{background:rgba(248,113,113,.12);color:#fca5a5}
 .info{background:rgba(56,189,248,.12);color:#7dd3fc}
 .violet{background:rgba(167,139,250,.12);color:#c4b5fd}
+.datefilter{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0 0}
+.datefilter input[type=date]{background:#18181d;border:1px solid var(--line);color:#f4f4f5;
+  border-radius:9px;padding:7px 10px;font:13px inherit;color-scheme:dark}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#71717a;
   padding:10px 12px;border-bottom:1px solid var(--line)}

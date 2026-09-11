@@ -47,7 +47,12 @@ if ($method === 'POST') {
     if (!$driver || !$sender) Response::error('Профиль водителя не найден', 404);
     if ((int) ($sender['is_blocked'] ?? 0) === 1) Response::error('Аккаунт заблокирован', 403);
 
-    $senderName = trim((string) $sender['first_name'] . ' ' . (string) $sender['last_name']);
+    // В чате автопарка водитель подписан ПОЗЫВНЫМ (задаёт администратор
+    // в карточке водителя). Позывного нет — показываем имя, как раньше.
+    $callSign = trim((string) ($driver['call_sign'] ?? ''));
+    $senderName = $callSign !== ''
+        ? $callSign
+        : trim((string) $sender['first_name'] . ' ' . (string) $sender['last_name']);
     $carInfo = trim(
         (string) $driver['car_brand'] . ' ' . (string) $driver['car_model']
         . ' · ' . (string) $driver['license_plate']

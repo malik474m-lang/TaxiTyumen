@@ -50,7 +50,15 @@ $clients = $stmt->fetchAll();
 layout_header('Клиенты', 'clients');
 ?>
 <div class="flex between">
-  <div><h1>Клиенты</h1><p class="mut"><?= count($clients) ?> записей<?= $q ? ' по запросу' : '' ?></p></div>
+  <div>
+    <h1>Клиенты</h1>
+    <p class="mut"><?= count($clients) ?> записей<?= $q ? ' по запросу' : '' ?></p>
+    <p class="mut" style="font-size:12px;margin-top:4px">
+      ★ Рейтинг клиента — средняя оценка (1–5), которую ему ставили водители
+      после завершённых поездок. Пока оценок нет, показывается стартовое
+      значение 5,0 с пометкой «нет оценок».
+    </p>
+  </div>
   <form method="get" class="inline">
     <input name="q" value="<?= h($q) ?>" placeholder="Телефон, имя, email" style="width:240px">
     <button class="btn ghost">Найти</button>
@@ -62,7 +70,9 @@ layout_header('Клиенты', 'clients');
 
 <div class="card" style="margin-top:18px;overflow-x:auto">
 <table>
-  <thead><tr><th>Клиент</th><th>Контакты</th><th>Статус</th><th>Рейтинг</th><th>Поездки</th><th>Расходы</th><th>Регистрация</th><th>Действия</th></tr></thead>
+  <thead><tr><th>Клиент</th><th>Контакты</th><th>Статус</th>
+    <th title="Средняя оценка, которую водители ставили клиенту после поездок">Рейтинг</th>
+    <th>Поездки</th><th>Расходы</th><th>Регистрация</th><th>Действия</th></tr></thead>
   <tbody>
   <?php foreach ($clients as $c): ?>
     <tr>
@@ -72,7 +82,26 @@ layout_header('Клиенты', 'clients');
         <?= $c['is_blocked'] ? '<span class="chip bad">Заблокирован</span>' : ($c['is_active'] ? '<span class="chip ok">Активен</span>' : '<span class="chip warn">Неактивен</span>') ?>
         <?= $c['is_phone_verified'] ? '<span class="chip info">Телефон ✓</span>' : '' ?>
       </td>
-      <td>★ <?= number_format((float) $c['rating'], 1) ?></td>
+      <td>
+        <?php
+        // Рейтинг клиента = среднее оценок, выставленных ВОДИТЕЛЯМИ после
+        // завершённых поездок (1–5). Показываем, на скольких оценках основан.
+        $rateStmt = $db->prepare(
+            'SELECT COUNT(driver_rating) AS cnt, AVG(driver_rating) AS avg
+             FROM orders WHERE client_id = ? AND driver_rating IS NOT NULL'
+        );
+        $rateStmt->execute([$c['id']]);
+        $rateInfo = $rateStmt->fetch() ?: ['cnt' => 0, 'avg' => null];
+        $rateCount = (int) ($rateInfo['cnt'] ?? 0);
+        ?>
+        <?php if ($rateCount > 0): ?>
+          <div title="Средняя оценка водителей за <?= $rateCount ?> поездок">★ <?= number_format((float) $rateInfo['avg'], 1) ?></div>
+          <div class="mut" style="font-size:11px"><?= $rateCount ?> оцен<?= $rateCount % 10 === 1 && $rateCount % 100 !== 11 ? 'ка' : 'ок' ?></div>
+        <?php else: ?>
+          <div class="mut" title="Водители ещё не оценивали этого клиента">★ <?= number_format((float) $c['rating'], 1) ?></div>
+          <div class="mut" style="font-size:11px">нет оценок</div>
+        <?php endif; ?>
+      </td>
       <td><b><?= (int) $c['trip_count'] ?></b></td>
       <td><b style="color:#fde047"><?= money((float) $c['spent']) ?></b></td>
       <td class="mut"><?= h(fmt_date($c['created_at'])) ?></td>

@@ -46,16 +46,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $db->prepare(
                 "INSERT INTO drivers
                  (id, user_id, car_brand, car_model, car_color, license_plate, car_year,
-                   driver_license, license_expiry, is_verified, verified_at, status, latitude, longitude, balance,
+                   driver_license, call_sign, license_expiry, is_verified, verified_at, status, latitude, longitude, balance,
                    min_balance_for_orders, rejection_penalty, payment_phone, payment_bank_name,
                    payment_card_holder, accept_card_transfer, accept_sbp, last_location_update)
-                  VALUES (?,?,?,?,?,?,?,?,?,?,?,'offline',?,?,?,?,?,?,?,?,?,?,?)"
+                  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'offline',?,?,?,?,?,?,?,?,?,?,?)"
             )->execute([
                 $driverId, $uid, $brand, $model,
                 trim((string) ($_POST['car_color'] ?? 'Белый')) ?: 'Белый',
                 $plate,
                 max(1980, min(2100, (int) ($_POST['car_year'] ?? date('Y')))),
                 trim((string) ($_POST['driver_license'] ?? '')),
+                mb_substr(trim((string) ($_POST['call_sign'] ?? '')), 0, 20) ?: null,
                 !empty($_POST['license_expiry'])
                     ? $_POST['license_expiry'] . ' 23:59:59'
                     : gmdate('Y-m-d H:i:s', time() + 5 * 365 * 86400),
@@ -206,7 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
             $db->prepare(
                 'UPDATE drivers SET car_brand=?, car_model=?, car_color=?, license_plate=?, car_year=?,
-                 driver_license=?, license_expiry=?, min_balance_for_orders=?, rejection_penalty=?, payment_phone=?,
+                 driver_license=?, call_sign=?, license_expiry=?, min_balance_for_orders=?, rejection_penalty=?, payment_phone=?,
                  payment_bank_name=?, payment_card_holder=?, accept_card_transfer=?, accept_sbp=? WHERE id=?'
             )->execute([
                 trim((string) ($_POST['car_brand'] ?? '')),
@@ -215,6 +216,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mb_strtoupper(trim((string) ($_POST['license_plate'] ?? ''))),
                 (int) ($_POST['car_year'] ?? date('Y')),
                 trim((string) ($_POST['driver_license'] ?? '')),
+                mb_substr(trim((string) ($_POST['call_sign'] ?? '')), 0, 20) ?: null,
                 !empty($_POST['license_expiry']) ? $_POST['license_expiry'] . ' 23:59:59' : null,
                 max(0, (float) ($_POST['min_balance_for_orders'] ?? 100)),
                 max(0, (float) ($_POST['rejection_penalty'] ?? 0)),
@@ -290,6 +292,7 @@ layout_header('Водители', 'drivers');
       <label class="mut">Госномер<input name="license_plate" placeholder="А123ВС72" required></label>
       <label class="mut">Год<input type="number" name="car_year" value="<?= date('Y') ?>"></label>
       <label class="mut">Водительское удостоверение<input name="driver_license"></label>
+      <label class="mut">Позывной (цифры или буквы)<input name="call_sign" maxlength="20" placeholder="напр. 51 или Альфа"></label>
       <label class="mut">ВУ действует до<input type="date" name="license_expiry" value="<?= gmdate('Y-m-d', time()+5*365*86400) ?>"></label>
       <label class="mut">Стартовый баланс, ₽<input type="number" name="balance" value="500"></label>
       <label class="mut">Минимум для заказов, ₽<input type="number" name="min_balance_for_orders" value="100"></label>
@@ -319,6 +322,9 @@ layout_header('Водители', 'drivers');
         </div>
         <div class="mut"><?= h($d['phone']) ?> · <?= h($d['car_color'] . ' ' . $d['car_brand'] . ' ' . $d['car_model']) ?></div>
         <span class="plate"><?= h($d['license_plate']) ?></span>
+        <?php if (!empty($d['call_sign'])): ?>
+          <span class="chip info" title="Позывной в чате автопарка">📻 <?= h((string) $d['call_sign']) ?></span>
+        <?php endif; ?>
       </div>
       <div style="text-align:right"><?= $statusChip($d['status']) ?><?= $d['is_blocked'] ? '<br><span class="chip bad" style="margin-top:5px">Заблокирован</span>' : '' ?></div>
     </div>
@@ -363,6 +369,7 @@ layout_header('Водители', 'drivers');
           <label class="mut">Госномер<input name="license_plate" value="<?= h($d['license_plate']) ?>"></label>
           <label class="mut">Год<input type="number" name="car_year" value="<?= (int) $d['car_year'] ?>"></label>
           <label class="mut">ВУ<input name="driver_license" value="<?= h($d['driver_license']) ?>"></label>
+          <label class="mut">Позывной<input name="call_sign" maxlength="20" value="<?= h((string) ($d['call_sign'] ?? '')) ?>" placeholder="напр. 51 или Альфа"></label>
           <label class="mut">ВУ действует до<input type="date" name="license_expiry" value="<?= h($d['license_expiry'] ? substr($d['license_expiry'],0,10) : '') ?>"></label>
           <label class="mut">Минимум баланса<input type="number" name="min_balance_for_orders" value="<?= h((string) $d['min_balance_for_orders']) ?>"></label>
           <label class="mut">Штраф за отказ<input type="number" name="rejection_penalty" value="<?= h((string) $d['rejection_penalty']) ?>"></label>

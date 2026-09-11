@@ -46,11 +46,16 @@ $users = $db->query(
      WHERE u.role IN ('client','driver','operator') AND u.is_archived=0 ORDER BY u.role,u.last_name,u.first_name LIMIT 1000"
 )->fetchAll();
 
-$history = $db->query(
+// История отправок: фильтр по датам
+$msgDates = date_filter('n.created_at');
+$historyStmt = $db->prepare(
     "SELECT n.*,u.first_name,u.last_name,u.phone
      FROM notifications n LEFT JOIN users u ON u.id=n.recipient_id
-     ORDER BY n.created_at DESC LIMIT 200"
-)->fetchAll();
+     WHERE 1=1" . $msgDates['sql'] . "
+     ORDER BY n.created_at DESC LIMIT 300"
+);
+$historyStmt->execute($msgDates['params']);
+$history = $historyStmt->fetchAll();
 
 $templates = [
     'Технические работы' => ['Технические работы', 'Сервис временно недоступен из-за технических работ. Мы сообщим о восстановлении работы.'],
@@ -129,7 +134,8 @@ layout_header('Сообщения', 'messages');
 </div>
 
 <div class="card" style="margin-top:14px;overflow-x:auto">
-  <div class="flex between" style="margin-bottom:10px"><h3>История отправок</h3><span class="mut"><?= count($history) ?> последних</span></div>
+  <div class="flex between" style="margin-bottom:10px"><h3>История отправок</h3><span class="mut"><?= count($history) ?> <?= $msgDates['active'] ? 'за период' : 'последних' ?></span></div>
+  <?php date_filter_form($msgDates); ?>
   <table><thead><tr><th>Дата</th><th>Получатель</th><th>Тип / канал</th><th>Сообщение</th><th>Доставка</th><th>Прочитано</th></tr></thead><tbody>
   <?php foreach($history as $n):?>
     <tr><td class="mut"><?=h(fmt_date($n['created_at']))?></td>

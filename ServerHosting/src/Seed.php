@@ -268,6 +268,8 @@ final class Seed
         // Дополнительные поля заказа из исходного Order.cs
         self::addColumn($db, 'orders', 'actual_distance', "DOUBLE NULL AFTER estimated_duration");
         self::addColumn($db, 'orders', 'cancelled_by_user_id', "CHAR(36) NULL AFTER cancellation_reason");
+        // Позывной водителя: отображается в чате автопарка вместо имени
+        self::addColumn($db, 'drivers', 'call_sign', "VARCHAR(20) NULL AFTER driver_license");
         self::addColumn($db, 'orders', 'client_review', "VARCHAR(2000) NULL AFTER driver_rating");
         self::addColumn($db, 'orders', 'driver_review', "VARCHAR(2000) NULL AFTER client_review");
 

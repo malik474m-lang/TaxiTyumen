@@ -85,9 +85,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $statusFilter = (string) ($_GET['status'] ?? '');
-$where = $statusFilter !== '' ? 'WHERE status = ?' : '';
-$stmt = $db->prepare("SELECT * FROM orders $where ORDER BY created_at DESC LIMIT 200");
-$stmt->execute($statusFilter !== '' ? [$statusFilter] : []);
+$dates = date_filter('created_at');
+
+// Фильтры складываются: статус + период по дате создания заказа
+$where = 'WHERE 1=1';
+$params = [];
+if ($statusFilter !== '') { $where .= ' AND status = ?'; $params[] = $statusFilter; }
+$where .= $dates['sql'];
+$params = array_merge($params, $dates['params']);
+
+$stmt = $db->prepare("SELECT * FROM orders $where ORDER BY created_at DESC LIMIT 500");
+$stmt->execute($params);
 $rows = $stmt->fetchAll();
 $assignDrivers = $db->query(
     "SELECT d.id,d.status,d.license_plate,u.first_name,u.last_name FROM drivers d
@@ -131,7 +139,7 @@ layout_header('Заказы', 'orders');
 <div class="flex between">
   <div>
     <h1>Заказы</h1>
-    <p class="mut"><?= count($rows) ?> последних</p>
+    <p class="mut"><?= count($rows) ?> <?= $dates['active'] ? 'за период' : 'последних' ?></p>
   </div>
   <form method="get" class="inline">
     <select name="status" onchange="this.form.submit()">
@@ -143,6 +151,8 @@ layout_header('Заказы', 'orders');
   </form>
   <a class="btn ghost" href="export.php">⬇ Экспорт CSV</a>
 </div>
+
+<?php date_filter_form($dates, ['status' => $statusFilter]); ?>
 
 <?php if(!empty($_GET['ok'])):?><div class="flash" style="margin-top:14px">✓ <?=h((string)$_GET['ok'])?></div><?php endif;?>
 <?php if(!empty($_GET['error'])):?><div class="flash" style="margin-top:14px;border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);color:#fca5a5">Ошибка: <?=h((string)$_GET['error'])?></div><?php endif;?>

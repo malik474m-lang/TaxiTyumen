@@ -27,15 +27,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $type = (string) ($_GET['type'] ?? '');
-$where = in_array($type, ['topup', 'commission', 'penalty', 'refund', 'bonus'], true) ? 'WHERE bt.type=?' : '';
+$txDates = date_filter('bt.created_at');
+
+// Тип операции и период складываются
+$where = 'WHERE 1=1';
+$params = [];
+if (in_array($type, ['topup', 'commission', 'penalty', 'refund', 'bonus'], true)) {
+    $where .= ' AND bt.type=?';
+    $params[] = $type;
+}
+$where .= $txDates['sql'];
+$params = array_merge($params, $txDates['params']);
+
 $stmt = $db->prepare(
     "SELECT bt.*, u.first_name, u.last_name, d.license_plate
      FROM balance_transactions bt
      JOIN drivers d ON d.id=bt.driver_id
      JOIN users u ON u.id=d.user_id
-     $where ORDER BY bt.created_at DESC LIMIT 300"
+     $where ORDER BY bt.created_at DESC LIMIT 500"
 );
-$stmt->execute($where ? [$type] : []);
+$stmt->execute($params);
 $transactions = $stmt->fetchAll();
 
 $summary = $db->query(
@@ -90,8 +101,14 @@ layout_header('Балансы', 'balance');
   <div class="card" style="overflow-x:auto">
     <div class="flex between" style="margin-bottom:10px">
       <h3>Транзакции</h3>
-      <form method="get"><select name="type" onchange="this.form.submit()"><option value="">Все типы</option><option value="topup" <?= $type==='topup'?'selected':'' ?>>Пополнения</option><option value="commission" <?= $type==='commission'?'selected':'' ?>>Комиссии</option><option value="penalty" <?= $type==='penalty'?'selected':'' ?>>Штрафы</option></select></form>
+      <form method="get">
+        <input type="hidden" name="from" value="<?= h($txDates['from']) ?>">
+        <input type="hidden" name="to" value="<?= h($txDates['to']) ?>">
+        <select name="type" onchange="this.form.submit()"><option value="">Все типы</option><option value="topup" <?= $type==='topup'?'selected':'' ?>>Пополнения</option><option value="commission" <?= $type==='commission'?'selected':'' ?>>Комиссии</option><option value="penalty" <?= $type==='penalty'?'selected':'' ?>>Штрафы</option></select>
+      </form>
     </div>
+    <?php date_filter_form($txDates, ['type' => $type]); ?>
+    <p class="mut" style="margin:8px 0;font-size:12px">Операций: <?= count($transactions) ?><?= $txDates['active'] ? ' за выбранный период' : '' ?></p>
     <table><thead><tr><th>Дата / водитель</th><th>Описание</th><th style="text-align:right">Сумма</th></tr></thead><tbody>
     <?php foreach ($transactions as $t): ?>
       <tr><td><div><?= h(fmt_date($t['created_at'])) ?></div><div class="mut"><?= h($t['first_name'].' '.$t['last_name'].' · '.$t['license_plate']) ?></div></td>

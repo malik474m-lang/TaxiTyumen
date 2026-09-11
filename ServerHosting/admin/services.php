@@ -62,7 +62,21 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     $message='Проверка выполнена в '.city_now('H:i:s');
 }
 
-$logs=$db->query('SELECT * FROM service_call_logs ORDER BY created_at DESC LIMIT 100')->fetchAll();
+// Журнал внешних вызовов: фильтр по датам и по сервису — иначе «портянка»
+$logDates = date_filter('created_at');
+$logService = (string) ($_GET['svc'] ?? '');
+$logWhere = 'WHERE 1=1';
+$logParams = [];
+if ($logService !== '') { $logWhere .= ' AND service = ?'; $logParams[] = $logService; }
+$logWhere .= $logDates['sql'];
+$logParams = array_merge($logParams, $logDates['params']);
+
+$logStmt = $db->prepare("SELECT * FROM service_call_logs $logWhere ORDER BY created_at DESC LIMIT 300");
+$logStmt->execute($logParams);
+$logs = $logStmt->fetchAll();
+
+// Список сервисов для выпадающего фильтра
+$logServices = $db->query('SELECT DISTINCT service FROM service_call_logs ORDER BY service')->fetchAll(\PDO::FETCH_COLUMN);
 $endpoints=[
 ['POST','/api/auth/login.php','Авторизация и HMAC-токен'],['POST','/api/auth/register.php','Регистрация клиента/водителя'],['POST','/api/auth/sms.php','SMS-код send/verify'],
 ['GET/POST','/api/notifications.php','Уведомления, прочтение, admin-send'],['GET/POST','/api/chat.php','Чат заказа + read'],['GET','/api/geocoding.php','DaData/Photon/Яндекс/OpenCage search + reverse'],
@@ -90,7 +104,21 @@ layout_header('API и сервисы','services');
 <div class="grid q2" style="margin-top:14px">
 <div class="card" style="overflow-x:auto"><div class="flex between"><h3>Контракты API</h3><a href="../api/index.php" target="_blank" class="btn ghost sm">JSON health ↗</a></div>
 <table style="margin-top:8px"><thead><tr><th>Метод</th><th>URL</th><th>Назначение</th></tr></thead><tbody><?php foreach($endpoints as [$method,$url,$desc]):?><tr><td><span class="chip info"><?=h($method)?></span></td><td><code><?=h($url)?></code></td><td class="mut"><?=h($desc)?></td></tr><?php endforeach;?></tbody></table></div>
-<div class="card" style="overflow-x:auto"><h3>Журнал внешних вызовов</h3><table style="margin-top:8px"><thead><tr><th>Дата</th><th>Сервис</th><th>Действие</th><th>Статус</th><th>HTTP / время</th></tr></thead><tbody><?php foreach($logs as $l):?><tr><td class="mut"><?=h(fmt_date($l['created_at']))?></td><td><b><?=h($l['service'])?></b></td><td><?=h($l['action'])?><div class="mut"><?=h((string)$l['request_summary'])?></div></td><td><span class="chip <?=$l['status']==='success'?'ok':($l['status']==='failed'?'bad':'warn')?>"><?=h($l['status'])?></span></td><td><?=h((string)($l['http_code']??'—'))?><div class="mut"><?=h((string)($l['duration_ms']??'—'))?> мс</div></td></tr><?php endforeach;?><?php if(!$logs):?><tr><td colspan="5" class="mut">Проверок ещё не было</td></tr><?php endif;?></tbody></table></div>
+<div class="card" style="overflow-x:auto"><h3>Журнал внешних вызовов</h3>
+<form method="get" class="datefilter">
+  <span class="mut" style="font-size:12px">Сервис:</span>
+  <select name="svc" onchange="this.form.submit()">
+    <option value="">Все</option>
+    <?php foreach ($logServices as $svc): ?>
+      <option value="<?= h((string) $svc) ?>" <?= $logService === $svc ? 'selected' : '' ?>><?= h((string) $svc) ?></option>
+    <?php endforeach; ?>
+  </select>
+  <input type="hidden" name="from" value="<?= h($logDates['from']) ?>">
+  <input type="hidden" name="to" value="<?= h($logDates['to']) ?>">
+</form>
+<?php date_filter_form($logDates, ['svc' => $logService]); ?>
+<p class="mut" style="margin-top:8px;font-size:12px">Записей: <?= count($logs) ?><?= $logDates['active'] ? ' за выбранный период' : ' (последние)' ?></p>
+<table style="margin-top:8px"><thead><tr><th>Дата</th><th>Сервис</th><th>Действие</th><th>Статус</th><th>HTTP / время</th></tr></thead><tbody><?php foreach($logs as $l):?><tr><td class="mut"><?=h(fmt_date($l['created_at']))?></td><td><b><?=h($l['service'])?></b></td><td><?=h($l['action'])?><div class="mut"><?=h((string)$l['request_summary'])?></div></td><td><span class="chip <?=$l['status']==='success'?'ok':($l['status']==='failed'?'bad':'warn')?>"><?=h($l['status'])?></span></td><td><?=h((string)($l['http_code']??'—'))?><div class="mut"><?=h((string)($l['duration_ms']??'—'))?> мс</div></td></tr><?php endforeach;?><?php if(!$logs):?><tr><td colspan="5" class="mut">Проверок ещё не было</td></tr><?php endif;?></tbody></table></div>
 </div>
 
 <?php layout_footer();

@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS drivers (
   license_plate         VARCHAR(20) NOT NULL,
   car_year              INT      NOT NULL DEFAULT 2020,
   driver_license        VARCHAR(50) NOT NULL DEFAULT '',
+  call_sign             VARCHAR(20) NULL,        -- позывной: цифры и/или буквы, задаёт админ
   is_verified           TINYINT(1) NOT NULL DEFAULT 0,
   status                ENUM('offline','available','on_route','in_trip','busy') NOT NULL DEFAULT 'offline',
   latitude              DOUBLE   NOT NULL DEFAULT 57.1522,

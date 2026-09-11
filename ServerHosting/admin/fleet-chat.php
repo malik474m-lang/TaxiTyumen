@@ -34,13 +34,36 @@ if (isset($_GET['ajax'])) {
     exit;
 }
 
-$rows = FleetChat::history($db);
+// Период: по умолчанию — живая лента, при выбранных датах — архив за период
+$chatDates = date_filter('created_at');
+if ($chatDates['active']) {
+    $stmt = $db->prepare(
+        'SELECT * FROM fleet_messages WHERE 1=1' . $chatDates['sql']
+        . ' ORDER BY created_at ASC LIMIT 500'
+    );
+    $stmt->execute($chatDates['params']);
+    $rows = $stmt->fetchAll();
+} else {
+    $rows = FleetChat::history($db);
+}
 layout_header('Чат водителей', 'fleet');
 ?>
 <div class="flex between">
-  <div><h1>Чат водителей</h1><p class="mut">Общий канал автопарка · обновление каждые 4 секунды</p></div>
-  <span class="chip ok" id="liveChip"><span id="msgCount"><?= count($rows) ?></span> сообщений · <span id="liveAt">live</span></span>
+  <div>
+    <h1>Чат водителей</h1>
+    <p class="mut">
+      <?= $chatDates['active']
+        ? 'Архив за выбранный период (без автообновления)'
+        : 'Общий канал автопарка · обновление каждые 4 секунды' ?>
+    </p>
+  </div>
+  <span class="chip <?= $chatDates['active'] ? 'info' : 'ok' ?>" id="liveChip">
+    <span id="msgCount"><?= count($rows) ?></span> сообщений
+    <?php if (!$chatDates['active']): ?> · <span id="liveAt">live</span><?php endif; ?>
+  </span>
 </div>
+
+<?php date_filter_form($chatDates); ?>
 
 <?php if (!empty($_GET['ok'])): ?><div class="flash">✓ <?= h((string) $_GET['ok']) ?></div><?php endif; ?>
 
@@ -52,6 +75,7 @@ layout_header('Чат водителей', 'fleet');
 
 <script>
 var CSRF_TOKEN = <?= json_encode(admin_csrf_token(), JSON_UNESCAPED_SLASHES) ?>;
+var ARCHIVE_MODE = <?= $chatDates['active'] ? 'true' : 'false' ?>;
 var lastMs = 0;
 var list = document.getElementById('chatList');
 var emptyState = document.getElementById('emptyState');
@@ -112,7 +136,8 @@ function delMsg(id,btn){
 appendAll(initial);
 list.scrollTop=list.scrollHeight;
 if(initial.length){lastMs=initial.reduce(function(a,m){return Math.max(a,msOf(m))},0)}
-setInterval(poll,4000);poll();
+// В режиме архива (выбран период) живое обновление не запускаем
+if (!ARCHIVE_MODE) { setInterval(poll,4000); poll(); }
 </script>
 
 <?php layout_footer();

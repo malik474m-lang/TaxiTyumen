@@ -308,6 +308,8 @@ final class Serialize
             'carColor' => $d['car_color'],
             'carDisplay' => $d['car_color'] . ' ' . $d['car_brand'] . ' ' . $d['car_model'],
             'licensePlate' => $d['license_plate'],
+            // Позывной для чата автопарка и диспетчерской (задаёт админ)
+            'callSign' => $d['call_sign'] ?? null,
             'carYear' => (int) $d['car_year'],
             'status' => $status,
             'statusText' => Taxi::DRIVER_STATUS_TEXT[$d['status']] ?? $d['status'],
