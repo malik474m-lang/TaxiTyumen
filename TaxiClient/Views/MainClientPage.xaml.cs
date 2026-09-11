@@ -207,8 +207,12 @@ function initLeaflet(){
   var s = document.createElement('script');
   s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
   s.onload = function(){
-    var map = L.map('map').setView([__CLAT__, __CLNG__], 13);
+    // attributionControl:false — штатный контрол Leaflet рисует внизу карты
+    // флаг Украины и ссылку «Leaflet»; пассажиру они не нужны.
+    // Копирайт OpenStreetMap оставляем вручную — он обязателен по лицензии ODbL.
+    var map = L.map('map', { attributionControl: false }).setView([__CLAT__, __CLNG__], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+    L.control.attribution({ prefix: false }).addAttribution('© OpenStreetMap').addTo(map);
     var pickupM = L.marker([__CLAT__, __CLNG__], { draggable: true }).addTo(map).bindPopup('Подача');
     pickupM.on('dragend', function(e){
       var p = e.target.getLatLng();
