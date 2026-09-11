@@ -1373,6 +1373,9 @@ public partial class MainDriverPage : ContentPage
     protected override void OnDisappearing()
     {
         _uiVisible = false;
+        // Отписываемся от события об отмене заказа, чтобы уведомление
+        // не пришло на уже закрытую страницу
+        try { _signalR.OrderStatusChanged -= OnOrderStatusChangedFromServer; } catch { }
         base.OnDisappearing();
     }
 
@@ -1963,13 +1966,6 @@ public partial class MainDriverPage : ContentPage
     }
 
     /// Карта маршрута в приложении: водитель → подача → (финиш)
-
-    protected override void OnDisappearing()
-    {
-        try { _signalR.OrderStatusChanged -= OnOrderStatusChangedFromServer; } catch { }
-        base.OnDisappearing();
-    }
-
     /// Аппаратная кнопка «Назад» сначала закрывает полноэкранную карту.
     protected override bool OnBackButtonPressed()
     {
