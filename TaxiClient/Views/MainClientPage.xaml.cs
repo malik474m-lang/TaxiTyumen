@@ -67,7 +67,172 @@ public partial class MainClientPage : ContentPage
         // Поля адресов при старте пустые: раньше подставлялся демо-адрес,
         // и пассажиру приходилось сначала его стирать.
         ClearAddressFields();
+
+        // Адрес подачи определяется сам по GPS телефона
+        _ = DetectMyLocationAsync(silent: true);
     }
+
+    // =========================
+    // АВТООПРЕДЕЛЕНИЕ МЕСТОПОЛОЖЕНИЯ
+    // =========================
+    private bool _locating;
+
+    private async void OnLocateClicked(object? sender, EventArgs e)
+        => await DetectMyLocationAsync(silent: false);
+
+    /// <summary>
+    /// Определяет адрес подачи по GPS телефона и подставляет его в поле «Откуда».
+    /// silent = true — автоматический запуск при открытии экрана: молча
+    /// пропускаем отказ в разрешении и выключенный GPS, пассажир просто
+    /// введёт адрес руками. silent = false — нажата кнопка «📍»,
+    /// показываем понятные подсказки.
+    /// </summary>
+    private async Task DetectMyLocationAsync(bool silent)
+    {
+        if (_locating) return;
+
+        // Не затираем адрес, который пассажир уже выбрал сам
+        if (silent && !string.IsNullOrWhiteSpace(PickupEntry.Text)) return;
+
+        _locating = true;
+        try
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                LocateBtn.IsEnabled = false;
+                LocateHintLabel.Text = "Определяем ваше местоположение…";
+                LocateHintLabel.TextColor = Color.FromArgb("#8FBF9F");
+                LocateHintLabel.IsVisible = true;
+            });
+
+            // Разрешение запрашиваем в рантайме (Android 6+)
+            var status = await Permissions.CheckStatusAsync<Permissions.LocationWhenInUse>();
+            if (status != PermissionStatus.Granted)
+            {
+                if (silent)
+                {
+                    // При автозапуске системное окно показываем только один раз,
+                    // чтобы не раздражать отказавшегося пассажира
+                    if (Preferences.Get("location_asked", false)) { HideLocateHint(); return; }
+                    Preferences.Set("location_asked", true);
+                }
+                status = await Permissions.RequestAsync<Permissions.LocationWhenInUse>();
+            }
+
+            if (status != PermissionStatus.Granted)
+            {
+                ShowLocateProblem(silent,
+                    "Нет доступа к геолокации — укажите адрес вручную",
+                    "Доступ к геолокации",
+                    "Разрешите приложению доступ к местоположению в настройках телефона "
+                    + "или введите адрес подачи вручную.");
+                return;
+            }
+
+            // Сначала последняя известная точка — она приходит мгновенно,
+            // затем уточняем свежим запросом к GPS
+            Microsoft.Maui.Devices.Sensors.Location? location = null;
+            try { location = await Geolocation.GetLastKnownLocationAsync(); } catch { }
+
+            try
+            {
+                var fresh = await Geolocation.GetLocationAsync(
+                    new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(12)));
+                if (fresh != null) location = fresh;
+            }
+            catch (FeatureNotEnabledException)
+            {
+                if (location == null)
+                {
+                    ShowLocateProblem(silent,
+                        "Геолокация выключена — укажите адрес вручную",
+                        "Геолокация выключена",
+                        "Включите определение местоположения (GPS) в настройках телефона.");
+                    return;
+                }
+            }
+            catch { /* таймаут: останется последняя известная точка */ }
+
+            if (location == null)
+            {
+                ShowLocateProblem(silent,
+                    "Не удалось определить местоположение",
+                    "Местоположение",
+                    "Не удалось получить координаты. Проверьте, включён ли GPS, "
+                    + "или введите адрес подачи вручную.");
+                return;
+            }
+
+            // Координаты → адрес (сервер: DaData / Яндекс / OSM)
+            AddressSuggestion? address = null;
+            try
+            {
+                if (_geo != null)
+                    address = await _geo.ReverseGeocodeAsync(location.Latitude, location.Longitude);
+            }
+            catch { }
+
+            var lat = location.Latitude;
+            var lng = location.Longitude;
+            var display = !string.IsNullOrWhiteSpace(address?.DisplayName)
+                ? address!.DisplayName
+                : $"{lat:F5}, {lng:F5}";
+
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                _pickupLat = lat;
+                _pickupLng = lng;
+
+                // Флаг гасит автоподсказки: подставленный адрес не должен
+                // запускать поиск и сбрасывать только что полученные координаты
+                _suppressPickup = true;
+                PickupEntry.Text = display;
+                _suppressPickup = false;
+
+                PickupSuggestions.IsVisible = false;
+                PickupSuggestions.Children.Clear();
+
+                LocateHintLabel.Text = "Адрес подачи определён автоматически — проверьте его";
+                LocateHintLabel.TextColor = Color.FromArgb("#4ADE80");
+                LocateHintLabel.IsVisible = true;
+            });
+
+            var latStr = lat.ToString(CultureInfo.InvariantCulture);
+            var lngStr = lng.ToString(CultureInfo.InvariantCulture);
+            try { await MapWebView.EvaluateJavaScriptAsync($"setPickup({latStr},{lngStr})"); } catch { }
+
+            SafeDrawRoute();
+            await SafeLoadPricesAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowLocateProblem(silent, "Не удалось определить местоположение",
+                "Местоположение", ex.Message);
+        }
+        finally
+        {
+            _locating = false;
+            MainThread.BeginInvokeOnMainThread(() => LocateBtn.IsEnabled = true);
+        }
+    }
+
+    /// Сообщение о проблеме: тихо подсказкой при автозапуске, окном — по кнопке.
+    private async void ShowLocateProblem(bool silent, string hint, string title, string message)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            LocateHintLabel.Text = hint;
+            LocateHintLabel.TextColor = Color.FromArgb("#FCA5A5");
+            LocateHintLabel.IsVisible = true;
+        });
+        if (!silent)
+        {
+            try { await DisplayAlert(title, message, "OK"); } catch { }
+        }
+    }
+
+    private void HideLocateHint() => MainThread.BeginInvokeOnMainThread(() =>
+        LocateHintLabel.IsVisible = false);
 
     /// Очистка адресов, координат и оценки цены — состояние «новый заказ».
     private void ClearAddressFields()
@@ -96,6 +261,7 @@ public partial class MainClientPage : ContentPage
 
             PriceLabel.Text = "—";
             DistLabel.Text = "Укажите адреса подачи и назначения";
+            LocateHintLabel.IsVisible = false;
         }
         catch { }
     }
@@ -483,6 +649,7 @@ initLeaflet();
             // к новому адресу. Сбрасываем координаты, маркер и старый маршрут.
             _pickupLat = 0;
             _pickupLng = 0;
+            LocateHintLabel.IsVisible = false;
             await MapWebView.EvaluateJavaScriptAsync("clearPickup()");
 
             _pickupCts?.Cancel();
@@ -1464,6 +1631,9 @@ initLeaflet();
 
             // Следующий заказ начинается с чистых полей
             ClearAddressFields();
+
+            // Следующий заказ снова начинается с адреса «где я сейчас»
+            _ = DetectMyLocationAsync(silent: true);
 
             // Сбрасываем состояние подачи: ETA, метка машины, разовые уведомления
             ActiveEtaPanel.IsVisible = false;
