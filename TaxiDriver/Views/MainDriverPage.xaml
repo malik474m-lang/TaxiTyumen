@@ -142,6 +142,13 @@
         <ScrollView Grid.Row="3" x:Name="MainScroll">
             <StackLayout Padding="15" Spacing="12">
 
+                <!-- Безналичный заработок, пополнение и вывод по СБП -->
+                <Button Text="💳 Безналичный кошелёк / СБП"
+                        BackgroundColor="#17351E" TextColor="#4ADE80"
+                        BorderColor="#4CAF50" BorderWidth="1"
+                        CornerRadius="10" HeightRequest="44"
+                        Clicked="OnOpenWallet"/>
+
                 <!-- Баннер нового сообщения чата -->
                 <Border x:Name="ChatBanner" IsVisible="False"
                         BackgroundColor="#1A2A4A"

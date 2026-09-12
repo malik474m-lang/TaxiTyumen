@@ -47,6 +47,7 @@ Response::json([
         'GET  /api/stats.php (admin)',
         'GET  /api/export/orders.php (admin, CSV)',
         'GET/POST /api/sms-gateway.php (встроенный SMS-шлюз: poll/ack/heartbeat/status)',
+        'GET/POST /api/sber.php (эквайринг Сбер: оплата поездок, пополнение, кошелёк, вывод)',
         'GET  /api/events.php?since=',
     ],
 ]);

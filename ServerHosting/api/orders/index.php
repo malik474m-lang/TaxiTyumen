@@ -129,6 +129,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ->execute([Db::uuid(),$orderId,mb_substr((string)$point['address'],0,500),$g['lat'],$g['lng'],(int)$index]);
     }
     $paymentMethod = Taxi::normalizePayment($body['paymentMethod'] ?? 'cash');
+    // Карточный заказ нельзя принять, если эквайринг выключен: поездка
+    // завершилась бы, но клиенту было бы некуда перечислить деньги.
+    if ($paymentMethod === 'card' && !SberPayments::settings($db)['configured']) {
+        Response::error('Оплата картой пока недоступна. Выберите наличные.', 409);
+    }
     $db->prepare(
         "INSERT INTO transactions(id,order_id,amount,method,status) VALUES (?,?,?,?, 'pending')"
     )->execute([Db::uuid(),$orderId,$estimatedPrice,$paymentMethod]);

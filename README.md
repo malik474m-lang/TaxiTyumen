@@ -18,6 +18,11 @@
 | **`ServerHosting`** | **PHP 8 + MySQL** | **Серверная часть для shared-хостинга (ветка `web-port`)** |
 
 
+## Платежи Сбер
+
+Эквайринг ИП, карточные платежи/СБП C2B, внутренний счёт, кошельки
+водителей-самозанятых и ручные заявки на вывод: [`ServerHosting/SBER.md`](ServerHosting/SBER.md).
+
 ## ServerHosting (PHP + MySQL)
 
 Самостоятельный PHP-бэкенд для shared-хостинга + готовая админ-панель `/admin/`: тот же API, токены и права ролей, база MySQL/PDO, одноразовый установщик. Инструкция деплоя: [`ServerHosting/README.md`](ServerHosting/README.md).

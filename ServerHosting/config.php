@@ -40,6 +40,11 @@ if (!defined('YANDEX_MAPS_API_KEY')) {
     define('YANDEX_MAPS_API_KEY', getenv('YANDEX_MAPS_API_KEY') ?: '');
 }
 
+// Сбер Интернет-эквайринг — безопаснее хранить реквизиты в окружении/
+// config.local.php, а не в БД. Пока договор/доступы не получены — оставьте пусто.
+if (!defined('SBER_USERNAME')) define('SBER_USERNAME', getenv('SBER_USERNAME') ?: '');
+if (!defined('SBER_PASSWORD')) define('SBER_PASSWORD', getenv('SBER_PASSWORD') ?: '');
+
 // Тюмень UTC+5 — сдвиг для ценообразования/статистики
 if (!defined('CITY_UTC_OFFSET')) define('CITY_UTC_OFFSET', 5);
 

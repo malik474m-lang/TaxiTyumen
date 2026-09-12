@@ -1356,6 +1356,15 @@ public partial class MainDriverPage : ContentPage
         base.OnAppearing();
         _uiVisible = true;
 
+        // После возврата из чата/кошелька подписку надо восстановить.
+        // remove+add делает это идемпотентно без двойных уведомлений.
+        try
+        {
+            _signalR.OrderStatusChanged -= OnOrderStatusChangedFromServer;
+            _signalR.OrderStatusChanged += OnOrderStatusChangedFromServer;
+        }
+        catch { }
+
         // GPS раньше стартовал ТОЛЬКО при выходе «на линию»: до этого позиция
         // не определялась вовсе. Запускаем сразу при открытии экрана.
         _ = EnsureGpsAsync();
@@ -1975,6 +1984,13 @@ public partial class MainDriverPage : ContentPage
             return true;
         }
         return base.OnBackButtonPressed();
+    }
+
+    /// Безналичный заработок по карточным заявкам, пополнение и вывод по СБП.
+    private async void OnOpenWallet(object? sender, EventArgs e)
+    {
+        try { await Navigation.PushAsync(new WalletPage(_api)); }
+        catch (Exception ex) { await DisplayAlert("Кошелёк", ex.Message, "OK"); }
     }
 
     // ==========================

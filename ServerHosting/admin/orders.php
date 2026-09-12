@@ -14,6 +14,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $orderStmt->execute([$id]);
     $row = $orderStmt->fetch();
 
+    if ($row && $cmd === 'recalc_route') {
+        if (in_array($row['status'], ['completed', 'cancelled'], true)) {
+            header('Location: orders.php?error=' . urlencode('Завершённый/отменённый заказ не пересчитывается'));
+            exit;
+        }
+        try {
+            $from = GeocodingService::search($db, (string) $row['pickup_address'])[0] ?? null;
+            $to = !empty($row['destination_address'])
+                ? (GeocodingService::search($db, (string) $row['destination_address'])[0] ?? null)
+                : null;
+            if (!$from || !$to || empty($from['latitude']) || empty($to['latitude'])) {
+                throw new RuntimeException('Не удалось определить обе точки адресов');
+            }
+            $fromLat=(float)$from['latitude'];$fromLng=(float)$from['longitude'];
+            $toLat=(float)$to['latitude'];$toLng=(float)$to['longitude'];
+            $route = Taxi::getRealRoute($fromLat,$fromLng,$toLat,$toLng);
+            $geometry = Taxi::getRouteGeometry($fromLat,$fromLng,$toLat,$toLng);
+            $tariffStmt=$db->prepare('SELECT * FROM tariffs WHERE type=? LIMIT 1');
+            $tariffStmt->execute([$row['tariff']]);$tariff=$tariffStmt->fetch();
+            if(!$tariff) throw new RuntimeException('Тариф заказа не найден');
+            $service=ServiceSettings::get($db);
+            $pricing=Taxi::computePrice($tariff,(float)$route['distanceKm'],(int)$service['utc_offset']);
+            $optionsStmt=$db->prepare('SELECT COALESCE(SUM(price),0) FROM order_options WHERE order_id=?');
+            $optionsStmt->execute([$id]);$options=(float)$optionsStmt->fetchColumn();
+            $price=(float)$pricing['price']+$options;
+            $zone=Zones::fixedPrice($db,$fromLat,$fromLng,$toLat,$toLng,(string)$row['tariff']);
+            $mode='tariff';$fromZone=null;$toZone=null;
+            if($zone!==null){$price=$zone['applyMultipliers']?round($zone['price']*(float)$pricing['multiplier']):$zone['price'];$price+=$options;$mode='zone';$fromZone=$zone['fromZone']['id'];$toZone=$zone['toZone']['id'];}
+            $db->prepare('UPDATE orders SET pickup_latitude=?,pickup_longitude=?,destination_latitude=?,destination_longitude=?,estimated_distance=?,estimated_duration=?,route_geometry=?,estimated_price=?,pricing_mode=?,from_zone_id=?,to_zone_id=? WHERE id=?')
+                ->execute([$fromLat,$fromLng,$toLat,$toLng,$route['distanceKm'],$route['durationMinutes'],json_encode($geometry,JSON_UNESCAPED_SLASHES),$price,$mode,$fromZone,$toZone,$id]);
+            $db->prepare("UPDATE transactions SET amount=? WHERE order_id=? AND status='pending'")->execute([$price,$id]);
+            Bus::publish('orders');
+            header('Location: orders.php?ok=' . urlencode(sprintf('Маршрут пересчитан: %.1f км, %d мин, %.0f ₽',$route['distanceKm'],$route['durationMinutes'],$price)));
+            exit;
+        } catch(Throwable $e) {
+            header('Location: orders.php?error=' . urlencode('Пересчёт: '.$e->getMessage()));
+            exit;
+        }
+    }
+
     if ($row && $cmd === 'cancel') {
         $db->prepare("UPDATE orders SET status='cancelled',cancelled_at=?,cancellation_reason=?,cancelled_by_user_id=? WHERE id=?")
             ->execute([Db::utcNow(), 'Отменено администратором', $admin['id'], $id]);
@@ -198,6 +238,10 @@ layout_header('Заказы', 'orders');
       </td>
       <td>
         <?php if (!in_array($o['status'], ['completed', 'cancelled'], true)): ?>
+        <form method="post" class="inline" style="margin-bottom:5px" onsubmit="return confirm('Заново определить координаты адресов и пересчитать маршрут/цену?')">
+          <input type="hidden" name="cmd" value="recalc_route"><input type="hidden" name="id" value="<?=h($o['id'])?>">
+          <button class="btn sm ghost" title="Исправить координаты и маршрут">↻ Пересчитать маршрут</button>
+        </form>
         <form method="post" class="inline" style="margin-bottom:5px">
           <input type="hidden" name="cmd" value="assign"><input type="hidden" name="id" value="<?=h($o['id'])?>">
           <select name="driver_id" required style="width:170px"><option value="">Назначить...</option><?php foreach($assignDrivers as $ad):?><option value="<?=h($ad['id'])?>" <?=$o['driver_id']===$ad['id']?'selected':''?>><?=h($ad['first_name'].' '.$ad['last_name'].' · '.$ad['license_plate'].' · '.(Taxi::DRIVER_STATUS_TEXT[$ad['status']]??$ad['status']))?></option><?php endforeach;?></select>

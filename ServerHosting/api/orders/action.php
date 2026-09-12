@@ -342,8 +342,15 @@ switch ($action) {
         $finalPrice = round($finalPrice + $waitingCost, 2);
         $db->prepare("UPDATE orders SET status='completed',completed_at=?,final_price=?,actual_distance=?,waiting_started_at=NULL,waiting_seconds=?,waiting_cost=? WHERE id=?")
             ->execute([Db::utcNow(), $finalPrice, $actualDistance, $waitingSeconds, $waitingCost, $id]);
-        $db->prepare("UPDATE transactions SET amount=?,status='completed',completed_at=? WHERE order_id=?")
-            ->execute([$finalPrice, Db::utcNow(), $id]);
+        // Наличная поездка оплачена водителю сразу. Карточная остаётся
+        // pending до подтверждения getOrderStatusExtended.do от Сбера.
+        if ($order['payment_method'] === 'card') {
+            $db->prepare("UPDATE transactions SET amount=?,status='pending',completed_at=NULL WHERE order_id=?")
+                ->execute([$finalPrice, $id]);
+        } else {
+            $db->prepare("UPDATE transactions SET amount=?,status='completed',completed_at=? WHERE order_id=?")
+                ->execute([$finalPrice, Db::utcNow(), $id]);
+        }
 
         if (!empty($order['driver_id'])) {
             $db->prepare(
@@ -353,13 +360,22 @@ switch ($action) {
                  WHERE id = ?"
             )->execute([$finalPrice, $finalPrice, $order['driver_id']]);
 
-            // Комиссия тарифа
+            // Комиссия тарифа:
+            // - наличные: водитель получил всю сумму сам, комиссия уходит в минус
+            //   его рабочего баланса;
+            // - карта/СБП: деньги получил ИП, комиссия удерживается ДО начисления
+            //   в безналичный кошелёк (SberPayments::credit), поэтому здесь
+            //   повторно баланс не уменьшаем.
             $percent = (float) ($tariffRow['commission_percent'] ?: 15);
             $commission = round($finalPrice * $percent / 100, 2);
-            $chargeTransaction(
-                $order['driver_id'], $id, 'commission', -$commission,
-                sprintf('Комиссия %s (%.0f руб.)', rtrim(rtrim(number_format($percent, 1, '.', ''), '0'), '.') . '%', $finalPrice)
-            );
+            if ($order['payment_method'] !== 'card') {
+                $chargeTransaction(
+                    $order['driver_id'], $id, 'commission', -$commission,
+                    sprintf('Комиссия %s (%.0f руб.)', rtrim(rtrim(number_format($percent, 1, '.', ''), '0'), '.') . '%', $finalPrice)
+                );
+            } else {
+                SberPayments::ensureWallet($db, $order['driver_id']);
+            }
         }
         if (!empty($order['client_id'])) {
             $db->prepare('UPDATE users SET total_trips=total_trips+1 WHERE id=?')->execute([$order['client_id']]);

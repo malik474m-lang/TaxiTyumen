@@ -27,6 +27,7 @@ final class Access
         'fleet'     => ['label' => 'Чат водителей',  'file' => 'fleet-chat.php','superadminOnly' => false, 'locked' => false],
         'sos'       => ['label' => 'SOS-тревоги',    'file' => 'sos.php',       'superadminOnly' => false, 'locked' => false],
         'balance'   => ['label' => 'Балансы',        'file' => 'balance.php',   'superadminOnly' => false, 'locked' => false],
+        'sber'      => ['label' => 'Платежи Сбер',    'file' => 'sber.php',      'superadminOnly' => true,  'locked' => false],
         'tariffs'   => ['label' => 'Тарифы',         'file' => 'tariffs.php',   'superadminOnly' => false, 'locked' => false],
         'options'   => ['label' => 'Опции заказа',   'file' => 'options.php',   'superadminOnly' => false, 'locked' => false],
         'zones'     => ['label' => 'Зоны и цены',    'file' => 'zones.php',     'superadminOnly' => false, 'locked' => false],

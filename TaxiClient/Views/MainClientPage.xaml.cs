@@ -63,6 +63,8 @@ public partial class MainClientPage : ContentPage
         SafeLoadMap();
         BuildTariffButtons();
         _ = LoadOrderOptionsAsync();
+        _ = LoadPaymentConfigAsync();
+        _ = ResumePendingSberPaymentAsync();
 
         // Поля адресов при старте пустые: раньше подставлялся демо-адрес,
         // и пассажиру приходилось сначала его стирать.
@@ -929,6 +931,36 @@ initLeaflet();
     // ГЕОКОДИРОВАНИЕ И ЦЕНА
     // =========================
 
+    /// Включает оплату картой только когда сервер Сбера действительно
+    /// настроен. До получения реквизитов банка клиент не сможет случайно
+    /// завершить неоплаченную безналичную поездку.
+    private async Task LoadPaymentConfigAsync()
+    {
+        try
+        {
+            var cfg = await _api.GetSberConfigAsync();
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                var enabled = cfg?.Enabled == true;
+                PayCardBtn.IsEnabled = enabled;
+                PayCardBtn.Opacity = enabled ? 1 : 0.55;
+                PayCardBtn.Text = enabled
+                    ? (cfg!.SbpEnabled ? " Карта / СБП" : " Карта")
+                    : " Карта (недоступна)";
+                if (!enabled && _paymentMethod == "Card") OnPayCash(null, EventArgs.Empty);
+            });
+        }
+        catch
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                PayCardBtn.IsEnabled = false;
+                PayCardBtn.Opacity = 0.55;
+                PayCardBtn.Text = " Карта (недоступна)";
+            });
+        }
+    }
+
     private void OnPayCash(object? sender, EventArgs e)
     {
         _paymentMethod = "Cash";
@@ -940,6 +972,7 @@ initLeaflet();
 
     private void OnPayCard(object? sender, EventArgs e)
     {
+        if (!PayCardBtn.IsEnabled) return;
         _paymentMethod = "Card";
         PayCardBtn.BackgroundColor = Color.FromArgb("#FFD700");
         PayCardBtn.TextColor = Color.FromArgb("#1E1E2E");
@@ -1383,13 +1416,11 @@ initLeaflet();
                             $"Итого: {updated.TotalPrice:F0} ₽",
                             "OK");
 
-                        // Показываем баннер оплаты если перевод
-                        if (updated.Payment != null &&
-                            updated.Payment.Method == "Card" &&
-                            !string.IsNullOrEmpty(updated.Payment.PaymentPhone))
-                        {
-                            await ShowPaymentBannerAsync(updated);
-                        }
+                        // Карта/СБП: деньги поступают на внутренний счёт системы
+                        // через защищённую платёжную страницу Сбера, а не прямым
+                        // переводом на телефон водителя.
+                        if (updated.Payment != null && updated.Payment.Method == "Card")
+                            await PayCompletedOrderBySberAsync(updated);
 
                         await Task.Delay(1000);
                         await SafeShowRatingAsync(updated);
@@ -1725,65 +1756,85 @@ initLeaflet();
         });
     }
         
-    private async Task ShowPaymentBannerAsync(OrderResponse order)
+    /// При новом запуске напоминаем о завершённой, но не оплаченной
+    /// карточной поездке. Без этого закрытие приложения в момент завершения
+    /// оставляло транзакцию pending без способа продолжить оплату.
+    private async Task ResumePendingSberPaymentAsync()
     {
         try
         {
-            var p = order.Payment;
-            if (p == null)
-                return;
+            await Task.Delay(1200); // сначала загрузить основной экран/конфигурацию
+            var order = await _api.GetPendingSberOrderAsync();
+            if (order == null) return;
+            var pay = await DisplayAlert("Неоплаченная поездка",
+                $"Заказ {order.OrderNumber} завершён. К оплате {order.TotalPrice:F0} ₽. Продолжить оплату через Сбер?",
+                "Оплатить", "Позже");
+            if (pay) await PayCompletedOrderBySberAsync(order);
+        }
+        catch { }
+    }
 
-            var bankInfo = !string.IsNullOrWhiteSpace(p.BankName)
-                ? p.BankName
-                : "Банк";
-
-            var holder = !string.IsNullOrWhiteSpace(p.CardHolder)
-                ? p.CardHolder
-                : "Получатель не указан";
-
-            var phone = !string.IsNullOrWhiteSpace(p.PaymentPhone)
-                ? p.PaymentPhone
-                : "Телефон не указан";
-
-            var message =
-                $"Сумма к оплате: {p.Amount:F0} ₽\n\n" +
-                $"Банк: {bankInfo}\n" +
-                $"Получатель: {holder}\n" +
-                $"Телефон: {phone}\n\n";
-
-            if (p.AcceptSbp && !string.IsNullOrWhiteSpace(p.SbpLink))
+    /// Оплата завершённой поездки на странице Сбера. Приложение никогда
+    /// не получает номер карты/CVC: Сбер сам показывает сохранённые связки
+    /// (если рекуррентные платежи одобрены) или форму новой карты/СБП.
+    private async Task PayCompletedOrderBySberAsync(OrderResponse order)
+    {
+        try
+        {
+            var config = await _api.GetSberConfigAsync();
+            if (config?.Enabled != true)
             {
-                var useSbp = await DisplayAlert(
-                    " Оплата переводом",
-                    message + "Открыть СБП для перевода?",
-                    "Открыть СБП",
-                    "Переведу сам");
+                await DisplayAlert("Безналичная оплата недоступна",
+                    "Эквайринг Сбера ещё не настроен администратором. "
+                    + "Свяжитесь с диспетчером и выберите другой способ оплаты.", "OK");
+                return;
+            }
 
-                if (useSbp)
+            var start = await _api.StartSberOrderPaymentAsync(order.Id, "card");
+            if (start.Status == "paid")
+            {
+                await DisplayAlert("Оплачено", $"Оплата {order.TotalPrice:F0} ₽ подтверждена.", "OK");
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(start.FormUrl))
+                throw new Exception("Сбер не вернул ссылку на оплату");
+
+            Preferences.Set("pending_sber_payment", start.Id);
+            Preferences.Set("pending_sber_order", order.Id.ToString());
+
+            await Browser.Default.OpenAsync(start.FormUrl, BrowserLaunchMode.SystemPreferred);
+
+            // После открытия формы проверяем подтверждение до 2 минут.
+            // Если Android приостановит приложение, id сохранён и проверка
+            // может быть повторена сервером/администратором без двойного начисления.
+            for (var i = 0; i < 24; i++)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5));
+                var status = await _api.CheckSberPaymentAsync(start.Id);
+                if (status.Status == "paid")
                 {
-                    try
-                    {
-                        await Launcher.OpenAsync(new Uri(p.SbpLink));
-                    }
-                    catch
-                    {
-                        await DisplayAlert("Ошибка", "Не удалось открыть ссылку СБП.", "OK");
-                    }
+                    Preferences.Remove("pending_sber_payment");
+                    Preferences.Remove("pending_sber_order");
+                    await DisplayAlert("Оплата прошла",
+                        $"Сбер подтвердил оплату {status.Amount:F0} ₽. Спасибо!", "OK");
+                    return;
+                }
+                if (status.Status is "failed" or "cancelled" or "refunded")
+                {
+                    await DisplayAlert("Оплата не прошла",
+                        status.Error ?? "Повторите оплату или свяжитесь с диспетчером.", "OK");
+                    return;
                 }
             }
-            else
-            {
-                await DisplayAlert(
-                    " Оплата переводом",
-                    message + "Переведите указанную сумму на номер телефона водителя.",
-                    "OK");
-            }
+            await DisplayAlert("Платёж проверяется",
+                "Статус ещё не подтверждён. Не оплачивайте повторно — система продолжит проверку по номеру операции.", "OK");
         }
         catch (Exception ex)
         {
             await DisplayAlert("Ошибка оплаты", ex.Message, "OK");
         }
     }
+
     private async void OnHistoryClicked(object? sender, EventArgs e)
     {
         try

@@ -216,7 +216,9 @@
                             FontSize="12"
                             Clicked="OnPayCash"/>
                     <Button x:Name="PayCardBtn"
-                            Text=" Перевод"
+                            Text=" Карта (проверяем…)"
+                            IsEnabled="False"
+                            Opacity="0.55"
                             BackgroundColor="#333"
                             TextColor="White"
                             CornerRadius="16"

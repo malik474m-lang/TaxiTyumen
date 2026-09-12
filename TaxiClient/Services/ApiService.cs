@@ -283,6 +283,61 @@ public class ApiService
         return await resp.Content.ReadFromJsonAsync<OrderResponse>(_json);
     }
 
+    /// Найти завершённую карточную поездку, оплата которой ещё не подтверждена.
+    public async Task<OrderResponse?> GetPendingSberOrderAsync()
+    {
+        try
+        {
+            var resp = await _http.GetAsync("sber.php?action=pending-order");
+            if (!resp.IsSuccessStatusCode) return null;
+            var raw = await resp.Content.ReadAsStringAsync();
+            if (string.IsNullOrWhiteSpace(raw) || raw == "null") return null;
+            return JsonSerializer.Deserialize<OrderResponse>(raw, _json);
+        }
+        catch { return null; }
+    }
+
+    /// Зарегистрировать оплату завершённой поездки на странице Сбера.
+    public async Task<SberPaymentStart> StartSberOrderPaymentAsync(Guid orderId, string method = "card")
+    {
+        var resp = await _http.PostAsJsonAsync("sber.php", new
+        {
+            action = "pay-order", orderId, method
+        });
+        var raw = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode) throw new Exception(ExtractApiError(raw));
+        return JsonSerializer.Deserialize<SberPaymentStart>(raw, _json)
+            ?? throw new Exception("Сбер не вернул ссылку на оплату");
+    }
+
+    /// Проверить подтверждение платежа в Сбере.
+    public async Task<SberPaymentStatus> CheckSberPaymentAsync(string id)
+    {
+        var resp = await _http.GetAsync("sber.php?action=check&id=" + Uri.EscapeDataString(id));
+        var raw = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode) throw new Exception(ExtractApiError(raw));
+        return JsonSerializer.Deserialize<SberPaymentStatus>(raw, _json)
+            ?? new SberPaymentStatus { Id = id, Status = "pending" };
+    }
+
+    /// Публичная конфигурация эквайринга и список привязанных карт клиента.
+    public async Task<SberPublicConfig?> GetSberConfigAsync()
+    {
+        try { return await _http.GetFromJsonAsync<SberPublicConfig>("sber.php?action=config", _json); }
+        catch { return null; }
+    }
+
+    private static string ExtractApiError(string raw)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            if (doc.RootElement.TryGetProperty("error", out var e)) return e.GetString() ?? raw;
+        }
+        catch { }
+        return raw;
+    }
+
     public async Task<OrderResponse?> GetOrderAsync(Guid orderId)
     {
         var resp = await _http.GetAsync($"orders/{orderId}");
@@ -422,4 +477,28 @@ public sealed class MapConfigDto
 
     public double CenterLat => Center is { Length: 2 } ? Center[0] : 57.1522;
     public double CenterLng => Center is { Length: 2 } ? Center[1] : 65.5272;
+}
+
+public sealed class SberPaymentStart
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
+    [JsonPropertyName("formUrl")] public string? FormUrl { get; set; }
+}
+
+public sealed class SberPaymentStatus
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
+    [JsonPropertyName("amount")] public decimal Amount { get; set; }
+    [JsonPropertyName("maskedPan")] public string? MaskedPan { get; set; }
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class SberPublicConfig
+{
+    [JsonPropertyName("enabled")] public bool Enabled { get; set; }
+    [JsonPropertyName("testMode")] public bool TestMode { get; set; }
+    [JsonPropertyName("recurringEnabled")] public bool RecurringEnabled { get; set; }
+    [JsonPropertyName("sbpEnabled")] public bool SbpEnabled { get; set; }
 }

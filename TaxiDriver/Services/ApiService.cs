@@ -385,4 +385,81 @@ public class ApiService
 
         return await resp.Content.ReadFromJsonAsync<List<BalanceTransactionDto>>(_json) ?? new();
     }
+
+    /// Безналичный заработок и заявки на вывод самозанятого.
+    public async Task<SberWalletDto> GetSberWalletAsync()
+    {
+        var resp = await _http.GetAsync("sber.php?action=wallet");
+        var raw = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode) throw new Exception(ApiError(raw));
+        return JsonSerializer.Deserialize<SberWalletDto>(raw, _json) ?? new();
+    }
+
+    /// Пополнение рабочего баланса через Сбер: СБП, если одобрен, иначе карта.
+    public async Task<SberStartDto> StartDriverTopupAsync(decimal amount)
+    {
+        var configResp = await _http.GetAsync("sber.php?action=config");
+        var method = "card";
+        if (configResp.IsSuccessStatusCode)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(await configResp.Content.ReadAsStringAsync());
+                if (doc.RootElement.TryGetProperty("sbpEnabled", out var s) && s.GetBoolean()) method = "sbp";
+            }
+            catch { }
+        }
+        var resp = await _http.PostAsJsonAsync("sber.php",
+            new { action = "driver-topup", amount, method });
+        var raw = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode) throw new Exception(ApiError(raw));
+        return JsonSerializer.Deserialize<SberStartDto>(raw, _json)
+            ?? throw new Exception("Сбер не вернул ссылку оплаты");
+    }
+
+    public async Task RequestSberWithdrawalAsync(decimal amount, string phone, string bankName, string inn)
+    {
+        var resp = await _http.PostAsJsonAsync("sber.php",
+            new { action = "withdraw", amount, phone, bankName, inn });
+        var raw = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode) throw new Exception(ApiError(raw));
+    }
+
+    private static string ApiError(string raw)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            if (doc.RootElement.TryGetProperty("error", out var e)) return e.GetString() ?? raw;
+        }
+        catch { }
+        return raw;
+    }
+}
+
+public sealed class SberStartDto
+{
+    public string Id { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string? FormUrl { get; set; }
+}
+
+public sealed class SberWalletDto
+{
+    public decimal CashlessBalance { get; set; }
+    public decimal PendingWithdrawal { get; set; }
+    public decimal TotalCashlessEarned { get; set; }
+    public decimal TotalPaidOut { get; set; }
+    public List<SberWithdrawalDto> Withdrawals { get; set; } = new();
+}
+
+public sealed class SberWithdrawalDto
+{
+    public string Id { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public string Phone { get; set; } = string.Empty;
+    public string BankName { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string? Comment { get; set; }
+    public string CreatedAt { get; set; } = string.Empty;
 }

@@ -481,6 +481,73 @@ CREATE TABLE IF NOT EXISTS sms_gateway_queue (
   INDEX (status), INDEX (created_at), INDEX (phone)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Платежи Сбер: настройки, операции, привязки карт, внутренний учёт,
+-- безналичные кошельки и ручные выплаты самозанятым по СБП
+CREATE TABLE IF NOT EXISTS sber_settings (
+  id TINYINT PRIMARY KEY DEFAULT 1,
+  enabled TINYINT(1) NOT NULL DEFAULT 0,
+  test_mode TINYINT(1) NOT NULL DEFAULT 1,
+  user_name VARCHAR(120) NOT NULL DEFAULT '',
+  api_password VARCHAR(255) NOT NULL DEFAULT '',
+  recurring_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  sbp_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  company_name VARCHAR(160) NOT NULL DEFAULT '',
+  updated_at DATETIME NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS sber_payments (
+  id CHAR(36) PRIMARY KEY,
+  purpose ENUM('order','driver_topup','card_binding') NOT NULL,
+  order_id CHAR(36) NULL, client_id CHAR(36) NULL, driver_id CHAR(36) NULL,
+  local_order_number VARCHAR(32) NOT NULL UNIQUE,
+  sber_order_id VARCHAR(80) NULL UNIQUE,
+  amount DECIMAL(12,2) NOT NULL,
+  status ENUM('created','pending','paid','failed','refunded','cancelled') NOT NULL DEFAULT 'created',
+  payment_method ENUM('card','sbp','binding') NOT NULL DEFAULT 'card',
+  form_url VARCHAR(1000) NULL, binding_id VARCHAR(255) NULL, masked_pan VARCHAR(32) NULL,
+  error VARCHAR(1000) NULL, raw_response MEDIUMTEXT NULL, credited_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, paid_at DATETIME NULL, updated_at DATETIME NULL,
+  INDEX(order_id), INDEX(client_id), INDEX(driver_id), INDEX(status), INDEX(created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS client_payment_bindings (
+  id CHAR(36) PRIMARY KEY, client_id CHAR(36) NOT NULL,
+  binding_id VARCHAR(255) NOT NULL UNIQUE, masked_pan VARCHAR(32) NULL,
+  expiry VARCHAR(12) NULL, label VARCHAR(80) NULL, is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NULL,
+  INDEX(client_id,is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS driver_wallets (
+  driver_id CHAR(36) PRIMARY KEY,
+  cashless_balance DECIMAL(12,2) NOT NULL DEFAULT 0,
+  pending_withdrawal DECIMAL(12,2) NOT NULL DEFAULT 0,
+  total_cashless_earned DECIMAL(12,2) NOT NULL DEFAULT 0,
+  total_paid_out DECIMAL(12,2) NOT NULL DEFAULT 0,
+  updated_at DATETIME NULL,
+  FOREIGN KEY(driver_id) REFERENCES drivers(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS system_ledger (
+  id CHAR(36) PRIMARY KEY, payment_id CHAR(36) NULL, order_id CHAR(36) NULL,
+  driver_id CHAR(36) NULL,
+  type ENUM('payment_received','driver_credit','commission_income','driver_topup','withdrawal','refund','adjustment') NOT NULL,
+  amount DECIMAL(12,2) NOT NULL, description VARCHAR(255) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_payment_type(payment_id,type), INDEX(order_id), INDEX(driver_id), INDEX(created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS driver_withdrawal_requests (
+  id CHAR(36) PRIMARY KEY, driver_id CHAR(36) NOT NULL, amount DECIMAL(12,2) NOT NULL,
+  sbp_phone VARCHAR(30) NOT NULL, bank_name VARCHAR(120) NOT NULL,
+  self_employed_inn VARCHAR(12) NOT NULL,
+  status ENUM('pending','approved','paid','rejected') NOT NULL DEFAULT 'pending',
+  admin_comment VARCHAR(500) NULL, self_employed_receipt VARCHAR(255) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, processed_at DATETIME NULL,
+  processed_by CHAR(36) NULL, FOREIGN KEY(driver_id) REFERENCES drivers(id),
+  INDEX(status), INDEX(driver_id), INDEX(created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS geo_providers (
   provider   VARCHAR(30) PRIMARY KEY,          -- dadata | photon | yandex | opencage
   is_enabled TINYINT(1) NOT NULL DEFAULT 1,

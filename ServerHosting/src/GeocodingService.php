@@ -42,6 +42,10 @@ final class GeocodingService
                 'tomtom'   => TomTom::search($db, $query, $svc),
                 default    => [],
             };
+            // Провайдер мог вернуть правильный полный текст, но координаты
+            // центра деревни/ФИАС вместо отдельного микрорайона. Корректируем
+            // КАЖДУЮ подсказку по её полному адресу до слияния результатов.
+            $items = array_map([self::class, 'correctKnownAddress'], $items);
             $results = self::mergeUnique($results, $items);
         }
 
@@ -54,6 +58,43 @@ final class GeocodingService
      * Координаты — объект OpenStreetMap (ODbL), сверены с расположением
      * Учебного центра Шлюмберже и дорожной сетью.
      */
+    /**
+     * Исправляет координаты известных адресов, которые DaData/ФИАС относит
+     * к центру родительской деревни. Текст подсказки остаётся официальным.
+     */
+    private static function correctKnownAddress(array $item): array
+    {
+        $text = mb_strtolower(
+            (string) ($item['fullAddress'] ?? '') . ' ' . (string) ($item['displayName'] ?? '')
+        );
+        $text = str_replace('ё', 'е', $text);
+        $text = preg_replace('/[^а-яa-z0-9]+/u', ' ', $text) ?? $text;
+
+        // Любой адрес внутри мкр. Молодёжного не может иметь координаты
+        // старой части д. Ушакова (как в заказе TX-...-105533586-16718:
+        // было 57.083065,65.163315).
+        $isYouth = str_contains($text, 'мкр молодежн')
+            || str_contains($text, 'микрорайон молодежн');
+        if (!$isYouth) return $item;
+
+        if (str_contains($text, 'центральн')
+            && (str_contains($text, 'б р') || str_contains($text, 'бульвар'))) {
+            // Центральный бульвар — OSM way 1228975639, центр улицы.
+            // Дом 3 пока не нанесён в OSM, поэтому используем улицу, а не
+            // ложную точку ФИАС в 3 км южнее.
+            $item['latitude'] = 57.1095384;
+            $item['longitude'] = 65.1887697;
+        } else {
+            // Центр локального микрорайона — OSM node 5320937749.
+            $item['latitude'] = 57.1097983;
+            $item['longitude'] = 65.1832044;
+        }
+        $item['source'] = 'local-corrected-' . (string) ($item['source'] ?? 'unknown');
+        $item['hasCoordinates'] = true;
+        $item['verifiedLocal'] = true;
+        return $item;
+    }
+
     private static function localKnownPlaces(string $query): array
     {
         $q = mb_strtolower(trim($query));
@@ -68,11 +109,16 @@ final class GeocodingService
         $isExact = in_array($q, ['молодежный', 'мкр молодежный', 'микрорайон молодежный'], true);
 
         if ($isYouthDistrict || $isExact) {
+            $isCentral = str_contains($q, 'центральн')
+                && (str_contains($q, 'б р') || str_contains($q, 'бульвар'));
             return [[
-                'displayName' => 'мкр. Молодёжный, д. Ушакова, Тюменский район',
-                'fullAddress' => 'Тюменская область, Тюменский район, д. Ушакова, мкр. Молодёжный',
-                'latitude' => 57.1097983,
-                'longitude' => 65.1832044,
+                'displayName' => $isCentral
+                    ? 'Центральный б-р, мкр. Молодёжный, д. Ушакова, Тюменский район'
+                    : 'мкр. Молодёжный, д. Ушакова, Тюменский район',
+                'fullAddress' => 'Тюменская область, Тюменский район, д. Ушакова, мкр. Молодёжный'
+                    . ($isCentral ? ', Центральный бульвар' : ''),
+                'latitude' => $isCentral ? 57.1095384 : 57.1097983,
+                'longitude' => $isCentral ? 65.1887697 : 65.1832044,
                 'source' => 'local-osm',
                 'hasCoordinates' => true,
                 'verifiedLocal' => true,
