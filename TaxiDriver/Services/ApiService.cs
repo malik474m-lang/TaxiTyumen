@@ -425,6 +425,33 @@ public class ApiService
         if (!resp.IsSuccessStatusCode) throw new Exception(ApiError(raw));
     }
 
+    /// Статус самозанятого в ФНС, привязка «Мой налог» и выданные чеки.
+    public async Task<NpdStatusDto> GetNpdStatusAsync(string inn = "")
+    {
+        var url = "sber.php?action=npd-status";
+        if (!string.IsNullOrWhiteSpace(inn)) url += "&inn=" + Uri.EscapeDataString(inn);
+        var resp = await _http.GetAsync(url);
+        var raw = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode) throw new Exception(ApiError(raw));
+        return JsonSerializer.Deserialize<NpdStatusDto>(raw, _json) ?? new();
+    }
+
+    /// Разрешить сервису формировать чеки от имени водителя.
+    public async Task LinkNpdAsync(string inn, string password)
+    {
+        var resp = await _http.PostAsJsonAsync("sber.php",
+            new { action = "npd-link", inn, password });
+        var raw = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode) throw new Exception(ApiError(raw));
+    }
+
+    public async Task UnlinkNpdAsync()
+    {
+        var resp = await _http.PostAsJsonAsync("sber.php", new { action = "npd-unlink" });
+        if (!resp.IsSuccessStatusCode)
+            throw new Exception(ApiError(await resp.Content.ReadAsStringAsync()));
+    }
+
     private static string ApiError(string raw)
     {
         try
@@ -451,6 +478,29 @@ public sealed class SberWalletDto
     public decimal TotalCashlessEarned { get; set; }
     public decimal TotalPaidOut { get; set; }
     public List<SberWithdrawalDto> Withdrawals { get; set; } = new();
+}
+
+public sealed class NpdStatusDto
+{
+    public string? Inn { get; set; }
+    public string? DisplayName { get; set; }
+    public bool Linked { get; set; }
+    public string? LastError { get; set; }
+    public bool? NpdStatus { get; set; }
+    public bool NpdChecked { get; set; }
+    public string NpdMessage { get; set; } = string.Empty;
+    public List<NpdReceiptDto> Receipts { get; set; } = new();
+}
+
+public sealed class NpdReceiptDto
+{
+    public string Id { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string Source { get; set; } = string.Empty;
+    public string? PrintUrl { get; set; }
+    public string? Error { get; set; }
+    public string CreatedAt { get; set; } = string.Empty;
 }
 
 public sealed class SberWithdrawalDto

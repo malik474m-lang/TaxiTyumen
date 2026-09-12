@@ -45,6 +45,10 @@ if (!defined('YANDEX_MAPS_API_KEY')) {
 if (!defined('SBER_USERNAME')) define('SBER_USERNAME', getenv('SBER_USERNAME') ?: '');
 if (!defined('SBER_PASSWORD')) define('SBER_PASSWORD', getenv('SBER_PASSWORD') ?: '');
 
+// ИНН вашего ИП: попадает в чек самозанятого как плательщик-юрлицо.
+// Без него чек оформляется на физлицо и НЕ принимается к расходам ИП.
+if (!defined('COMPANY_INN')) define('COMPANY_INN', getenv('COMPANY_INN') ?: '');
+
 // Тюмень UTC+5 — сдвиг для ценообразования/статистики
 if (!defined('CITY_UTC_OFFSET')) define('CITY_UTC_OFFSET', 5);
 

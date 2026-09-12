@@ -45,6 +45,29 @@
       </VerticalStackLayout>
     </Border>
 
+    <Border BackgroundColor="#252536" Stroke="#444" Padding="14">
+      <Border.StrokeShape><RoundRectangle CornerRadius="12"/></Border.StrokeShape>
+      <VerticalStackLayout Spacing="8">
+        <Label Text="Чеки самозанятого" TextColor="White" FontAttributes="Bold"/>
+        <Label x:Name="NpdStatusLabel" Text="Проверяем статус в ФНС…" FontSize="12" TextColor="Gray"/>
+        <Label Text="Привяжите кабинет «Мой налог» — чек будет формироваться автоматически при каждой выплате, вручную ничего делать не нужно."
+               FontSize="11" TextColor="#8FBF9F"/>
+        <VerticalStackLayout x:Name="NpdLinkForm" Spacing="6">
+          <Entry x:Name="NpdInn" Placeholder="ИНН (12 цифр)" Keyboard="Numeric" MaxLength="12"
+                 TextColor="White" PlaceholderColor="Gray"/>
+          <Entry x:Name="NpdPassword" Placeholder="Пароль от lknpd.nalog.ru" IsPassword="True"
+                 TextColor="White" PlaceholderColor="Gray"/>
+          <Label Text="Пароль не сохраняется: сервис получает только ключ доступа и может лишь выдавать чеки от вашего имени."
+                 FontSize="10" TextColor="Gray"/>
+          <Button x:Name="NpdLinkBtn" Text="Привязать «Мой налог»" BackgroundColor="#4CAF50"
+                  TextColor="White" Clicked="OnLinkNpd"/>
+        </VerticalStackLayout>
+        <Button x:Name="NpdUnlinkBtn" Text="Отключить автоматические чеки" IsVisible="False"
+                BackgroundColor="#3F3F46" TextColor="White" Clicked="OnUnlinkNpd"/>
+        <VerticalStackLayout x:Name="NpdReceiptsList" Spacing="4"/>
+      </VerticalStackLayout>
+    </Border>
+
     <Label Text="Последние заявки" TextColor="White" FontAttributes="Bold"/>
     <VerticalStackLayout x:Name="WithdrawalsList" Spacing="6"/>
     <ActivityIndicator x:Name="Loading" IsRunning="True" Color="#FACC15"/>

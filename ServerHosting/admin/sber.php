@@ -120,14 +120,50 @@ layout_header('Платежи Сбер', 'sber');
 
 <div class="card" style="margin-top:18px;overflow-x:auto">
   <h3>Заявки самозанятых на вывод по СБП</h3>
-  <table style="margin-top:10px"><thead><tr><th>Дата / водитель</th><th>Сумма</th><th>СБП</th><th>ИНН</th><th>Статус</th><th>Обработка</th></tr></thead><tbody>
+  <p class="mut" style="font-size:12px;margin-top:6px">
+    Чек самозанятого формируется автоматически, если водитель привязал кабинет
+    «Мой налог» (столбец «Чек»). Если привязки нет — впишите номер чека вручную,
+    водитель создаёт его в приложении «Мой налог».
+  </p>
+  <table style="margin-top:10px"><thead><tr><th>Дата / водитель</th><th>Сумма</th><th>СБП</th><th>ИНН / ФНС</th><th>Чек</th><th>Статус</th><th>Обработка</th></tr></thead><tbody>
   <?php foreach($withdrawals as $r): ?>
     <tr><td><?=h(fmt_date($r['created_at']))?><div class="mut"><?=h($r['first_name'].' '.$r['last_name'].' · '.$r['license_plate'])?></div></td>
-    <td><b><?=money((float)$r['amount'])?></b></td><td><?=h($r['sbp_phone'])?><div class="mut"><?=h($r['bank_name'])?></div></td><td><?=h($r['self_employed_inn'])?></td>
+    <td><b><?=money((float)$r['amount'])?></b></td><td><?=h($r['sbp_phone'])?><div class="mut"><?=h($r['bank_name'])?></div></td>
+    <td><?=h($r['self_employed_inn'])?>
+      <?php
+      $acc = SelfEmployed::account($db, (string) $r['driver_id']);
+      if ($acc && $acc['npd_status'] !== null):
+          $npdOk = (int) $acc['npd_status'] === 1; ?>
+        <div><span class="chip <?= $npdOk ? 'ok' : 'bad' ?>" title="<?= h((string) $acc['npd_message']) ?>">
+          <?= $npdOk ? 'НПД активен' : 'НЕ самозанятый' ?></span></div>
+      <?php endif; ?>
+      <?php if ($acc && !empty($acc['refresh_token']) && (int) $acc['auto_receipt'] === 1): ?>
+        <div class="mut" style="font-size:11px">✓ чек автоматически</div>
+      <?php endif; ?>
+    </td>
+    <td>
+      <?php
+      $rc = $db->prepare("SELECT * FROM self_employed_receipts WHERE withdrawal_id=? ORDER BY created_at DESC LIMIT 1");
+      $rc->execute([$r['id']]);
+      $receiptRow = $rc->fetch();
+      ?>
+      <?php if ($receiptRow && $receiptRow['status'] !== 'failed'): ?>
+        <?php if (!empty($receiptRow['print_url'])): ?>
+          <a class="chip ok" href="<?= h((string) $receiptRow['print_url']) ?>" target="_blank" rel="noopener">Открыть чек</a>
+        <?php else: ?>
+          <span class="chip ok"><?= h((string) $receiptRow['receipt_uuid']) ?></span>
+        <?php endif; ?>
+        <div class="mut" style="font-size:11px"><?= $receiptRow['source'] === 'auto' ? 'автоматически' : 'вручную' ?></div>
+      <?php elseif ($receiptRow): ?>
+        <span class="chip bad" title="<?= h((string) $receiptRow['error']) ?>">ошибка</span>
+      <?php else: ?>
+        <span class="mut">—</span>
+      <?php endif; ?>
+    </td>
     <td><span class="chip <?=$r['status']==='paid'?'ok':($r['status']==='rejected'?'bad':'warn')?>"><?=h($r['status'])?></span></td><td>
-    <?php if($r['status']==='pending'): ?><form method="post" style="display:grid;gap:5px;min-width:230px"><input type="hidden" name="cmd" value="withdraw"><input type="hidden" name="id" value="<?=h($r['id'])?>"><input name="comment" placeholder="Комментарий / номер перевода"><input name="receipt" placeholder="Номер чека самозанятого"><div class="flex"><button class="btn sm" name="decision" value="paid">Выплачено</button><button class="btn sm ghost" name="decision" value="rejected">Отклонить</button></div></form><?php else: ?><div class="mut"><?=h((string)$r['admin_comment'])?></div><div class="mut">Чек: <?=h((string)$r['self_employed_receipt'])?></div><?php endif; ?>
+    <?php if($r['status']==='pending'): ?><form method="post" style="display:grid;gap:5px;min-width:230px"><input type="hidden" name="cmd" value="withdraw"><input type="hidden" name="id" value="<?=h($r['id'])?>"><input name="comment" placeholder="Комментарий / номер перевода"><input name="receipt" placeholder="Чек — пусто = сформировать автоматически"><div class="flex"><button class="btn sm" name="decision" value="paid">Выплачено</button><button class="btn sm ghost" name="decision" value="rejected">Отклонить</button></div></form><?php else: ?><div class="mut"><?=h((string)$r['admin_comment'])?></div><?php endif; ?>
     </td></tr>
-  <?php endforeach; ?><?php if(!$withdrawals):?><tr><td colspan="6" class="mut">Заявок нет</td></tr><?php endif;?></tbody></table>
+  <?php endforeach; ?><?php if(!$withdrawals):?><tr><td colspan="7" class="mut">Заявок нет</td></tr><?php endif;?></tbody></table>
 </div>
 
 <div class="card" style="margin-top:18px;overflow-x:auto">

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using TaxiDriver.Services;
 
 namespace TaxiDriver.Views;
@@ -40,6 +41,131 @@ public partial class WalletPage : ContentPage
         }
         catch (Exception ex) { await DisplayAlert("Кошелёк", ex.Message, "OK"); }
         finally { Loading.IsRunning = false; Loading.IsVisible = false; }
+
+        await LoadNpdAsync();
+    }
+
+    /// Статус самозанятого в ФНС и привязка кабинета «Мой налог».
+    private async Task LoadNpdAsync()
+    {
+        try
+        {
+            var npd = await _api.GetNpdStatusAsync();
+
+            NpdLinkForm.IsVisible = !npd.Linked;
+            NpdUnlinkBtn.IsVisible = npd.Linked;
+            if (!string.IsNullOrWhiteSpace(npd.Inn)) NpdInn.Text = npd.Inn;
+
+            if (npd.Linked)
+            {
+                NpdStatusLabel.Text = "✓ Чеки формируются автоматически"
+                    + (string.IsNullOrWhiteSpace(npd.DisplayName) ? "" : $" · {npd.DisplayName}");
+                NpdStatusLabel.TextColor = Color.FromArgb("#4ADE80");
+            }
+            else if (npd.NpdChecked && npd.NpdStatus == false)
+            {
+                NpdStatusLabel.Text = "ФНС: вы не числитесь самозанятым — оформите статус в «Мой налог»";
+                NpdStatusLabel.TextColor = Color.FromArgb("#FCA5A5");
+            }
+            else if (npd.NpdChecked && npd.NpdStatus == true)
+            {
+                NpdStatusLabel.Text = "ФНС: статус самозанятого подтверждён. Привяжите кабинет для авточеков.";
+                NpdStatusLabel.TextColor = Color.FromArgb("#FACC15");
+            }
+            else
+            {
+                NpdStatusLabel.Text = "Укажите ИНН и привяжите кабинет «Мой налог»";
+                NpdStatusLabel.TextColor = Colors.Gray;
+            }
+
+            if (!string.IsNullOrWhiteSpace(npd.LastError))
+            {
+                NpdStatusLabel.Text = npd.LastError;
+                NpdStatusLabel.TextColor = Color.FromArgb("#FCA5A5");
+            }
+
+            NpdReceiptsList.Children.Clear();
+            foreach (var r in npd.Receipts.Take(10))
+            {
+                var ok = r.Status is "created" or "manual";
+                var label = new Label
+                {
+                    Text = $"{r.Amount:F0} ₽ · {ReceiptText(r)} · {r.CreatedAt}",
+                    FontSize = 11,
+                    TextColor = ok ? Color.FromArgb("#8FBF9F") : Color.FromArgb("#FCA5A5"),
+                };
+                if (ok && !string.IsNullOrWhiteSpace(r.PrintUrl))
+                {
+                    var url = r.PrintUrl!;
+                    var tap = new TapGestureRecognizer();
+                    tap.Tapped += async (_, _) =>
+                    {
+                        try { await Browser.Default.OpenAsync(url, BrowserLaunchMode.SystemPreferred); }
+                        catch { }
+                    };
+                    label.GestureRecognizers.Add(tap);
+                    label.TextDecorations = TextDecorations.Underline;
+                }
+                NpdReceiptsList.Children.Add(label);
+            }
+        }
+        catch (Exception ex)
+        {
+            NpdStatusLabel.Text = ex.Message;
+            NpdStatusLabel.TextColor = Color.FromArgb("#FCA5A5");
+        }
+    }
+
+    private static string ReceiptText(NpdReceiptDto r) => r.Status switch
+    {
+        "created" => r.Source == "auto" ? "чек создан автоматически" : "чек создан",
+        "manual" => "чек добавлен вручную",
+        "cancelled" => "чек отменён",
+        _ => "ошибка: " + (r.Error ?? ""),
+    };
+
+    private async void OnLinkNpd(object? sender, EventArgs e)
+    {
+        var inn = (NpdInn.Text ?? "").Trim();
+        var password = NpdPassword.Text ?? "";
+        if (inn.Length != 12)
+        {
+            await DisplayAlert("Мой налог", "ИНН должен содержать 12 цифр", "OK"); return;
+        }
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            await DisplayAlert("Мой налог", "Введите пароль от кабинета lknpd.nalog.ru", "OK"); return;
+        }
+
+        var agree = await DisplayAlert("Согласие",
+            "Разрешаете сервису формировать чеки НПД от вашего имени при выплатах? "
+            + "Пароль не сохраняется, отключить можно в любой момент.",
+            "Разрешаю", "Отмена");
+        if (!agree) return;
+
+        NpdLinkBtn.IsEnabled = false;
+        try
+        {
+            await _api.LinkNpdAsync(inn, password);
+            NpdPassword.Text = "";
+            await DisplayAlert("Готово", "Кабинет привязан. Чеки будут создаваться автоматически.", "OK");
+            await LoadNpdAsync();
+        }
+        catch (Exception ex) { await DisplayAlert("Мой налог", ex.Message, "OK"); }
+        finally { NpdLinkBtn.IsEnabled = true; }
+    }
+
+    private async void OnUnlinkNpd(object? sender, EventArgs e)
+    {
+        if (!await DisplayAlert("Отключить",
+            "Чеки перестанут формироваться автоматически — придётся создавать их вручную в «Мой налог». Продолжить?",
+            "Отключить", "Отмена")) return;
+        try
+        {
+            await _api.UnlinkNpdAsync();
+            await LoadNpdAsync();
+        }
+        catch (Exception ex) { await DisplayAlert("Мой налог", ex.Message, "OK"); }
     }
 
     private static string StatusText(string status) => status switch

@@ -436,6 +436,15 @@ final class SberPayments
         if (strlen($normalizedPhone) < 11) throw new \RuntimeException('Укажите корректный телефон СБП');
         if (trim($bank) === '') throw new \RuntimeException('Укажите банк получателя');
         if (!preg_match('/^\d{12}$/', $inn)) throw new \RuntimeException('ИНН самозанятого должен содержать 12 цифр');
+
+        // Официальная проверка ФНС: если водитель снят с учёта по НПД,
+        // выплата ему как самозанятому обернётся НДФЛ и взносами для ИП.
+        $npd = SelfEmployed::statusCached($db, $driverId, $inn);
+        if ($npd['checked'] && $npd['status'] === false) {
+            throw new \RuntimeException(
+                'ФНС: ИНН не числится плательщиком НПД. Восстановите статус самозанятого в «Мой налог».'
+            );
+        }
         $db->beginTransaction();
         try {
             self::ensureWallet($db, $driverId);
@@ -463,14 +472,44 @@ final class SberPayments
         }
     }
 
-    /** Ручное решение администратора по заявке (пока B2C API не одобрен). */
+    /**
+     * Решение администратора по заявке (пока B2C API Сбера не одобрен).
+     * Чек самозанятого формируется АВТОМАТИЧЕСКИ, если водитель привязал
+     * кабинет «Мой налог»; иначе номер чека вводится вручную.
+     */
     public static function processWithdrawal(\PDO $db, string $id, string $status,
         string $adminId, string $comment = '', string $receipt = ''): void
     {
         if (!in_array($status, ['paid', 'rejected'], true)) throw new \RuntimeException('Неверный статус выплаты');
-        if ($status === 'paid' && trim($receipt) === '') {
-            throw new \RuntimeException('Для выплаты самозанятому укажите номер чека');
+
+        $autoReceiptUrl = null;
+        if ($status === 'paid') {
+            $pre = $db->prepare('SELECT driver_id, amount FROM driver_withdrawal_requests WHERE id=? AND status=\'pending\' LIMIT 1');
+            $pre->execute([$id]);
+            $pending = $pre->fetch();
+            if (!$pending) throw new \RuntimeException('Заявка уже обработана или не найдена');
+
+            if (trim($receipt) === '') {
+                // Пробуем сформировать чек от имени водителя автоматически
+                $created = SelfEmployed::createReceipt(
+                    $db, (string) $pending['driver_id'], (float) $pending['amount'], $id,
+                    'Услуги по перевозке пассажиров'
+                );
+                if (!$created['ok']) {
+                    throw new \RuntimeException(
+                        'Чек не сформирован автоматически: ' . $created['error']
+                        . '. Укажите номер чека вручную.'
+                    );
+                }
+                $receipt = (string) $created['receiptUuid'];
+                $autoReceiptUrl = $created['printUrl'];
+            } else {
+                SelfEmployed::saveManualReceipt(
+                    $db, (string) $pending['driver_id'], (float) $pending['amount'], $receipt, $id
+                );
+            }
         }
+
         $db->beginTransaction();
         try {
             $stmt = $db->prepare('SELECT * FROM driver_withdrawal_requests WHERE id=? FOR UPDATE');
@@ -495,8 +534,12 @@ final class SberPayments
             $db->prepare(
                 'UPDATE driver_withdrawal_requests SET status=?,admin_comment=?,
                  self_employed_receipt=?,processed_at=?,processed_by=? WHERE id=?'
-            )->execute([$status, mb_substr($comment, 0, 500), mb_substr($receipt, 0, 255) ?: null,
-                Db::utcNow(), $adminId, $id]);
+            )->execute([
+                $status,
+                mb_substr(trim($comment . ($autoReceiptUrl ? ' · чек: ' . $autoReceiptUrl : '')), 0, 500),
+                mb_substr($receipt, 0, 255) ?: null,
+                Db::utcNow(), $adminId, $id,
+            ]);
             $db->commit();
         } catch (\Throwable $e) {
             if ($db->inTransaction()) $db->rollBack();

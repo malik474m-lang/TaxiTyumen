@@ -20,6 +20,8 @@ define('YANDEX_MAPS_API_KEY', '');
 define('CORS_ORIGIN', 'https://ваш-домен.ру');
 define('PUBLIC_BASE_URL', 'https://ваш-домен.ру');
 // Сбер Интернет-эквайринг (логин вида *-api); пока доступа нет — пусто.
+// ИНН вашего ИП — попадает в чек самозанятого как плательщик-юрлицо
+define('COMPANY_INN', '');
 define('SBER_USERNAME', '');
 define('SBER_PASSWORD', '');
 define('CITY_UTC_OFFSET', 5);

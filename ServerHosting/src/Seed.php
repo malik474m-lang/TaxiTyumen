@@ -135,6 +135,7 @@ final class Seed
         SmsGateway::ensureTables($db);
         SberPayments::ensureTables($db);
         Places::ensureTables($db);
+        SelfEmployed::ensureTables($db);
         $exists = (int) $db->query("SELECT COUNT(*) FROM users WHERE role='superadmin'")->fetchColumn();
         $marker = Access::state($db, Access::MARKER_KEY);
         $recovery = defined('SUPERADMIN_RECOVERY') && SUPERADMIN_RECOVERY === true;

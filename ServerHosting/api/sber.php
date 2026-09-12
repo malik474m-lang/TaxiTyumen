@@ -125,6 +125,78 @@ if ($action === 'wallet') {
     ]);
 }
 
+// ── Самозанятость: статус в ФНС, привязка «Мой налог», чеки ─────────────────
+if ($action === 'npd-status') {
+    Guard::role($claims, 'driver');
+    $driverId = (string) $claims['driverId'];
+    $account = SelfEmployed::account($db, $driverId);
+    $inn = trim((string) ($_GET['inn'] ?? $account['inn'] ?? ''));
+
+    $status = null;
+    if ($inn !== '') {
+        $status = SelfEmployed::statusCached($db, $driverId, $inn, !empty($_GET['force']));
+    }
+    Response::json([
+        'inn' => $inn ?: null,
+        'displayName' => $account['display_name'] ?? null,
+        // Привязан ли кабинет «Мой налог» для автоматических чеков
+        'linked' => (bool) ($account && !empty($account['refresh_token']) && (int) $account['auto_receipt'] === 1),
+        'lastError' => $account['last_error'] ?? null,
+        'npdStatus' => $status['status'] ?? null,
+        'npdChecked' => $status['checked'] ?? false,
+        'npdMessage' => $status['message'] ?? '',
+        'receipts' => array_map(fn($r) => [
+            'id' => $r['id'],
+            'amount' => (float) $r['amount'],
+            'status' => $r['status'],
+            'source' => $r['source'],
+            'printUrl' => $r['print_url'],
+            'error' => $r['error'],
+            'createdAt' => $r['created_at'],
+        ], SelfEmployed::receipts($db, $driverId)),
+    ]);
+}
+
+// Водитель разрешает сервису формировать чеки от его имени
+if ($action === 'npd-link') {
+    Response::requireMethod('POST');
+    Guard::role($claims, 'driver');
+    try {
+        $linked = SelfEmployed::link(
+            $db, (string) $claims['driverId'],
+            (string) ($body['inn'] ?? ''),
+            (string) ($body['password'] ?? '')
+        );
+        Response::json(['ok' => true] + $linked);
+    } catch (\Throwable $e) {
+        Response::error($e->getMessage());
+    }
+}
+
+if ($action === 'npd-unlink') {
+    Response::requireMethod('POST');
+    Guard::role($claims, 'driver');
+    SelfEmployed::unlink($db, (string) $claims['driverId']);
+    Response::json(['ok' => true]);
+}
+
+// Водитель прислал чек, сформированный вручную в «Мой налог»
+if ($action === 'npd-receipt') {
+    Response::requireMethod('POST');
+    Guard::role($claims, 'driver');
+    try {
+        $id = SelfEmployed::saveManualReceipt(
+            $db, (string) $claims['driverId'],
+            (float) ($body['amount'] ?? 0),
+            (string) ($body['receipt'] ?? ''),
+            !empty($body['withdrawalId']) ? (string) $body['withdrawalId'] : null
+        );
+        Response::json(['ok' => true, 'id' => $id], 201);
+    } catch (\Throwable $e) {
+        Response::error($e->getMessage());
+    }
+}
+
 // Заявка самозанятого на вывод по СБП — пока ручная обработка администратором
 if ($action === 'withdraw') {
     Response::requireMethod('POST');

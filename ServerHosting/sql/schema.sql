@@ -481,6 +481,41 @@ CREATE TABLE IF NOT EXISTS sms_gateway_queue (
   INDEX (status), INDEX (created_at), INDEX (phone)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Самозанятые водители: привязка кабинета «Мой налог» и выданные чеки
+CREATE TABLE IF NOT EXISTS self_employed_accounts (
+  driver_id      CHAR(36) PRIMARY KEY,
+  inn            VARCHAR(12) NOT NULL,
+  display_name   VARCHAR(160) NOT NULL DEFAULT '',
+  refresh_token  TEXT NULL,
+  device_id      VARCHAR(40) NOT NULL DEFAULT '',
+  auto_receipt   TINYINT(1) NOT NULL DEFAULT 0,
+  linked_at      DATETIME NULL,
+  last_error     VARCHAR(500) NULL,
+  npd_status     TINYINT(1) NULL,
+  npd_checked_at DATETIME NULL,
+  npd_message    VARCHAR(255) NULL,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at     DATETIME NULL,
+  FOREIGN KEY (driver_id) REFERENCES drivers(id) ON DELETE CASCADE,
+  INDEX (inn)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS self_employed_receipts (
+  id            CHAR(36) PRIMARY KEY,
+  driver_id     CHAR(36) NOT NULL,
+  withdrawal_id CHAR(36) NULL,
+  amount        DECIMAL(12,2) NOT NULL,
+  receipt_uuid  VARCHAR(60) NULL,
+  print_url     VARCHAR(500) NULL,
+  json_url      VARCHAR(500) NULL,
+  status        ENUM('created','manual','failed','cancelled') NOT NULL DEFAULT 'created',
+  source        ENUM('auto','manual') NOT NULL DEFAULT 'auto',
+  error         VARCHAR(500) NULL,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  cancelled_at  DATETIME NULL,
+  INDEX (driver_id), INDEX (withdrawal_id), INDEX (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Справочник мест и организаций: ТРЦ, кинотеатры, вокзалы, больницы.
 -- Пассажир ищет по названию, система подставляет адрес и координаты.
 CREATE TABLE IF NOT EXISTS places (
