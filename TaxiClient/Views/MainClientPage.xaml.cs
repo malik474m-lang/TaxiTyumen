@@ -170,6 +170,8 @@ function drawRoute(a, b, c, d){ api('drawRoute', [a, b, c, d]); }
 function setDriver(lat, lng){ api('setDriver', [lat, lng]); }
 function clearDriver(){ api('clearDriver', []); }
 function clearRoute(){ api('clearRoute', []); }
+function clearPickup(){ api('clearPickup', []); }
+function clearDest(){ api('clearDest', []); }
 /* Показать машину и точку подачи в одном кадре: пассажир всегда видит,
    где сейчас такси относительно него */
 function fitTwo(lat1, lng1, lat2, lng2){ api('fitTwo', [lat1, lng1, lat2, lng2]); }
@@ -183,16 +185,15 @@ var carSvg = '<svg viewBox=""0 0 44 44"" width=""30"" height=""30"">'
   + '<path d=""M22 5 L31 33 L22 27 L13 33 Z"" fill=""#FACC15"" stroke=""#1b1b1b"" stroke-width=""2"" stroke-linejoin=""round""/>'
   + '</svg>';
 
-// Геометрия маршрута — по дорогам (OSRM, бесплатно), провайдер её только рисует
+// Геометрия маршрута берётся с СЕРВЕРА такси — ровно тот же маршрутизатор,
+// который считает цену (TomTom с пробками, если включён, иначе OSRM).
 function fetchRoute(lat1, lng1, lat2, lng2, ok, fail){
-  var url = 'https://router.project-osrm.org/route/v1/driving/'
-    + lng1 + ',' + lat1 + ';' + lng2 + ',' + lat2
-    + '?overview=full&geometries=geojson';
+  var points = lat1 + ',' + lng1 + ';' + lat2 + ',' + lng2;
+  var url = 'https://taxi.event72.ru/api/route.php?points=' + encodeURIComponent(points);
   fetch(url)
-    .then(function(r){ return r.json(); })
+    .then(function(r){ if (!r.ok) throw new Error('route ' + r.status); return r.json(); })
     .then(function(d){
-      if (d.routes && d.routes.length > 0)
-        ok(d.routes[0].geometry.coordinates.map(function(c){ return [c[1], c[0]]; }));
+      if (d.geometry && d.geometry.length > 1) ok(d.geometry);
       else fail();
     })
     .catch(fail);
@@ -213,14 +214,20 @@ function initLeaflet(){
     var map = L.map('map', { attributionControl: false }).setView([__CLAT__, __CLNG__], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
     L.control.attribution({ prefix: false }).addAttribution('© OpenStreetMap').addTo(map);
-    var pickupM = L.marker([__CLAT__, __CLNG__], { draggable: true }).addTo(map).bindPopup('Подача');
-    pickupM.on('dragend', function(e){
-      var p = e.target.getLatLng();
-      window.location = 'callback://pickup/' + p.lat + '/' + p.lng;
-    });
-    var destM = null, driverM = null, routeLine = null;
+    // Пока адрес не выбран — никаких ложных маркеров в центре карты
+    var pickupM = null, destM = null, driverM = null, routeLine = null;
+    function makePickup(lat, lng){
+      pickupM = L.marker([lat, lng], { draggable: true }).addTo(map).bindPopup('Подача');
+      pickupM.on('dragend', function(e){
+        var p = e.target.getLatLng();
+        window.location = 'callback://pickup/' + p.lat + '/' + p.lng;
+      });
+    }
     window.__impl = {
-      setPickup: function(lat, lng){ pickupM.setLatLng([lat, lng]); map.setView([lat, lng], 15); },
+      setPickup: function(lat, lng){
+        if (!pickupM) makePickup(lat, lng); else pickupM.setLatLng([lat, lng]);
+        map.setView([lat, lng], 15);
+      },
       setDest: function(lat, lng){
         if (!destM){
           destM = L.marker([lat, lng], { draggable: true }).addTo(map).bindPopup('Назначение');
@@ -229,8 +236,10 @@ function initLeaflet(){
             window.location = 'callback://dest/' + p.lat + '/' + p.lng;
           });
         } else destM.setLatLng([lat, lng]);
-        try{ map.fitBounds([pickupM.getLatLng(), destM.getLatLng()], { padding: [40, 40] }); }catch(e){}
+        try{ if (pickupM) map.fitBounds([pickupM.getLatLng(), destM.getLatLng()], { padding: [40, 40] }); }catch(e){}
       },
+      clearPickup: function(){ if (pickupM){ map.removeLayer(pickupM); pickupM = null; } this.clearRoute(); },
+      clearDest: function(){ if (destM){ map.removeLayer(destM); destM = null; } this.clearRoute(); },
       drawRoute: function(lat1, lng1, lat2, lng2){
         this.clearRoute();
         fetchRoute(lat1, lng1, lat2, lng2, function(coords){
@@ -277,17 +286,21 @@ function initLeaflet(){
 function initYandex(){
   ymaps.ready(function(){
     var map = new ymaps.Map('map', { center: [__CLAT__, __CLNG__], zoom: 13, controls: ['zoomControl'] });
-    var pickupPlacemark = new ymaps.Placemark([__CLAT__, __CLNG__],
-      { balloonContent: 'Подача' }, { preset: 'islands#orangeDotIcon', draggable: true });
-    map.geoObjects.add(pickupPlacemark);
-    pickupPlacemark.events.add('dragend', function(){
-      var c = pickupPlacemark.geometry.getCoordinates();
-      window.location = 'callback://pickup/' + c[0] + '/' + c[1];
-    });
-    var destPlacemark = null, driverPlacemark = null, routeObject = null;
+    // Пока адрес не выбран — никаких ложных маркеров в центре карты
+    var pickupPlacemark = null, destPlacemark = null, driverPlacemark = null, routeObject = null;
+    function makePickup(lat, lng){
+      pickupPlacemark = new ymaps.Placemark([lat, lng],
+        { balloonContent: 'Подача' }, { preset: 'islands#orangeDotIcon', draggable: true });
+      map.geoObjects.add(pickupPlacemark);
+      pickupPlacemark.events.add('dragend', function(){
+        var c = pickupPlacemark.geometry.getCoordinates();
+        window.location = 'callback://pickup/' + c[0] + '/' + c[1];
+      });
+    }
     window.__impl = {
       setPickup: function(lat, lng){
-        pickupPlacemark.geometry.setCoordinates([lat, lng]);
+        if (!pickupPlacemark) makePickup(lat, lng);
+        else pickupPlacemark.geometry.setCoordinates([lat, lng]);
         map.setCenter([lat, lng], 15);
       },
       setDest: function(lat, lng){
@@ -301,9 +314,18 @@ function initYandex(){
           });
         } else destPlacemark.geometry.setCoordinates([lat, lng]);
         try{
-          map.setBounds([pickupPlacemark.geometry.getCoordinates(), destPlacemark.geometry.getCoordinates()],
+          if (pickupPlacemark) map.setBounds(
+            [pickupPlacemark.geometry.getCoordinates(), destPlacemark.geometry.getCoordinates()],
             { checkZoomRange: true, zoomMargin: [50, 50, 50, 50] });
         }catch(e){}
+      },
+      clearPickup: function(){
+        if (pickupPlacemark){ map.geoObjects.remove(pickupPlacemark); pickupPlacemark = null; }
+        this.clearRoute();
+      },
+      clearDest: function(){
+        if (destPlacemark){ map.geoObjects.remove(destPlacemark); destPlacemark = null; }
+        this.clearRoute();
       },
       drawRoute: function(lat1, lng1, lat2, lng2){
         this.clearRoute();
@@ -428,8 +450,14 @@ initLeaflet();
     {
         try
         {
-            if (_destLat == 0 || _destLng == 0)
+            // Маршрут строится только после выбора ОБЕИХ точек.
+            // Раньше при выбранном «Куда» и пустом «Откуда» линия могла
+            // начинаться в координатах 0,0 либо от старого адреса.
+            if (_pickupLat == 0 || _pickupLng == 0 || _destLat == 0 || _destLng == 0)
+            {
+                MapWebView.EvaluateJavaScriptAsync("clearRoute()");
                 return;
+            }
 
             var p1 = _pickupLat.ToString(CultureInfo.InvariantCulture);
             var p2 = _pickupLng.ToString(CultureInfo.InvariantCulture);
@@ -451,6 +479,12 @@ initLeaflet();
 
         try
         {
+            // Пользователь меняет текст — старая геоточка больше не относится
+            // к новому адресу. Сбрасываем координаты, маркер и старый маршрут.
+            _pickupLat = 0;
+            _pickupLng = 0;
+            await MapWebView.EvaluateJavaScriptAsync("clearPickup()");
+
             _pickupCts?.Cancel();
             _pickupCts = new CancellationTokenSource();
             var token = _pickupCts.Token;
@@ -475,6 +509,12 @@ initLeaflet();
 
         try
         {
+            // То же для адреса назначения: не оставляем старые координаты
+            // под новым текстом — это было причиной неверных маршрутов.
+            _destLat = 0;
+            _destLng = 0;
+            await MapWebView.EvaluateJavaScriptAsync("clearDest()");
+
             _destCts?.Cancel();
             _destCts = new CancellationTokenSource();
             var token = _destCts.Token;
@@ -534,6 +574,7 @@ initLeaflet();
                             PickupSuggestions.IsVisible = false;
 
                             await MapWebView.EvaluateJavaScriptAsync($"setPickup({latStr},{lngStr})");
+                            SafeDrawRoute();
                         }
                         else
                         {
@@ -760,7 +801,10 @@ initLeaflet();
 
         try
         {
-            if (!string.IsNullOrWhiteSpace(PickupEntry.Text))
+            // Если адрес выбран из подсказки/карты, координаты уже точные —
+            // повторный поиск мог заменить их центром одноимённого населённого пункта.
+            if ((_pickupLat == 0 || _pickupLng == 0)
+                && !string.IsNullOrWhiteSpace(PickupEntry.Text))
             {
                 var pickupResults = await _geo.SearchAsync(PickupEntry.Text);
                 if (pickupResults.Count > 0)
@@ -779,7 +823,8 @@ initLeaflet();
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(DestEntry.Text))
+            if ((_destLat == 0 || _destLng == 0)
+                && !string.IsNullOrWhiteSpace(DestEntry.Text))
             {
                 var destResults = await _geo.SearchAsync(DestEntry.Text);
                 if (destResults.Count > 0)

@@ -21,12 +21,18 @@ final class GeocodingService
         $svc = ServiceSettings::get($db);
         $city = (string) $svc['city_name'];
         $region = (string) $svc['region_name'];
-        $results = [];
+
+        // Локальный справочник неоднозначных микрорайонов — впереди внешних
+        // провайдеров. Например, DaData по запросу «Мкр. Молодёжный» выдаёт
+        // Татарстан/Элисту, а нужный микрорайон находится за Шлюмберже,
+        // отдельным массивом по другую сторону трассы от центра д. Ушакова.
+        $results = self::localKnownPlaces($query);
 
         // Порядок и состав источников задаёт админка → «Геокодинг».
-        // Первый активный провайдер является основным.
+        // Собираем ответы всех активных источников, а затем географически
+        // ранжируем: Тюмень и Тюменский район всегда выше одноимённых мест РФ.
         foreach (GeoProviders::active($db) as $provider) {
-            if (count($results) >= 7) break;
+            if (count($results) >= 30) break;
 
             $items = match ($provider) {
                 'dadata'   => self::searchDaData($db, $query, $city, $region, $svc),
@@ -39,7 +45,91 @@ final class GeocodingService
             $results = self::mergeUnique($results, $items);
         }
 
+        $results = self::rankNearby($results, $svc);
         return array_slice($results, 0, 7);
+    }
+
+    /**
+     * Проверенные локальные объекты с неоднозначными названиями.
+     * Координаты — объект OpenStreetMap (ODbL), сверены с расположением
+     * Учебного центра Шлюмберже и дорожной сетью.
+     */
+    private static function localKnownPlaces(string $query): array
+    {
+        $q = mb_strtolower(trim($query));
+        $q = str_replace('ё', 'е', $q);
+        $q = preg_replace('/[^а-яa-z0-9]+/u', ' ', $q) ?? $q;
+        $q = trim($q);
+
+        // Не перехватываем «Молодёжная улица»: только микрорайон/посёлок
+        // либо точное название «Молодёжный».
+        $isYouthDistrict = preg_match('/(^| )(мкр|микрорайон|поселок|пос)( |$)/u', $q)
+            && str_contains($q, 'молодежн');
+        $isExact = in_array($q, ['молодежный', 'мкр молодежный', 'микрорайон молодежный'], true);
+
+        if ($isYouthDistrict || $isExact) {
+            return [[
+                'displayName' => 'мкр. Молодёжный, д. Ушакова, Тюменский район',
+                'fullAddress' => 'Тюменская область, Тюменский район, д. Ушакова, мкр. Молодёжный',
+                'latitude' => 57.1097983,
+                'longitude' => 65.1832044,
+                'source' => 'local-osm',
+                'hasCoordinates' => true,
+                'verifiedLocal' => true,
+            ]];
+        }
+        return [];
+    }
+
+    /**
+     * Географическое ранжирование результатов относительно центра сервиса.
+     * Проверенные локальные точки → до 80 км → до 200 км → без координат →
+     * дальние совпадения. Порядок провайдеров внутри группы сохраняется.
+     */
+    private static function rankNearby(array $items, array $svc): array
+    {
+        $lat0 = (float) ($svc['center_latitude'] ?? 57.1522);
+        $lng0 = (float) ($svc['center_longitude'] ?? 65.5272);
+
+        foreach ($items as $i => &$item) {
+            $lat = (float) ($item['latitude'] ?? 0);
+            $lng = (float) ($item['longitude'] ?? 0);
+            $distance = ($lat != 0.0 && $lng != 0.0)
+                ? self::distanceKm($lat0, $lng0, $lat, $lng)
+                : null;
+            $item['_rank'] = !empty($item['verifiedLocal']) ? 0
+                : ($distance === null ? 3
+                    : ($distance <= 80 ? 1 : ($distance <= 200 ? 2 : 4)));
+            $item['_distance'] = $distance ?? 99999;
+            $item['_order'] = $i;
+        }
+        unset($item);
+
+        usort($items, static function (array $a, array $b): int {
+            $rank = ($a['_rank'] ?? 9) <=> ($b['_rank'] ?? 9);
+            if ($rank !== 0) return $rank;
+            // В локальной группе ближайшие выше; у дальних сохраняем порядок провайдера
+            if (($a['_rank'] ?? 9) <= 2) {
+                $dist = ($a['_distance'] ?? 99999) <=> ($b['_distance'] ?? 99999);
+                if ($dist !== 0) return $dist;
+            }
+            return ($a['_order'] ?? 0) <=> ($b['_order'] ?? 0);
+        });
+
+        foreach ($items as &$item) {
+            unset($item['_rank'], $item['_distance'], $item['_order'], $item['verifiedLocal']);
+        }
+        unset($item);
+        return $items;
+    }
+
+    private static function distanceKm(float $lat1, float $lng1, float $lat2, float $lng2): float
+    {
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLng = deg2rad($lng2 - $lng1);
+        $a = sin($dLat / 2) ** 2
+            + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
+        return 6371.0 * 2 * atan2(sqrt($a), sqrt(max(0.0, 1.0 - $a)));
     }
 
     /** DaData: официальный реестр адресов РФ. */
