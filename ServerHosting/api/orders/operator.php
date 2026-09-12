@@ -23,6 +23,12 @@ if ($pickupLat == 0.0) {
     $g = Taxi::geocodeAddress($pickupAddress, $service['center_latitude'], $service['center_longitude']);
     $pickupLat = $g['lat'];
     $pickupLng = $g['lng'];
+} else {
+    // Сверяем присланные координаты с адресом: диспетчерская тоже может
+    // работать со старым кэшем подсказок.
+    $check = GeocodingService::verifyCoordinates($pickupAddress, $pickupLat, $pickupLng);
+    $pickupLat = $check['lat'];
+    $pickupLng = $check['lng'];
 }
 
 $destinationAddress = trim((string) ($body['destinationAddress'] ?? '')) ?: null;
@@ -32,6 +38,10 @@ if ($destinationAddress && $destLat == 0.0) {
     $g = Taxi::geocodeAddress($destinationAddress, $service['center_latitude'], $service['center_longitude']);
     $destLat = $g['lat'];
     $destLng = $g['lng'];
+} elseif ($destinationAddress && $destLat != 0.0) {
+    $check = GeocodingService::verifyCoordinates($destinationAddress, $destLat, $destLng);
+    $destLat = $check['lat'];
+    $destLng = $check['lng'];
 }
 
 // Клиент автоматически сохраняется в базе: повторные заказы найдут его по телефону.

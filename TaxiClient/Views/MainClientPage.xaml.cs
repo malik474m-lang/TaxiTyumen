@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using TaxiClient.Models;
 using TaxiClient.Services;
 
@@ -353,18 +354,16 @@ var carSvg = '<svg viewBox=""0 0 44 44"" width=""30"" height=""30"">'
   + '<path d=""M22 5 L31 33 L22 27 L13 33 Z"" fill=""#FACC15"" stroke=""#1b1b1b"" stroke-width=""2"" stroke-linejoin=""round""/>'
   + '</svg>';
 
-// Геометрия маршрута берётся с СЕРВЕРА такси — ровно тот же маршрутизатор,
-// который считает цену (TomTom с пробками, если включён, иначе OSRM).
-function fetchRoute(lat1, lng1, lat2, lng2, ok, fail){
-  var points = lat1 + ',' + lng1 + ';' + lat2 + ',' + lng2;
-  var url = 'https://taxi.event72.ru/api/route.php?points=' + encodeURIComponent(points);
-  fetch(url)
-    .then(function(r){ if (!r.ok) throw new Error('route ' + r.status); return r.json(); })
-    .then(function(d){
-      if (d.geometry && d.geometry.length > 1) ok(d.geometry);
-      else fail();
-    })
-    .catch(fail);
+// Геометрию маршрута ЗАГРУЖАЕТ ПРИЛОЖЕНИЕ (C#) и передаёт сюда готовой.
+// Раньше её запрашивал сам WebView через fetch, но страница карты имеет
+// origin null/file://, а сервер отдаёт Access-Control-Allow-Origin с именем
+// домена — браузер блокировал ответ, срабатывал fallback и рисовалась
+// ПРЯМАЯ ЛИНИЯ «по воздуху» вместо дороги.
+var pendingRoute = null;
+
+/* Приложение кладёт сюда массив [[lat,lng], ...] до вызова drawRoute */
+function setRouteGeometry(coords){
+  pendingRoute = (coords && coords.length > 1) ? coords : null;
 }
 
 // Запасной движок: Leaflet + OSM — если Яндекс не ответил (сеть, лимит ключа)
@@ -410,12 +409,17 @@ function initLeaflet(){
       clearDest: function(){ if (destM){ map.removeLayer(destM); destM = null; } this.clearRoute(); },
       drawRoute: function(lat1, lng1, lat2, lng2){
         this.clearRoute();
-        fetchRoute(lat1, lng1, lat2, lng2, function(coords){
-          routeLine = L.polyline(coords, { color: '#FFD700', weight: 5, opacity: .9 }).addTo(map);
+        if (pendingRoute){
+          // Настоящая дорога с сервера (TomTom/OSRM)
+          routeLine = L.polyline(pendingRoute, { color: '#FFD700', weight: 5, opacity: .9 }).addTo(map);
           try{ map.fitBounds(routeLine.getBounds(), { padding: [40, 40] }); }catch(e){}
-        }, function(){
-          routeLine = L.polyline([[lat1, lng1], [lat2, lng2]], { color: '#FFD700', weight: 4, dashArray: '8,8' }).addTo(map);
-        });
+        } else {
+          // Маршрутизатор недоступен: пунктир честно показывает, что это
+          // не дорога, а ориентировочное направление
+          routeLine = L.polyline([[lat1, lng1], [lat2, lng2]],
+            { color: '#FFD700', weight: 4, dashArray: '8,8', opacity: .7 }).addTo(map);
+          try{ map.fitBounds(routeLine.getBounds(), { padding: [40, 40] }); }catch(e){}
+        }
       },
       setDriver: function(lat, lng){
         if (!driverM){
@@ -497,19 +501,17 @@ function initYandex(){
       },
       drawRoute: function(lat1, lng1, lat2, lng2){
         this.clearRoute();
-        fetchRoute(lat1, lng1, lat2, lng2, function(coords){
-          routeObject = new ymaps.GeoObject(
-            { geometry: { type: 'LineString', coordinates: coords } },
-            { strokeColor: '#FFD700', strokeWidth: 5 });
-          map.geoObjects.add(routeObject);
-          try{ map.setBounds(routeObject.geometry.getBounds(), { checkZoomRange: true, zoomMargin: [50, 50, 50, 50] }); }catch(e){}
-        }, function(){
-          routeObject = new ymaps.GeoObject(
-            { geometry: { type: 'LineString', coordinates: [[lat1, lng1], [lat2, lng2]] } },
-            { strokeColor: '#FFD700', strokeWidth: 4, strokeStyle: 'dash' });
-          map.geoObjects.add(routeObject);
-          try{ map.setBounds([[lat1, lng1], [lat2, lng2]], { checkZoomRange: true, zoomMargin: [50, 50, 50, 50] }); }catch(e){}
-        });
+        var coords = pendingRoute || [[lat1, lng1], [lat2, lng2]];
+        var style = pendingRoute
+          ? { strokeColor: '#FFD700', strokeWidth: 5 }
+          : { strokeColor: '#FFD700', strokeWidth: 4, strokeStyle: 'dash', strokeOpacity: .7 };
+        routeObject = new ymaps.GeoObject(
+          { geometry: { type: 'LineString', coordinates: coords } }, style);
+        map.geoObjects.add(routeObject);
+        try{
+          map.setBounds(routeObject.geometry.getBounds(),
+            { checkZoomRange: true, zoomMargin: [50, 50, 50, 50] });
+        }catch(e){}
       },
       setDriver: function(lat, lng){
         if (!driverPlacemark){
@@ -614,25 +616,44 @@ initLeaflet();
         catch { }
     }
 
-    private void SafeDrawRoute()
+    private void SafeDrawRoute() => _ = DrawRouteAsync();
+
+    /// Линия маршрута по дорогам: геометрию получает приложение и передаёт
+    /// в карту готовой. Прямая «по воздуху» рисуется только если
+    /// маршрутизатор недоступен — и тогда она пунктирная.
+    private async Task DrawRouteAsync()
     {
         try
         {
             // Маршрут строится только после выбора ОБЕИХ точек.
-            // Раньше при выбранном «Куда» и пустом «Откуда» линия могла
-            // начинаться в координатах 0,0 либо от старого адреса.
             if (_pickupLat == 0 || _pickupLng == 0 || _destLat == 0 || _destLng == 0)
             {
-                MapWebView.EvaluateJavaScriptAsync("clearRoute()");
+                await MapWebView.EvaluateJavaScriptAsync("clearRoute()");
                 return;
             }
 
-            var p1 = _pickupLat.ToString(CultureInfo.InvariantCulture);
-            var p2 = _pickupLng.ToString(CultureInfo.InvariantCulture);
-            var p3 = _destLat.ToString(CultureInfo.InvariantCulture);
-            var p4 = _destLng.ToString(CultureInfo.InvariantCulture);
+            var fromLat = _pickupLat;
+            var fromLng = _pickupLng;
+            var toLat = _destLat;
+            var toLng = _destLng;
 
-            MapWebView.EvaluateJavaScriptAsync($"drawRoute({p1},{p2},{p3},{p4})");
+            var geometry = await _api.GetRouteGeometryAsync(fromLat, fromLng, toLat, toLng);
+
+            // Точки могли смениться, пока шёл запрос
+            if (fromLat != _pickupLat || fromLng != _pickupLng
+                || toLat != _destLat || toLng != _destLng) return;
+
+            var json = geometry is { Count: > 1 }
+                ? "[" + string.Join(",", geometry.Select(p => string.Format(
+                    CultureInfo.InvariantCulture, "[{0},{1}]", p[0], p[1]))) + "]"
+                : "null";
+            await MapWebView.EvaluateJavaScriptAsync($"setRouteGeometry({json})");
+
+            var p1 = fromLat.ToString(CultureInfo.InvariantCulture);
+            var p2 = fromLng.ToString(CultureInfo.InvariantCulture);
+            var p3 = toLat.ToString(CultureInfo.InvariantCulture);
+            var p4 = toLng.ToString(CultureInfo.InvariantCulture);
+            await MapWebView.EvaluateJavaScriptAsync($"drawRoute({p1},{p2},{p3},{p4})");
         }
         catch { }
     }

@@ -31,6 +31,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $g = Taxi::geocodeAddress($pickupAddress, $service['center_latitude'], $service['center_longitude']);
         $pickupLat = $g['lat'];
         $pickupLng = $g['lng'];
+    } else {
+        // Приложение могло прислать устаревшую точку (старая версия, кэш):
+        // для известных адресов сверяем координаты с адресом, иначе водитель
+        // поедет в другое место, чем написано в заказе.
+        $check = GeocodingService::verifyCoordinates($pickupAddress, $pickupLat, $pickupLng);
+        $pickupLat = $check['lat'];
+        $pickupLng = $check['lng'];
     }
 
     $destinationAddress = trim((string) ($body['destinationAddress'] ?? '')) ?: null;
@@ -40,6 +47,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $g = Taxi::geocodeAddress($destinationAddress, $service['center_latitude'], $service['center_longitude']);
         $destLat = $g['lat'];
         $destLng = $g['lng'];
+    } elseif ($destinationAddress && $destLat != 0.0) {
+        $check = GeocodingService::verifyCoordinates($destinationAddress, $destLat, $destLng);
+        $destLat = $check['lat'];
+        $destLng = $check['lng'];
     }
 
     $tariff = (string) ($body['tariff'] ?? 'economy');

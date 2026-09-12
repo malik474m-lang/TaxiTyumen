@@ -197,6 +197,43 @@ public class ApiService
             throw new Exception(await resp.Content.ReadAsStringAsync());
     }
 
+    /// Дорожная геометрия маршрута [[lat,lng], ...] с сервера такси.
+    /// Запрос идёт из приложения, а не из WebView: у страницы карты
+    /// origin null/file://, и CORS-политика сервера блокировала бы fetch.
+    public async Task<List<List<double>>?> GetRouteGeometryAsync(
+        double fromLat, double fromLng, double toLat, double toLng)
+    {
+        try
+        {
+            var points = string.Format(CultureInfo.InvariantCulture,
+                "{0},{1};{2},{3}", fromLat, fromLng, toLat, toLng);
+            var resp = await _http.GetAsync("route.php?points=" + Uri.EscapeDataString(points));
+            if (!resp.IsSuccessStatusCode) return null;
+
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            var root = doc.RootElement;
+
+            // byRoads=false — сервер вернул отрезок-заглушку, а не дорогу
+            if (root.TryGetProperty("byRoads", out var byRoads)
+                && byRoads.ValueKind == JsonValueKind.False) return null;
+            if (!root.TryGetProperty("geometry", out var geometry)
+                || geometry.ValueKind != JsonValueKind.Array) return null;
+
+            var result = new List<List<double>>();
+            foreach (var point in geometry.EnumerateArray())
+            {
+                if (point.ValueKind != JsonValueKind.Array || point.GetArrayLength() < 2) continue;
+                result.Add(new List<double>
+                {
+                    point[0].GetDouble(),
+                    point[1].GetDouble(),
+                });
+            }
+            return result.Count > 1 ? result : null;
+        }
+        catch { return null; }
+    }
+
     /// Время в пути по дорогам между двумя точками (минуты).
     /// Используется для «водитель приедет через N мин»: сервер считает
     /// маршрут через TomTom (с пробками) или OSRM.

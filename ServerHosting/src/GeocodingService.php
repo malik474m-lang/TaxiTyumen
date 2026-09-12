@@ -67,6 +67,33 @@ final class GeocodingService
      * Исправляет координаты известных адресов, которые DaData/ФИАС относит
      * к центру родительской деревни. Текст подсказки остаётся официальным.
      */
+    /**
+     * Сверяет координаты, присланные приложением, с адресом заказа.
+     * Приложение может прислать устаревшую или ошибочную точку (старая
+     * версия, кэш подсказки), и водитель поедет не туда. Для известных
+     * локальных адресов координаты принудительно исправляются.
+     *
+     * @return array{lat:float,lng:float,corrected:bool}
+     */
+    public static function verifyCoordinates(string $address, float $lat, float $lng): array
+    {
+        $fixed = self::correctKnownAddress([
+            'displayName' => $address,
+            'fullAddress' => $address,
+            'latitude' => $lat,
+            'longitude' => $lng,
+        ]);
+        $newLat = (float) $fixed['latitude'];
+        $newLng = (float) $fixed['longitude'];
+
+        // Меняем только при заметном расхождении (больше ~100 метров),
+        // чтобы не сдвигать точный подъезд, выбранный пассажиром на карте
+        $moved = abs($newLat - $lat) > 0.001 || abs($newLng - $lng) > 0.001;
+        return $moved
+            ? ['lat' => $newLat, 'lng' => $newLng, 'corrected' => true]
+            : ['lat' => $lat, 'lng' => $lng, 'corrected' => false];
+    }
+
     private static function correctKnownAddress(array $item): array
     {
         $text = mb_strtolower(
