@@ -116,6 +116,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'searching',
     ]);
 
+    // Частые места поднимаются выше в подсказках пассажиров
+    Places::touchByAddress($db, $pickupAddress);
+    if ($destinationAddress) Places::touchByAddress($db, $destinationAddress);
+
     foreach (Options::resolve($db, $optionCodes) as $opt) {
         $db->prepare('INSERT INTO order_options (id, order_id, code, name, price) VALUES (?,?,?,?,?)')
             ->execute([Db::uuid(), $orderId, $opt['code'], $opt['name'], $opt['price']]);

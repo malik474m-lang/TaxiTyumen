@@ -38,7 +38,7 @@ Response::json([
         'POST /api/telephony/call.php (соединить абонентов)',
         'POST /api/telephony/webhook.php?secret= (события звонков)',
         'GET  /api/telephony/logs.php (журнал звонков)',
-        'GET  /api/places.php',
+        'GET  /api/places.php (встроенные ориентиры)',
         'GET  /api/service-settings.php · PUT (admin)',
         'GET  /api/branding.php?app= · PUT (admin)',
         'GET/POST /api/branding-logo.php?app= (логотип бренда)',

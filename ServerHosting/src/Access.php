@@ -31,6 +31,7 @@ final class Access
         'tariffs'   => ['label' => 'Тарифы',         'file' => 'tariffs.php',   'superadminOnly' => false, 'locked' => false],
         'options'   => ['label' => 'Опции заказа',   'file' => 'options.php',   'superadminOnly' => false, 'locked' => false],
         'zones'     => ['label' => 'Зоны и цены',    'file' => 'zones.php',     'superadminOnly' => false, 'locked' => false],
+        'places'    => ['label' => 'Места и организации','file' => 'places.php', 'superadminOnly' => false, 'locked' => false],
         'stats'     => ['label' => 'Статистика',     'file' => 'stats.php',     'superadminOnly' => false, 'locked' => false],
         'export'    => ['label' => 'Экспорт CSV',    'file' => 'export.php',    'superadminOnly' => false, 'locked' => false],
         'autocall'  => ['label' => 'Автодозвон',     'file' => 'autocall.php',  'superadminOnly' => false, 'locked' => false],

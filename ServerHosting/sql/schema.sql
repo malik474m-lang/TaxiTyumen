@@ -481,6 +481,27 @@ CREATE TABLE IF NOT EXISTS sms_gateway_queue (
   INDEX (status), INDEX (created_at), INDEX (phone)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Справочник мест и организаций: ТРЦ, кинотеатры, вокзалы, больницы.
+-- Пассажир ищет по названию, система подставляет адрес и координаты.
+CREATE TABLE IF NOT EXISTS places (
+  id          CHAR(36) PRIMARY KEY,
+  name        VARCHAR(160) NOT NULL,
+  search_name VARCHAR(160) NOT NULL,
+  aliases     VARCHAR(400) NOT NULL DEFAULT '',
+  category    VARCHAR(30)  NOT NULL DEFAULT 'other',
+  address     VARCHAR(255) NOT NULL DEFAULT '',
+  latitude    DOUBLE NOT NULL,
+  longitude   DOUBLE NOT NULL,
+  osm_id      VARCHAR(40) NULL,
+  source      VARCHAR(20) NOT NULL DEFAULT 'manual',
+  is_active   TINYINT(1) NOT NULL DEFAULT 1,
+  usage_count INT NOT NULL DEFAULT 0,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  DATETIME NULL,
+  UNIQUE KEY uniq_osm (osm_id),
+  INDEX (is_active, category), INDEX (search_name), INDEX (usage_count)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Платежи Сбер: настройки, операции, привязки карт, внутренний учёт,
 -- безналичные кошельки и ручные выплаты самозанятым по СБП
 CREATE TABLE IF NOT EXISTS sber_settings (
