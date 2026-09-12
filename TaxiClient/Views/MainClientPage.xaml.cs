@@ -219,6 +219,60 @@ public partial class MainClientPage : ContentPage
         }
     }
 
+    // ── Полноэкранная карта ─────────────────────────────────────────────────
+    // Внутри прокручиваемой страницы вертикальные жесты достаются скроллу,
+    // поэтому карта «не двигалась». В полноэкранном режиме WebView переносится
+    // в оверлей вне ScrollView — перетаскивание и щипок работают свободно.
+    private bool _mapFullscreen;
+
+    private async void OnToggleMapFullscreen(object? sender, EventArgs e)
+    {
+        try
+        {
+            _mapFullscreen = !_mapFullscreen;
+
+            if (_mapFullscreen)
+            {
+                MapContainer.Children.Remove(MapWebView);
+                MapFullscreenHost.Children.Add(MapWebView);
+                MapFullscreenOverlay.IsVisible = true;
+            }
+            else
+            {
+                MapFullscreenHost.Children.Remove(MapWebView);
+                MapContainer.Children.Insert(0, MapWebView);
+                MapFullscreenOverlay.IsVisible = false;
+            }
+
+            // Холст сменил размер — движку нужно об этом сообщить,
+            // иначе карта отрисуется в старых границах
+            await Task.Delay(120);
+            await MapWebView.EvaluateJavaScriptAsync("mapResize && mapResize()");
+
+            // Возвращаем в кадр точки поездки
+            if (_pickupLat != 0 && _pickupLng != 0 && _destLat != 0 && _destLng != 0)
+            {
+                var a = _pickupLat.ToString(CultureInfo.InvariantCulture);
+                var b = _pickupLng.ToString(CultureInfo.InvariantCulture);
+                var c = _destLat.ToString(CultureInfo.InvariantCulture);
+                var d = _destLng.ToString(CultureInfo.InvariantCulture);
+                await MapWebView.EvaluateJavaScriptAsync($"fitTwo({a},{b},{c},{d})");
+            }
+        }
+        catch { }
+    }
+
+    /// Аппаратная кнопка «Назад» сначала сворачивает карту, а не закрывает экран.
+    protected override bool OnBackButtonPressed()
+    {
+        if (_mapFullscreen)
+        {
+            OnToggleMapFullscreen(null, EventArgs.Empty);
+            return true;
+        }
+        return base.OnBackButtonPressed();
+    }
+
     /// Сообщение о проблеме: тихо подсказкой при автозапуске, окном — по кнопке.
     private async void ShowLocateProblem(bool silent, string hint, string title, string message)
     {
@@ -344,6 +398,8 @@ function clearDest(){ api('clearDest', []); }
 /* Показать машину и точку подачи в одном кадре: пассажир всегда видит,
    где сейчас такси относительно него */
 function fitTwo(lat1, lng1, lat2, lng2){ api('fitTwo', [lat1, lng1, lat2, lng2]); }
+/* Пересчёт размера холста после разворота карты на весь экран */
+function mapResize(){ api('mapResize', []); }
 function flushQ(){
   try{ queue.forEach(function(it){ window.__impl[it[0]].apply(null, it[1]); }); }catch(e){}
   queue = [];
@@ -378,7 +434,28 @@ function initLeaflet(){
     // attributionControl:false — штатный контрол Leaflet рисует внизу карты
     // флаг Украины и ссылку «Leaflet»; пассажиру они не нужны.
     // Копирайт OpenStreetMap оставляем вручную — он обязателен по лицензии ODbL.
-    var map = L.map('map', { attributionControl: false }).setView([__CLAT__, __CLNG__], 13);
+    // Жесты включаем явно: перетаскивание, щипок, двойной тап, инерция.
+    // Без этого на части устройств карта внутри приложения не двигалась.
+    var map = L.map('map', {
+      attributionControl: false,
+      dragging: true,
+      touchZoom: true,
+      doubleClickZoom: true,
+      scrollWheelZoom: true,
+      boxZoom: false,
+      tap: true,
+      inertia: true,
+      bounceAtZoomLimits: false
+    }).setView([__CLAT__, __CLNG__], 13);
+
+    // Палец начал вести по карте — запрещаем внешней прокрутке перехватывать
+    // жест, иначе страница скроллится, а карта стоит на месте.
+    (function(el){
+      if (!el) return;
+      var stop = function(e){ e.stopPropagation(); };
+      el.addEventListener('touchstart', stop, { passive: true });
+      el.addEventListener('touchmove', stop, { passive: true });
+    })(document.getElementById('map'));
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
     L.control.attribution({ prefix: false }).addAttribution('© OpenStreetMap').addTo(map);
     // Пока адрес не выбран — никаких ложных маркеров в центре карты
@@ -405,6 +482,7 @@ function initLeaflet(){
         } else destM.setLatLng([lat, lng]);
         try{ if (pickupM) map.fitBounds([pickupM.getLatLng(), destM.getLatLng()], { padding: [40, 40] }); }catch(e){}
       },
+      mapResize: function(){ try{ map.invalidateSize(true); }catch(e){} },
       clearPickup: function(){ if (pickupM){ map.removeLayer(pickupM); pickupM = null; } this.clearRoute(); },
       clearDest: function(){ if (destM){ map.removeLayer(destM); destM = null; } this.clearRoute(); },
       drawRoute: function(lat1, lng1, lat2, lng2){
@@ -457,7 +535,26 @@ function initLeaflet(){
 " + SharedJs + @"
 function initYandex(){
   ymaps.ready(function(){
-    var map = new ymaps.Map('map', { center: [__CLAT__, __CLNG__], zoom: 13, controls: ['zoomControl'] });
+    // behaviors обязателен: без multiTouch щипок не масштабирует карту,
+    // без drag карта не сдвигается пальцем внутри приложения
+    var map = new ymaps.Map('map', {
+      center: [__CLAT__, __CLNG__],
+      zoom: 13,
+      controls: ['zoomControl'],
+      behaviors: ['drag', 'multiTouch', 'dblClickZoom']
+    });
+    try {
+      map.behaviors.enable(['drag', 'multiTouch', 'dblClickZoom']);
+      // Наклон/поворот двумя пальцами только мешает пассажиру
+      map.behaviors.disable(['rightMouseButtonMagnifier']);
+    } catch (e) {}
+
+    (function(el){
+      if (!el) return;
+      var stop = function(e){ e.stopPropagation(); };
+      el.addEventListener('touchstart', stop, { passive: true });
+      el.addEventListener('touchmove', stop, { passive: true });
+    })(document.getElementById('map'));
     // Пока адрес не выбран — никаких ложных маркеров в центре карты
     var pickupPlacemark = null, destPlacemark = null, driverPlacemark = null, routeObject = null;
     function makePickup(lat, lng){
@@ -491,6 +588,7 @@ function initYandex(){
             { checkZoomRange: true, zoomMargin: [50, 50, 50, 50] });
         }catch(e){}
       },
+      mapResize: function(){ try{ map.container.fitToViewport(); }catch(e){} },
       clearPickup: function(){
         if (pickupPlacemark){ map.geoObjects.remove(pickupPlacemark); pickupPlacemark = null; }
         this.clearRoute();

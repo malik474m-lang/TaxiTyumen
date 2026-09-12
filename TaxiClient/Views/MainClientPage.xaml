@@ -5,11 +5,39 @@
              Title="Такси Тюмень"
              BackgroundColor="#1E1E2E">
 
+    <!-- Grid поверх ScrollView: полноэкранная карта живёт ВНЕ прокрутки,
+         иначе вертикальные жесты уходят в скролл страницы, а не в карту -->
+    <Grid>
     <ScrollView>
         <StackLayout Spacing="0">
 
             <!-- КАРТА -->
-            <WebView x:Name="MapWebView" HeightRequest="300"/>
+            <Grid x:Name="MapContainer" HeightRequest="300">
+                <WebView x:Name="MapWebView"/>
+
+                <!-- Развернуть карту: в полный экран жесты работают свободно -->
+                <Button x:Name="MapExpandBtn"
+                        Text="⛶"
+                        FontSize="18"
+                        BackgroundColor="#CC252536"
+                        TextColor="White"
+                        CornerRadius="10"
+                        HeightRequest="42"
+                        WidthRequest="42"
+                        Margin="8"
+                        HorizontalOptions="End"
+                        VerticalOptions="Start"
+                        Clicked="OnToggleMapFullscreen"/>
+
+                <Label Text="Нажмите ⛶ — карту можно двигать и масштабировать"
+                       TextColor="#E4E4E7"
+                       BackgroundColor="#9918181B"
+                       FontSize="10"
+                       Padding="8,5"
+                       Margin="8"
+                       HorizontalOptions="Start"
+                       VerticalOptions="End"/>
+            </Grid>
 
             <!-- ПАНЕЛЬ ЗАКАЗА -->
             <StackLayout x:Name="OrderPanel"
@@ -406,4 +434,34 @@
 
         </StackLayout>
     </ScrollView>
+
+    <!-- Полноэкранная карта: WebView переносится сюда целиком, поэтому
+         перетаскивание и щипок не перехватываются прокруткой страницы -->
+    <Grid x:Name="MapFullscreenOverlay"
+          ZIndex="100"
+          BackgroundColor="#0A0A0C"
+          IsVisible="False">
+        <Grid x:Name="MapFullscreenHost"/>
+        <Button x:Name="MapCollapseBtn"
+                Text="✕"
+                FontSize="20"
+                BackgroundColor="#CC252536"
+                TextColor="White"
+                CornerRadius="22"
+                HeightRequest="44"
+                WidthRequest="44"
+                Margin="12"
+                HorizontalOptions="Start"
+                VerticalOptions="Start"
+                Clicked="OnToggleMapFullscreen"/>
+        <Label Text="Тащите — сдвинуть · свести/развести пальцы — масштаб · ✕ — свернуть"
+               TextColor="#E4E4E7"
+               BackgroundColor="#CC18181B"
+               FontSize="11"
+               Padding="12,7"
+               Margin="64,12,12,0"
+               HorizontalOptions="Start"
+               VerticalOptions="Start"/>
+    </Grid>
+    </Grid>
 </ContentPage>
