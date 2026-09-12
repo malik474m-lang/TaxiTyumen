@@ -40,6 +40,77 @@ public class ApiService
         SetToken(auth.Token);
     }
 
+    /// <summary>
+    /// Проверить сохранённую сессию на сервере и получить новый токен ещё
+    /// на 24 часа. Сервер принимает даже истёкший, но корректно подписанный
+    /// токен и проверяет, что аккаунт по-прежнему активен и не заблокирован.
+    /// </summary>
+    public async Task<(AuthResponse? Auth, string? Error, bool Invalid)> RefreshSessionAsync(string token)
+    {
+        try
+        {
+            // На refresh старый Bearer не нужен: он передаётся в JSON-теле
+            var resp = await _http.PostAsJsonAsync("auth/refresh", new { token });
+            var raw = await resp.Content.ReadAsStringAsync();
+            if (!resp.IsSuccessStatusCode)
+            {
+                string? error = null;
+                try
+                {
+                    using var errDoc = JsonDocument.Parse(raw);
+                    if (errDoc.RootElement.TryGetProperty("error", out var e))
+                        error = e.GetString();
+                }
+                catch { }
+                return (null, error ?? $"Сервер ответил {(int)resp.StatusCode}",
+                    resp.StatusCode is System.Net.HttpStatusCode.Unauthorized
+                        or System.Net.HttpStatusCode.Forbidden
+                        or System.Net.HttpStatusCode.NotFound);
+            }
+
+            using var doc = JsonDocument.Parse(raw);
+            if (!doc.RootElement.TryGetProperty("user", out var user))
+                return (null, "Сервер вернул неверный ответ обновления сессии", true);
+
+            var newToken = user.TryGetProperty("token", out var tk) ? tk.GetString() : null;
+            var idText = user.TryGetProperty("id", out var id) ? id.GetString() : null;
+            if (string.IsNullOrWhiteSpace(newToken) || !Guid.TryParse(idText, out var userId))
+                return (null, "Не удалось обновить сессию", true);
+
+            var auth = new AuthResponse
+            {
+                UserId = userId,
+                Token = newToken,
+                Phone = user.TryGetProperty("phone", out var ph) ? ph.GetString() ?? "" : "",
+                FirstName = user.TryGetProperty("firstName", out var fn) ? fn.GetString() ?? "" : "",
+                LastName = user.TryGetProperty("lastName", out var ln) ? ln.GetString() ?? "" : "",
+                Role = user.TryGetProperty("role", out var rl) ? rl.GetString() ?? "Client" : "Client",
+            };
+
+            RestoreSession(auth);
+            await SaveSessionAsync(auth);
+            return (auth, null, false);
+        }
+        catch (Exception ex)
+        {
+            return (null, "Нет связи с сервером: " + ex.Message, false);
+        }
+    }
+
+    /// Сохранить обновлённую сессию в защищённом хранилище.
+    private static async Task SaveSessionAsync(AuthResponse auth)
+    {
+        try
+        {
+            await SecureStorage.SetAsync("token", auth.Token);
+            await SecureStorage.SetAsync("last_phone", auth.Phone ?? "");
+            await SecureStorage.SetAsync("user_id", auth.UserId.ToString());
+            await SecureStorage.SetAsync("user_name", $"{auth.FirstName} {auth.LastName}".Trim());
+            await SecureStorage.SetAsync("role", auth.Role ?? "Client");
+        }
+        catch { }
+    }
+
     public async Task<AuthResponse> LoginAsync(string phone, string password)
     {
         var resp = await _http.PostAsJsonAsync("auth/login",
@@ -187,11 +258,28 @@ public class ApiService
     public async Task<OrderResponse?> CreateOrderAsync(CreateOrderRequest request)
     {
         // URL со слэшем: /api/orders — физический каталог на хостинге, и
-        // mod_dir отвечал 301 с потерей POST-тела и уходом на http://,
-        // который Android блокирует политикой cleartext (connection failure)
+        // mod_dir отвечал 301 с потерей POST-тела и уходом на http://.
         var resp = await _http.PostAsJsonAsync("orders/", request);
+
+        // Токен мог истечь, пока приложение долго было открыто. Обновляем
+        // сессию автоматически и повторяем создание заказа ОДИН раз.
+        if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized
+            && CurrentUser != null && !string.IsNullOrWhiteSpace(CurrentUser.Token))
+        {
+            var oldToken = CurrentUser.Token;
+            resp.Dispose();
+            var refreshed = await RefreshSessionAsync(oldToken);
+            if (refreshed.Auth != null)
+                resp = await _http.PostAsJsonAsync("orders/", request);
+        }
+
         if (!resp.IsSuccessStatusCode)
-            throw new Exception(await resp.Content.ReadAsStringAsync());
+        {
+            var raw = await resp.Content.ReadAsStringAsync();
+            if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                throw new Exception("Сессия истекла. Выйдите и войдите в приложение снова.");
+            throw new Exception(raw);
+        }
         return await resp.Content.ReadFromJsonAsync<OrderResponse>(_json);
     }
 

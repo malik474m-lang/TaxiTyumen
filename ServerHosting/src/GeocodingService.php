@@ -411,6 +411,13 @@ final class GeocodingService
 
     public static function reverse(\PDO $db, float $lat, float $lng): array
     {
+        // Сначала проверенные локальные геозоны: внешние геокодеры (DaData)
+        // знают официальный адрес «д. Ушакова», но не различают отдельный
+        // мкр. Молодёжный за Шлюмберже и возвращают название старой деревни.
+        if ($local = self::localReversePlace($lat, $lng)) {
+            return $local;
+        }
+
         // Порядок обратного геокодинга тоже подчиняется настройкам админки
         foreach (GeoProviders::active($db) as $provider) {
             $item = match ($provider) {
@@ -431,6 +438,35 @@ final class GeocodingService
             'longitude' => $lng,
             'source' => 'coordinates',
         ];
+    }
+
+    /**
+     * Локальные геозоны для GPS → адрес. Границы мкр. Молодёжного проведены
+     * по дорожной сети OSM: севернее Трактовой улицы, включая жилой массив,
+     * но НЕ учебный центр Шлюмберже (западнее) и НЕ старую д. Ушакова (южнее).
+     */
+    private static function localReversePlace(float $lat, float $lng): ?array
+    {
+        // Непрямоугольная зона в форме четырёхугольника:
+        // SW 57.1076,65.1700 · SE 57.1076,65.2055
+        // NE 57.1158,65.2070 · NW 57.1160,65.1700
+        // GPS-погрешность у границы учтена небольшим запасом.
+        $youthDistrict = $lat >= 57.1072 && $lat <= 57.1163
+            && $lng >= 65.1695 && $lng <= 65.2075;
+
+        if ($youthDistrict) {
+            return [
+                'displayName' => 'мкр. Молодёжный, д. Ушакова, Тюменский район',
+                'fullAddress' => 'Тюменская область, Тюменский район, д. Ушакова, мкр. Молодёжный',
+                // Для маршрута сохраняем ФАКТИЧЕСКИЕ GPS-координаты пассажира,
+                // а не центр микрорайона — машина подъедет именно к человеку.
+                'latitude' => $lat,
+                'longitude' => $lng,
+                'source' => 'local-zone-gps',
+                'hasCoordinates' => true,
+            ];
+        }
+        return null;
     }
 
     private static function reverseDaData(\PDO $db, float $lat, float $lng): ?array

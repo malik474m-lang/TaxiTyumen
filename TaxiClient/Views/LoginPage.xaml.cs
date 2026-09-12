@@ -39,39 +39,47 @@ public partial class LoginPage : ContentPage
         try
         {
             var token = await SecureStorage.GetAsync("token");
-            var userIdRaw = await SecureStorage.GetAsync("user_id");
-            var userName = await SecureStorage.GetAsync("user_name");
-            var role = await SecureStorage.GetAsync("role");
+            if (string.IsNullOrWhiteSpace(token)) return;
 
-            if (string.IsNullOrWhiteSpace(token) ||
-                !Guid.TryParse(userIdRaw, out var userId))
-                return;
-
-            // Показываем индикатор загрузки, пока осуществляется авто-вход
+            // Показываем индикатор, пока СЕРВЕР проверяет аккаунт и выдаёт
+            // свежий токен. Раньше главный экран открывался со старым токеном,
+            // а при «Заказать» сервер отвечал «Требуется вход».
             Loading.IsVisible = true;
             Loading.IsRunning = true;
             LoginBtn.IsEnabled = false;
+            ErrorLabel.IsVisible = false;
 
-            var names = (userName ?? "Клиент").Split(' ', 2);
-            var auth = new Models.AuthResponse
+            var refreshed = await _api.RefreshSessionAsync(token);
+            if (refreshed.Auth == null)
             {
-                UserId = userId,
-                Token = token,
-                FirstName = names[0],
-                LastName = names.Length > 1 ? names[1] : "",
-                Phone = PhoneEntry.Text?.Trim() ?? "",
-                Role = role ?? "Client"
-            };
+                if (refreshed.Invalid)
+                {
+                    // Аккаунт заблокирован/удалён или подпись токена неверна —
+                    // больше не пытаемся автоматически входить с ним
+                    SecureStorage.Remove("token");
+                    SecureStorage.Remove("user_id");
+                    SecureStorage.Remove("user_name");
+                    SecureStorage.Remove("role");
+                }
 
-            _api.RestoreSession(auth);
+                ErrorLabel.Text = refreshed.Invalid
+                    ? "Сессия завершена. Войдите снова."
+                    : (refreshed.Error ?? "Не удалось проверить сессию");
+                ErrorLabel.IsVisible = true;
+                Loading.IsRunning = false;
+                Loading.IsVisible = false;
+                LoginBtn.IsEnabled = true;
+                return;
+            }
 
+            var auth = refreshed.Auth;
             try
             {
-                await _signalR.ConnectAsync(token);
+                await _signalR.ConnectAsync(auth.Token);
             }
             catch
             {
-                // SignalR недоступен — продолжаем без реалтайма
+                // Realtime недоступен — продолжаем, основной API работает
             }
 
             Application.Current!.MainPage = new NavigationPage(
