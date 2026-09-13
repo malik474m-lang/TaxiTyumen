@@ -1547,8 +1547,9 @@ public partial class MainDriverPage : ContentPage
         try
         {
             MapContainer.IsVisible = true;
-            MapRouteStatusLabel.Text = "Построение маршрута по дорогам…";
-            MapRouteStatusLabel.TextColor = Color.FromArgb("#FACC15");
+            // Надпись скрыта по умолчанию: показывается только при ошибке
+            MapRouteStatusLabel.IsVisible = false;
+            MapRouteStatusLabel.Text = string.Empty;
 
             if (!_mapLoaded)
             {
@@ -1603,14 +1604,15 @@ public partial class MainDriverPage : ContentPage
 
             if (_roadGeometry is { Count: > 2 })
             {
-                // Офлайн-пакет карты (OpenStreetMap) — карта города работает без сети
-                var offline = LocalWebServer.VectorReady ? " · офлайн-карта города" : string.Empty;
-                MapRouteStatusLabel.Text =
-                    $"Маршрут построен по дорогам · {_roadGeometry.Count} точек{offline}";
-                MapRouteStatusLabel.TextColor = Color.FromArgb("#4ADE80");
+                // Успешное построение маршрута больше не показываем надписью:
+                // водитель видит жёлтую линию на карте — текст только мешал.
+                MapRouteStatusLabel.IsVisible = false;
+                MapRouteStatusLabel.Text = string.Empty;
             }
             else
             {
+                // Ошибка остаётся: без неё непонятно, почему нет линии маршрута
+                MapRouteStatusLabel.IsVisible = true;
                 MapRouteStatusLabel.Text = "Маршрутизатор не ответил — проверьте /api/route.php";
                 MapRouteStatusLabel.TextColor = Color.FromArgb("#F87171");
             }
@@ -1646,9 +1648,16 @@ public partial class MainDriverPage : ContentPage
                 MapDownloadBtn.Text = $"Скачивание: {p.Done} / {p.Total} · новых {p.Saved}";
             });
             var result = await LocalWebServer.DownloadTyumenAsync(progress);
-            MapDownloadBtn.Text = result.Failed == 0
-                ? $"✓ Карта скачана · {result.Total} тайлов"
-                : $"Загружено {result.Total - result.Failed}/{result.Total} · повторить";
+            if (result.Failed == 0)
+            {
+                // Карта скачана — кнопка больше не нужна, убираем её совсем:
+                // надпись «Карта скачана · N тайлов» только занимала место
+                MapDownloadBtn.IsVisible = false;
+            }
+            else
+            {
+                MapDownloadBtn.Text = $"Загружено {result.Total - result.Failed}/{result.Total} · повторить";
+            }
 
             // MapLibre перечитает недостающие тайлы из локального файлового кеша
             _mapTilesVersion = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -1736,7 +1745,8 @@ public partial class MainDriverPage : ContentPage
             var lng = _mapDriverLng != 0 ? _mapDriverLng : _location.CurrentLng;
             var json = MapAssets.BuildRouteJson(
                 _mapOrder, lat, lng, _mapToPickup, _roadGeometry, _mapTilesVersion,
-                _mapDriverBearing ?? _location.CurrentBearing, _mapFullscreen);
+                _mapDriverBearing ?? _location.CurrentBearing, _mapFullscreen,
+                _location.CurrentSpeed);
             if (json == _mapRouteJson) return;
             _mapRouteJson = json;
             LocalWebServer.SetState(json);

@@ -176,14 +176,15 @@ public static class MapAssets
     public static string BuildRouteJson(
         OrderResponse order, double driverLat, double driverLng, bool toPickup,
         List<List<double>>? roadGeometry = null, long tilesVersion = 0,
-        double? bearing = null, bool follow = false)
+        double? bearing = null, bool follow = false, double? speed = null)
     {
         var payload = new
         {
             tilesVersion,
             // follow — камера едет за машиной (включается в полноэкранном режиме)
             follow,
-            driver = new { lat = driverLat, lng = driverLng, bearing },
+            // speed нужна навигаторскому режиму: масштаб зависит от скорости
+            driver = new { lat = driverLat, lng = driverLng, bearing, speed },
             target = toPickup
                 ? Point(order.PickupLatitude, order.PickupLongitude, "Подача")
                 : Point(order.DestinationLatitude, order.DestinationLongitude, "Назначение"),

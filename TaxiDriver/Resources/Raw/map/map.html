@@ -58,6 +58,9 @@ try {
   map.dragPan.enable();
   map.doubleClickZoom.enable();
   map.touchPitch.disable();
+  // Поворот карты двумя пальцами разрешён: в навигаторском режиме карта
+  // разворачивается по курсу, водитель может вернуть север вверх сам
+  map.touchZoomRotate.enableRotation();
 } catch (e) { console.warn('touch config', e); }
 
 /* -- Ручной режим камеры --------------------------------------------------
@@ -350,7 +353,7 @@ function setCarBearing(deg){
   }catch(e){}
 }
 
-window.updateDriver = function(lat, lng, follow, bearing){
+window.updateDriver = function(lat, lng, follow, bearing, speed){
   try{
     if (!lat || !lng) return 'no-coords';
     var ll = [Number(lng), Number(lat)];
@@ -366,6 +369,7 @@ window.updateDriver = function(lat, lng, follow, bearing){
     }
     if (deg !== null) setCarBearing(deg);
     window._prevLL = ll;
+
     if (routeReady && lastData && lastData.geometry && lastData.geometry.length > 1){
       /* стартовая точка линии следует за водителем */
       var src = map.getSource('route');
@@ -374,7 +378,35 @@ window.updateDriver = function(lat, lng, follow, bearing){
         src.setData(src._data);
       }
     }
-    if (follow && !cameraHeld()) map.easeTo({ center: ll, duration: 300 });
+
+    /* ── НАВИГАТОРСКИЙ РЕЖИМ (как в Яндекс.Навигаторе) ──────────────────────
+       В полноэкранном режиме (follow) камера не просто следует за машиной,
+       а разворачивает карту по курсу и приближает её настолько, чтобы были
+       хорошо видны повороты и строения. Масштаб зависит от скорости:
+       стоя/медленно — крупнее (виден каждый поворот),
+       быстро — чуть мельче (видно перекрёсток заранее). */
+    if (follow && !cameraHeld()){
+      var sp = (speed !== undefined && speed !== null) ? Number(speed) : null;
+
+      // Масштаб по скорости (м/с → км/ч)
+      var kmh = (sp !== null && !isNaN(sp)) ? sp * 3.6 : 20;
+      var targetZoom;
+      if (kmh < 15)       targetZoom = 17.2;  // стоит или пробка — виден каждый поворот
+      else if (kmh < 40)  targetZoom = 16.6;  // город — повороты и строения
+      else if (kmh < 70)  targetZoom = 16.0;  // быстрый поток — перекрёсток заранее
+      else                targetZoom = 15.4;  // трасса — обзор дальше
+
+      // Плавный поворот карты по курсу (курс = «вверх»)
+      var targetBearing = (deg !== null) ? deg : map.getBearing();
+
+      map.easeTo({
+        center: ll,
+        zoom: targetZoom,
+        bearing: targetBearing,
+        duration: 600,
+        easing: function(t){ return t * t * (3 - 2 * t); }
+      });
+    }
     return 'ok';
   }catch(e){ return 'err:' + e.message; }
 };
