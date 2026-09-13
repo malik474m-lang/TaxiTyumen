@@ -332,7 +332,7 @@ h3{margin-bottom:10px}
 <div class="wrap">
   <div style="display:flex;justify-content:space-between;align-items:center">
     <div><h1>Лицензии TaxiTyumen</h1>
-    <p class="mut">Сервер: taxi.license-prog.ru · Проверка: раз в сутки</p></div>
+    <p class="mut">Проверка лицензий: раз в сутки</p></div>
     <a href="?action=logout" class="btn ghost">Выйти</a>
   </div>
 
@@ -449,11 +449,10 @@ h3{margin-bottom:10px}
 
   <div class="card">
     <h3>Интеграция с сервером такси</h3>
-    <p class="mut">На сервере такси в config.local.php добавьте:</p>
+    <p class="mut">Введите ключ лицензии в админке такси: раздел «Лицензия»,
+      либо задайте его в config.local.php сервера такси:</p>
     <pre style="background:#18181d;border-radius:8px;padding:14px;margin-top:8px;
-font-size:12px;overflow-x:auto;color:#c4b5fd">define('LICENSE_KEY', 'ВАШ-КЛЮЧ-ЛИЦЕНЗИИ');
-define('LICENSE_SERVER', 'https://taxi.license-prog.ru');</pre>
-    <p class="mut">Ключ также можно ввести в админке такси: «Бренд сервиса» → «Лицензия».</p>
+font-size:12px;overflow-x:auto;color:#c4b5fd">define('LICENSE_KEY', 'ВАШ-КЛЮЧ-ЛИЦЕНЗИИ');</pre>
   </div>
 </div>
 <?php endif; ?>

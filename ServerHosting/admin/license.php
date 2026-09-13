@@ -53,14 +53,18 @@ layout_header('Лицензия', 'license');
     <p class="mut">Ключ лицензии на серверную часть системы такси</p>
   </div>
   <?php
-  $cls = match ($lic['status']) {
-    'valid' => 'ok', 'unchecked' => 'warn', default => 'bad'
-  };
-  $label = match ($lic['status']) {
-    'valid' => 'Действует', 'unchecked' => 'Не проверена',
-    'expired' => 'Истекла', 'suspended' => 'Приостановлена',
-    'invalid' => 'Недействительна', default => $lic['status']
-  };
+  // if/elseif вместо match: работает и на PHP 7.4, если хостинг
+  // не поддерживает PHP 8. Совместимость с LicenseServer на jino.ru.
+  $st = (string) $lic['status'];
+  $cls = $st === 'valid' ? 'ok' : ($st === 'unchecked' ? 'warn' : 'bad');
+  $labels = [
+    'valid' => 'Действует',
+    'unchecked' => 'Не проверена',
+    'expired' => 'Истекла',
+    'suspended' => 'Приостановлена',
+    'invalid' => 'Недействительна',
+  ];
+  $label = $labels[$st] ?? $st;
   ?>
   <span class="chip <?= $cls ?>"><?= $label ?></span>
 </div>
@@ -127,9 +131,6 @@ layout_header('Лицензия', 'license');
       <tr><td class="mut">Причина</td><td style="color:#fca5a5"><?= h($lic['lastReason']) ?></td></tr>
       <?php endif; ?>
     </table>
-    <p class="mut" style="font-size:11px;margin-top:10px">
-      Сервер лицензий: <?= h(defined('LICENSE_SERVER') ? LICENSE_SERVER : 'taxi.license-prog.ru') ?>
-    </p>
   </div>
 </div>
 <?php layout_footer();
