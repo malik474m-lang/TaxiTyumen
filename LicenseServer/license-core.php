@@ -23,6 +23,10 @@ if (!defined('LIC_ADMIN_USER')) define('LIC_ADMIN_USER', getenv('LIC_ADMIN_USER'
 if (!defined('LIC_ADMIN_PASS_HASH')) define('LIC_ADMIN_PASS_HASH', getenv('LIC_ADMIN_PASS_HASH') ?: '');
 if (!defined('LIC_DEBUG')) define('LIC_DEBUG', (getenv('LIC_DEBUG') ?: '') === '1');
 
+// Версия публичного API ядра. Админка проверяет её, чтобы смешивание файлов
+// разных релизов не превращалось в непонятный HTTP 500.
+if (!defined('LIC_CORE_VERSION')) define('LIC_CORE_VERSION', '2026.09.13.3');
+
 // ── БД ────────────────────────────────────────────────────────────────────
 function lic_db(): PDO
 {
@@ -406,6 +410,21 @@ function lic_admin_save_totp(string $secret): void
     lic_db()->prepare(
         'UPDATE license_admin_settings SET totp_secret=?,totp_confirmed=1,updated_at=NOW() WHERE id=1'
     )->execute([lic_encrypt($secret)]);
+}
+
+// Обратная совместимость: старая license-admin.php (286241e) называла
+// функции иначе. Это позволяет сначала обновить ядро, а затем админку без 500.
+if (!function_exists('lic_totp_secret')) {
+    function lic_totp_secret(): string
+    {
+        return lic_admin_totp_secret();
+    }
+}
+if (!function_exists('lic_save_totp_secret')) {
+    function lic_save_totp_secret(string $secret): void
+    {
+        lic_admin_save_totp($secret);
+    }
 }
 
 // CSRF-токен административных форм

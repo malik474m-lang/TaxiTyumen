@@ -2,6 +2,71 @@
 // Админ-панель сервера лицензий: логин с 2FA, управление лицензиями.
 require_once __DIR__ . '/license-core.php';
 
+// ── Совместимость при частичном обновлении файлов ─────────────────────────
+// На shared-хостинге новый license-admin.php мог быть скопирован поверх
+// старого license-core.php. Тогда новые имена функций отсутствуют и PHP
+// раньше падал с fatal error. Версия 286241e использовала старые имена —
+// создаём безопасные алиасы прямо здесь.
+if (!defined('LIC_DEBUG')) define('LIC_DEBUG', false);
+
+if (!function_exists('lic_admin_totp_secret') && function_exists('lic_totp_secret')) {
+    function lic_admin_totp_secret(): string
+    {
+        return lic_totp_secret();
+    }
+}
+if (!function_exists('lic_admin_save_totp') && function_exists('lic_save_totp_secret')) {
+    function lic_admin_save_totp(string $secret): void
+    {
+        lic_save_totp_secret($secret);
+    }
+}
+if (!function_exists('lic_csrf_token')) {
+    function lic_csrf_token(): string
+    {
+        if (empty($_SESSION['csrf'])) $_SESSION['csrf'] = bin2hex(random_bytes(24));
+        return (string) $_SESSION['csrf'];
+    }
+}
+if (!function_exists('lic_verify_csrf')) {
+    function lic_verify_csrf(): bool
+    {
+        $provided = (string) ($_POST['_csrf'] ?? '');
+        return $provided !== '' && hash_equals(lic_csrf_token(), $provided);
+    }
+}
+
+// Если ядро ещё старше и безопасно совместить его невозможно — понятная
+// диагностика вместо fatal error. Секреты и внутренние пути не раскрываем.
+$missingCoreApi = [];
+foreach ([
+    'lic_ensure_tables', 'lic_db', 'lic_generate_key', 'lic_hash_key',
+    'lic_admin_totp_secret', 'lic_admin_save_totp', 'lic_csrf_token',
+    'lic_verify_csrf'
+] as $requiredFunction) {
+    if (!function_exists($requiredFunction)) $missingCoreApi[] = $requiredFunction;
+}
+$bruteApiOk = class_exists('BruteGuard')
+    && method_exists('BruteGuard', 'failedCount');
+if ($missingCoreApi || !$bruteApiOk) {
+    http_response_code(503);
+    header('Content-Type: text/html; charset=utf-8');
+    header('Cache-Control: no-store');
+    echo '<!doctype html><html lang="ru"><meta charset="utf-8">'
+       . '<title>Требуется обновление</title><body style="background:#0a0a0c;'
+       . 'color:#f4f4f5;font:15px/1.6 system-ui;padding:30px">'
+       . '<div style="max-width:720px;margin:auto;background:#121216;border:'
+       . '1px solid #333;border-radius:16px;padding:24px">'
+       . '<h1>Файлы сервера лицензий разных версий</h1>'
+       . '<p style="color:#fca5a5">Обновите одним комплектом файлы '
+       . '<b>license-core.php</b>, <b>license-admin.php</b> и '
+       . '<b>license-api.php</b>.</p>'
+       . '<p>Файл <b>license.local.php</b> и базу MySQL не удаляйте.</p>'
+       . '<p style="color:#a1a1aa">После замены обновите страницу Ctrl+F5.</p>'
+       . '</div></body></html>';
+    exit;
+}
+
 // Понятная диагностика вместо пустого HTTP 500 при ошибке БД/конфига
 try {
     lic_ensure_tables();
