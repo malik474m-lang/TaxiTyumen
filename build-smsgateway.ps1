@@ -21,11 +21,6 @@ if (-not (Test-Path $keystore)) {
     Write-Host "Ключ создан: $keystore" -ForegroundColor Green
 }
 
-$signProps = " -p:AndroidSigningStorePass=$ksPass" + `
-             " -p:AndroidSigningKeyPass=$ksPass" + `
-             " -p:AndroidSigningKeyAlias=$ksAlias" + `
-             " -p:AndroidSigningKeyStore=$keystore
-
 if (-not (Test-Path (Join-Path $dir '.git'))) {
     Write-Host "Клонирую репозиторий..." -ForegroundColor Cyan
     git clone $repoUrl $dir
@@ -37,11 +32,23 @@ if ($LASTEXITCODE -ne 0) { throw 'Ошибка git clone/pull' }
 
 Write-Host "Собираю APK SMS-шлюза..." -ForegroundColor Cyan
 $proj = Join-Path $dir 'TaxiSmsGateway\TaxiSmsGateway.csproj'
+
+# Удаляем артефакты прошлого неудачного запуска: MSBuild мог сохранить
+# ошибочную строку параметров в obj/bin и повторить старую ошибку.
+$projectDir = Split-Path -Parent $proj
+Remove-Item (Join-Path $projectDir 'bin\Release\net10.0-android') `
+    -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $projectDir 'obj\Release\net10.0-android') `
+    -Recurse -Force -ErrorAction SilentlyContinue
+
+# Каждый параметр подписи — ОТДЕЛЬНЫЙ элемент массива. Нельзя склеивать их
+# с AndroidPackageFormat: тогда MSBuild считает всю строку именем APK-файла.
 $publishArgs = @(
     'publish', $proj,
     '-f', 'net10.0-android',
     '-c', 'Release',
     '-p:AndroidPackageFormat=apk',
+    '-p:AndroidKeyStore=true',
     "-p:AndroidSigningStorePass=$ksPass",
     "-p:AndroidSigningKeyPass=$ksPass",
     "-p:AndroidSigningKeyAlias=$ksAlias",

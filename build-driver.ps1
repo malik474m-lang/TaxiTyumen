@@ -32,11 +32,6 @@ if (-not (Test-Path $keystore)) {
     Write-Host "ВАЖНО: сохраните этот файл в надёжное место (вместе с резервной копией)." -ForegroundColor Yellow
 }
 
-$signProps = " -p:AndroidSigningStorePass=$ksPass" + `
-             " -p:AndroidSigningKeyPass=$ksPass" + `
-             " -p:AndroidSigningKeyAlias=$ksAlias" + `
-             " -p:AndroidSigningKeyStore=$keystore"
-
 if (-not (Test-Path (Join-Path $dir '.git'))) {
     Write-Host "Клонирую репозиторий..." -ForegroundColor Cyan
     git clone $repoUrl $dir
@@ -48,9 +43,29 @@ if ($LASTEXITCODE -ne 0) { throw 'Ошибка git clone/pull' }
 
 Write-Host "Собираю APK..." -ForegroundColor Cyan
 $proj = Join-Path $dir 'TaxiDriver\TaxiDriver.csproj'
-dotnet publish $proj `
-    -f net10.0-android -c Release `
-    -p:AndroidPackageFormat=apk$signProps
+
+# Удаляем артефакты прошлого неудачного запуска: MSBuild мог сохранить
+# ошибочную строку параметров в obj/bin и повторить старую ошибку.
+$projectDir = Split-Path -Parent $proj
+Remove-Item (Join-Path $projectDir 'bin\Release\net10.0-android') `
+    -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $projectDir 'obj\Release\net10.0-android') `
+    -Recurse -Force -ErrorAction SilentlyContinue
+
+# Каждый параметр подписи — ОТДЕЛЬНЫЙ элемент массива. Нельзя склеивать их
+# с AndroidPackageFormat: тогда MSBuild считает всю строку именем APK-файла.
+$publishArgs = @(
+    'publish', $proj,
+    '-f', 'net10.0-android',
+    '-c', 'Release',
+    '-p:AndroidPackageFormat=apk',
+    '-p:AndroidKeyStore=true',
+    "-p:AndroidSigningStorePass=$ksPass",
+    "-p:AndroidSigningKeyPass=$ksPass",
+    "-p:AndroidSigningKeyAlias=$ksAlias",
+    "-p:AndroidSigningKeyStore=$keystore"
+)
+& dotnet @publishArgs
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "СБОРКА НЕ УДАЛАСЬ — пришлите вывод выше" -ForegroundColor Red
@@ -85,8 +100,8 @@ Write-Host @"
   2. Разрешите установку из источника: Настройки → Приложения →
      «установка из неизвестных источников» для вашего файлового менеджера;
   3. Если Google Play Protect пишет «небезопасно»: «Подробнее» →
-     «Установить в любом случае» (файл подписан отладочным ключом — это
-     нормально для установки с компьютера, вредоносного кода там нет).
+     «Установить в любом случае» (APK подписан постоянным ключом сервиса;
+     первая установка из файла всё равно считается сторонней).
 "@ -ForegroundColor DarkGray
 
 Start-Process explorer.exe $apkDir
