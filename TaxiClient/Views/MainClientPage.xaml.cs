@@ -395,10 +395,7 @@ function clearDriver(){ api('clearDriver', []); }
 function clearRoute(){ api('clearRoute', []); }
 function clearPickup(){ api('clearPickup', []); }
 function clearDest(){ api('clearDest', []); }
-/* Показать машину и точку подачи в одном кадре: пассажир всегда видит,
-   где сейчас такси относительно него */
 function fitTwo(lat1, lng1, lat2, lng2){ api('fitTwo', [lat1, lng1, lat2, lng2]); }
-/* Пересчёт размера холста после разворота карты на весь экран */
 function mapResize(){ api('mapResize', []); }
 function flushQ(){
   try{ queue.forEach(function(it){ window.__impl[it[0]].apply(null, it[1]); }); }catch(e){}
@@ -410,124 +407,22 @@ var carSvg = '<svg viewBox=""0 0 44 44"" width=""30"" height=""30"">'
   + '<path d=""M22 5 L31 33 L22 27 L13 33 Z"" fill=""#FACC15"" stroke=""#1b1b1b"" stroke-width=""2"" stroke-linejoin=""round""/>'
   + '</svg>';
 
-// Геометрию маршрута ЗАГРУЖАЕТ ПРИЛОЖЕНИЕ (C#) и передаёт сюда готовой.
-// Раньше её запрашивал сам WebView через fetch, но страница карты имеет
-// origin null/file://, а сервер отдаёт Access-Control-Allow-Origin с именем
-// домена — браузер блокировал ответ, срабатывал fallback и рисовалась
-// ПРЯМАЯ ЛИНИЯ «по воздуху» вместо дороги.
 var pendingRoute = null;
-
-/* Приложение кладёт сюда массив [[lat,lng], ...] до вызова drawRoute */
 function setRouteGeometry(coords){
   pendingRoute = (coords && coords.length > 1) ? coords : null;
 }
-
-// Запасной движок: Leaflet + OSM — если Яндекс не ответил (сеть, лимит ключа)
-function initLeaflet(){
-  var css = document.createElement('link');
-  css.rel = 'stylesheet';
-  css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-  document.head.appendChild(css);
-  var s = document.createElement('script');
-  s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-  s.onload = function(){
-    // attributionControl:false — штатный контрол Leaflet рисует внизу карты
-    // флаг Украины и ссылку «Leaflet»; пассажиру они не нужны.
-    // Копирайт OpenStreetMap оставляем вручную — он обязателен по лицензии ODbL.
-    // Жесты включаем явно: перетаскивание, щипок, двойной тап, инерция.
-    // Без этого на части устройств карта внутри приложения не двигалась.
-    var map = L.map('map', {
-      attributionControl: false,
-      dragging: true,
-      touchZoom: true,
-      doubleClickZoom: true,
-      scrollWheelZoom: true,
-      boxZoom: false,
-      tap: true,
-      inertia: true,
-      bounceAtZoomLimits: false
-    }).setView([__CLAT__, __CLNG__], 13);
-
-    // Палец начал вести по карте — запрещаем внешней прокрутке перехватывать
-    // жест, иначе страница скроллится, а карта стоит на месте.
-    (function(el){
-      if (!el) return;
-      var stop = function(e){ e.stopPropagation(); };
-      el.addEventListener('touchstart', stop, { passive: true });
-      el.addEventListener('touchmove', stop, { passive: true });
-    })(document.getElementById('map'));
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-    L.control.attribution({ prefix: false }).addAttribution('© OpenStreetMap').addTo(map);
-    // Пока адрес не выбран — никаких ложных маркеров в центре карты
-    var pickupM = null, destM = null, driverM = null, routeLine = null;
-    function makePickup(lat, lng){
-      pickupM = L.marker([lat, lng], { draggable: true }).addTo(map).bindPopup('Подача');
-      pickupM.on('dragend', function(e){
-        var p = e.target.getLatLng();
-        window.location = 'callback://pickup/' + p.lat + '/' + p.lng;
-      });
-    }
-    window.__impl = {
-      setPickup: function(lat, lng){
-        if (!pickupM) makePickup(lat, lng); else pickupM.setLatLng([lat, lng]);
-        map.setView([lat, lng], 15);
-      },
-      setDest: function(lat, lng){
-        if (!destM){
-          destM = L.marker([lat, lng], { draggable: true }).addTo(map).bindPopup('Назначение');
-          destM.on('dragend', function(e){
-            var p = e.target.getLatLng();
-            window.location = 'callback://dest/' + p.lat + '/' + p.lng;
-          });
-        } else destM.setLatLng([lat, lng]);
-        try{ if (pickupM) map.fitBounds([pickupM.getLatLng(), destM.getLatLng()], { padding: [40, 40] }); }catch(e){}
-      },
-      mapResize: function(){ try{ map.invalidateSize(true); }catch(e){} },
-      clearPickup: function(){ if (pickupM){ map.removeLayer(pickupM); pickupM = null; } this.clearRoute(); },
-      clearDest: function(){ if (destM){ map.removeLayer(destM); destM = null; } this.clearRoute(); },
-      drawRoute: function(lat1, lng1, lat2, lng2){
-        this.clearRoute();
-        if (pendingRoute){
-          // Настоящая дорога с сервера (TomTom/OSRM)
-          routeLine = L.polyline(pendingRoute, { color: '#FFD700', weight: 5, opacity: .9 }).addTo(map);
-          try{ map.fitBounds(routeLine.getBounds(), { padding: [40, 40] }); }catch(e){}
-        } else {
-          // Маршрутизатор недоступен: пунктир честно показывает, что это
-          // не дорога, а ориентировочное направление
-          routeLine = L.polyline([[lat1, lng1], [lat2, lng2]],
-            { color: '#FFD700', weight: 4, dashArray: '8,8', opacity: .7 }).addTo(map);
-          try{ map.fitBounds(routeLine.getBounds(), { padding: [40, 40] }); }catch(e){}
-        }
-      },
-      setDriver: function(lat, lng){
-        if (!driverM){
-          driverM = L.marker([lat, lng], { icon: L.divIcon({ className: '', html: carSvg, iconSize: [30, 30] }) })
-            .addTo(map).bindPopup('Ваше такси');
-        } else driverM.setLatLng([lat, lng]);
-      },
-      fitTwo: function(lat1, lng1, lat2, lng2){
-        try{ map.fitBounds([[lat1, lng1], [lat2, lng2]], { padding: [60, 60], maxZoom: 16 }); }catch(e){}
-      },
-      clearDriver: function(){ if (driverM){ map.removeLayer(driverM); driverM = null; } },
-      clearRoute: function(){ if (routeLine){ map.removeLayer(routeLine); routeLine = null; } }
-    };
-    flushQ();
-  };
-  s.onerror = function(){
-    document.getElementById('map').innerHTML =
-      '<div style=""color:#888;font:14px sans-serif;padding:24px;text-align:center"">Карта недоступна — проверьте интернет</div>';
-  };
-  document.head.appendChild(s);
-}
 ";
 
-    // ── Движок Яндекс Карт JS API 2.1 (ключ из админки, api/map-config) ──────
+    // ── Движок Яндекс Карт JS API 2.1 ─────────────────────────────────────────
     private const string YandexHtml = @"<!DOCTYPE html>
 <html>
 <head>
-<meta name='viewport' content='width=device-width,initial-scale=1.0'>
+<meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'>
 <script src='https://api-maps.yandex.ru/2.1/?apikey=__APIKEY__&lang=ru_RU'></script>
-<style>html,body,#map{margin:0;padding:0;width:100%;height:100%}</style>
+<style>
+html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#1E1E2E;touch-action:none}
+#map{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+</style>
 </head>
 <body>
 <div id='map'></div>
@@ -535,27 +430,16 @@ function initLeaflet(){
 " + SharedJs + @"
 function initYandex(){
   ymaps.ready(function(){
-    // behaviors обязателен: без multiTouch щипок не масштабирует карту,
-    // без drag карта не сдвигается пальцем внутри приложения
     var map = new ymaps.Map('map', {
       center: [__CLAT__, __CLNG__],
       zoom: 13,
       controls: ['zoomControl'],
-      behaviors: ['drag', 'multiTouch', 'dblClickZoom']
+      behaviors: ['drag', 'multiTouch', 'dblClickZoom', 'pinchZoom']
     });
     try {
-      map.behaviors.enable(['drag', 'multiTouch', 'dblClickZoom']);
-      // Наклон/поворот двумя пальцами только мешает пассажиру
-      map.behaviors.disable(['rightMouseButtonMagnifier']);
+      map.behaviors.enable(['drag', 'multiTouch', 'dblClickZoom', 'pinchZoom']);
     } catch (e) {}
 
-    (function(el){
-      if (!el) return;
-      var stop = function(e){ e.stopPropagation(); };
-      el.addEventListener('touchstart', stop, { passive: true });
-      el.addEventListener('touchmove', stop, { passive: true });
-    })(document.getElementById('map'));
-    // Пока адрес не выбран — никаких ложных маркеров в центре карты
     var pickupPlacemark = null, destPlacemark = null, driverPlacemark = null, routeObject = null;
     function makePickup(lat, lng){
       pickupPlacemark = new ymaps.Placemark([lat, lng],
@@ -566,6 +450,7 @@ function initYandex(){
         window.location = 'callback://pickup/' + c[0] + '/' + c[1];
       });
     }
+
     window.__impl = {
       setPickup: function(lat, lng){
         if (!pickupPlacemark) makePickup(lat, lng);
@@ -599,8 +484,8 @@ function initYandex(){
       },
       drawRoute: function(lat1, lng1, lat2, lng2){
         this.clearRoute();
-        var coords = pendingRoute || [[lat1, lng1], [lat2, lng2]];
-        var style = pendingRoute
+        var coords = (pendingRoute && pendingRoute.length > 1) ? pendingRoute : [[lat1, lng1], [lat2, lng2]];
+        var style = (pendingRoute && pendingRoute.length > 1)
           ? { strokeColor: '#FFD700', strokeWidth: 5 }
           : { strokeColor: '#FFD700', strokeWidth: 4, strokeStyle: 'dash', strokeOpacity: .7 };
         routeObject = new ymaps.GeoObject(
@@ -634,31 +519,116 @@ function initYandex(){
   });
 }
 
-// Яндекс грузится до 10 секунд; нет ответа — запускаем запасной движок
 if (window.ymaps) initYandex();
 else {
   var tried = 0;
   var boot = setInterval(function(){
     if (window.ymaps){ clearInterval(boot); initYandex(); }
-    else if (++tried > 25){ clearInterval(boot); initLeaflet(); }
+    else if (++tried > 25){ clearInterval(boot); }
   }, 400);
 }
 </script>
 </body>
 </html>";
 
-    // ── Движок Leaflet + OSM (когда провайдер на сервере не выбран) ─────────
+    // ── Движок Leaflet + OpenStreetMap ──────────────────────────────────────
     private const string LeafletHtml = @"<!DOCTYPE html>
 <html>
 <head>
-<meta name='viewport' content='width=device-width,initial-scale=1.0'>
-<style>html,body,#map{margin:0;padding:0;width:100%;height:100%}</style>
+<meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'>
+<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'/>
+<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+<style>
+html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#1E1E2E;touch-action:none}
+#map{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+.leaflet-container{background:#1E1E2E;outline:none}
+</style>
 </head>
 <body>
 <div id='map'></div>
 <script>
 " + SharedJs + @"
-initLeaflet();
+function initLeaflet(){
+  var map = L.map('map', {
+    attributionControl: false,
+    zoomControl: true,
+    dragging: true,
+    touchZoom: true,
+    doubleClickZoom: true,
+    scrollWheelZoom: true,
+    boxZoom: false,
+    tap: false,
+    bounceAtZoomLimits: false
+  }).setView([__CLAT__, __CLNG__], 13);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap'
+  }).addTo(map);
+
+  L.control.attribution({ prefix: false }).addAttribution('© OpenStreetMap').addTo(map);
+
+  var pickupM = null, destM = null, driverM = null, routeLine = null;
+  function makePickup(lat, lng){
+    pickupM = L.marker([lat, lng], { draggable: true }).addTo(map).bindPopup('Подача');
+    pickupM.on('dragend', function(e){
+      var p = e.target.getLatLng();
+      window.location = 'callback://pickup/' + p.lat + '/' + p.lng;
+    });
+  }
+
+  window.__impl = {
+    setPickup: function(lat, lng){
+      if (!pickupM) makePickup(lat, lng); else pickupM.setLatLng([lat, lng]);
+      map.setView([lat, lng], 15);
+    },
+    setDest: function(lat, lng){
+      if (!destM){
+        destM = L.marker([lat, lng], { draggable: true }).addTo(map).bindPopup('Назначение');
+        destM.on('dragend', function(e){
+          var p = e.target.getLatLng();
+          window.location = 'callback://dest/' + p.lat + '/' + p.lng;
+        });
+      } else destM.setLatLng([lat, lng]);
+      try{ if (pickupM) map.fitBounds([pickupM.getLatLng(), destM.getLatLng()], { padding: [40, 40] }); }catch(e){}
+    },
+    mapResize: function(){ try{ map.invalidateSize(true); }catch(e){} },
+    clearPickup: function(){ if (pickupM){ map.removeLayer(pickupM); pickupM = null; } this.clearRoute(); },
+    clearDest: function(){ if (destM){ map.removeLayer(destM); destM = null; } this.clearRoute(); },
+    drawRoute: function(lat1, lng1, lat2, lng2){
+      this.clearRoute();
+      if (pendingRoute && pendingRoute.length > 1){
+        routeLine = L.polyline(pendingRoute, { color: '#FFD700', weight: 5, opacity: .9 }).addTo(map);
+        try{ map.fitBounds(routeLine.getBounds(), { padding: [40, 40] }); }catch(e){}
+      } else {
+        routeLine = L.polyline([[lat1, lng1], [lat2, lng2]],
+          { color: '#FFD700', weight: 4, dashArray: '8,8', opacity: .7 }).addTo(map);
+        try{ map.fitBounds(routeLine.getBounds(), { padding: [40, 40] }); }catch(e){}
+      }
+    },
+    setDriver: function(lat, lng){
+      if (!driverM){
+        driverM = L.marker([lat, lng], { icon: L.divIcon({ className: '', html: carSvg, iconSize: [30, 30] }) })
+          .addTo(map).bindPopup('Ваше такси');
+      } else driverM.setLatLng([lat, lng]);
+    },
+    fitTwo: function(lat1, lng1, lat2, lng2){
+      try{ map.fitBounds([[lat1, lng1], [lat2, lng2]], { padding: [60, 60], maxZoom: 16 }); }catch(e){}
+    },
+    clearDriver: function(){ if (driverM){ map.removeLayer(driverM); driverM = null; } },
+    clearRoute: function(){ if (routeLine){ map.removeLayer(routeLine); routeLine = null; } }
+  };
+  flushQ();
+}
+
+if (typeof L !== 'undefined') initLeaflet();
+else {
+  var triedL = 0;
+  var bootL = setInterval(function(){
+    if (typeof L !== 'undefined'){ clearInterval(bootL); initLeaflet(); }
+    else if (++triedL > 25){ clearInterval(bootL); }
+  }, 200);
+}
 </script>
 </body>
 </html>";

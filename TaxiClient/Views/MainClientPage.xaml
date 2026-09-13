@@ -5,39 +5,33 @@
              Title="Такси Тюмень"
              BackgroundColor="#1E1E2E">
 
-    <!-- Grid поверх ScrollView: полноэкранная карта живёт ВНЕ прокрутки,
-         иначе вертикальные жесты уходят в скролл страницы, а не в карту -->
-    <Grid>
-    <ScrollView>
-        <StackLayout Spacing="0">
+    <!-- Карта в Row 0 ВНЕ ScrollView: все жесты (перетаскивание, щипок, зум)
+         попадают прямо в карту, Android ScrollView их НЕ перехватывает.
+         Форма заказа прокручивается в Row 1 независимо от карты. -->
+    <Grid RowDefinitions="300,*">
 
-            <!-- КАРТА -->
-            <Grid x:Name="MapContainer" HeightRequest="300">
-                <WebView x:Name="MapWebView"/>
+        <!-- КАРТА (Row 0, интерактивна прямо на главном экране) -->
+        <Grid Grid.Row="0" x:Name="MapContainer" BackgroundColor="#1E1E2E">
+            <WebView x:Name="MapWebView"/>
 
-                <!-- Развернуть карту: в полный экран жесты работают свободно -->
-                <Button x:Name="MapExpandBtn"
-                        Text="⛶"
-                        FontSize="18"
-                        BackgroundColor="#CC252536"
-                        TextColor="White"
-                        CornerRadius="10"
-                        HeightRequest="42"
-                        WidthRequest="42"
-                        Margin="8"
-                        HorizontalOptions="End"
-                        VerticalOptions="Start"
-                        Clicked="OnToggleMapFullscreen"/>
+            <!-- Развернуть карту на весь экран -->
+            <Button x:Name="MapExpandBtn"
+                    Text="⛶"
+                    FontSize="18"
+                    BackgroundColor="#CC252536"
+                    TextColor="White"
+                    CornerRadius="10"
+                    HeightRequest="42"
+                    WidthRequest="42"
+                    Margin="8"
+                    HorizontalOptions="End"
+                    VerticalOptions="Start"
+                    Clicked="OnToggleMapFullscreen"/>
+        </Grid>
 
-                <Label Text="Нажмите ⛶ — карту можно двигать и масштабировать"
-                       TextColor="#E4E4E7"
-                       BackgroundColor="#9918181B"
-                       FontSize="10"
-                       Padding="8,5"
-                       Margin="8"
-                       HorizontalOptions="Start"
-                       VerticalOptions="End"/>
-            </Grid>
+        <!-- ФОРМА ЗАКАЗА И АКТИВНЫЙ ЗАКАЗ (Row 1, прокручивается) -->
+        <ScrollView Grid.Row="1">
+            <StackLayout Spacing="0">
 
             <!-- ПАНЕЛЬ ЗАКАЗА -->
             <StackLayout x:Name="OrderPanel"
@@ -435,9 +429,9 @@
         </StackLayout>
     </ScrollView>
 
-    <!-- Полноэкранная карта: WebView переносится сюда целиком, поэтому
-         перетаскивание и щипок не перехватываются прокруткой страницы -->
+    <!-- Полноэкранная карта: WebView переносится сюда на весь экран -->
     <Grid x:Name="MapFullscreenOverlay"
+          Grid.Row="0" Grid.RowSpan="2"
           ZIndex="100"
           BackgroundColor="#0A0A0C"
           IsVisible="False">

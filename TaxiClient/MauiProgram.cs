@@ -23,6 +23,23 @@ public static class MauiProgram
         builder.Services.AddSingleton<GeocodingService>();
         builder.Services.AddTransient<LoginPage>();
 
+#if ANDROID
+        // Разрешаем WebView мультитач, щипок для зума и хранилище
+        Microsoft.Maui.Handlers.WebViewHandler.Mapper.AppendToMapping(
+            "ClientMapTouchAndZoom", (handler, view) =>
+            {
+                var settings = handler.PlatformView.Settings;
+                settings.JavaScriptEnabled = true;
+                settings.DomStorageEnabled = true;
+                settings.DatabaseEnabled = true;
+                settings.SetSupportZoom(true);
+                settings.BuiltInZoomControls = true;
+                settings.DisplayZoomControls = false;
+                settings.CacheMode = global::Android.Webkit.CacheModes.Default;
+                handler.PlatformView.OverScrollMode = global::Android.Views.OverScrollMode.Never;
+            });
+#endif
+
 #if DEBUG
         builder.Logging.AddDebug();
 #endif
