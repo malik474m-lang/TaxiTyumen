@@ -36,6 +36,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $importResult['addressesFilled'] = $filled['filled'];
             }
         }
+        if ($cmd === 'import-region') {
+            // Импорт по прямоугольной области: Тюмень + Тюменский район
+            // (bbox 56.85–57.45 / 64.80–66.30 покрывает весь район)
+            $importResult = Places::importFromOsmBbox($db, 56.85, 64.80, 57.45, 66.30);
+            if ($importResult['imported'] > 0) {
+                $filled = Places::fillAddresses($db, 300);
+                $importResult['addressesFilled'] = $filled['filled'];
+            }
+        }
         if ($cmd === 'import-csv' && !empty($_FILES['csvfile']['tmp_name'])) {
             $content = (string) file_get_contents($_FILES['csvfile']['tmp_name']);
             // Поддерживаем UTF-8 BOM от Excel
@@ -168,19 +177,40 @@ layout_header('Места и организации', 'places');
       <button class="btn" style="margin-top:10px">Загрузить CSV</button>
     </form>
     <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
-      <p class="mut" style="font-size:12px"><b>Бесплатные источники данных:</b></p>
-      <p class="mut" style="font-size:11px;margin-top:6px">
-        1. <a href="https://download.geofabrik.de/russia/ural-fed-district.html" target="_blank" rel="noopener">Geofabrik — Уральский ФО (.osm.pbf)</a> —
-        полная выгрузка OpenStreetMap, обновляется ежедневно. Тюменская область входит в УФО.
+      <p class="mut" style="font-size:12px"><b>Дополнительно:</b></p>
+      <form method="post" style="margin-top:8px"
+            onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Импортируем всю область…'">
+        <input type="hidden" name="cmd" value="import-region">
+        <button class="btn ghost" style="width:100%">
+          Импорт по всей области (Тюмень + Тюменский район)
+        </button>
+        <p class="mut" style="font-size:11px;margin-top:6px">
+          Загружает ВСЕ организации из OSM по прямоугольной области,
+          покрывающей весь Тюменский район. Занимает 2–4 минуты.
+        </p>
+      </form>
+      <p class="mut" style="font-size:11px;margin-top:14px">
+        <b>Другие источники:</b><br>
+        1. <a href="https://overpass-turbo.eu/" target="_blank" rel="noopener">overpass-turbo.eu</a> —
+        интерактивная карта: выберите область, вставьте запрос ниже, нажмите «Выполнить»,
+        затем «Экспорт» → «Скачать как GeoJSON» или «CSV».
       </p>
-      <p class="mut" style="font-size:11px">
-        2. <a href="https://overpass-turbo.eu/" target="_blank" rel="noopener">Overpass Turbo</a> —
-        интерактивный запрос к OSM: можно выбрать область на карте и выгрузить
-        организации в CSV/GeoJSON. Бесплатно, без регистрации.
-      </p>
-      <p class="mut" style="font-size:11px">
-        3. <a href="https://overpass-api.de/api/interpreter?data=[out:csv(name,::lat,::lon,addr:street,addr:housenumber;true;';')][timeout:120];(nwr[shop](57.0,65.0,57.3,65.9);nwr[amenity](57.0,65.0,57.3,65.9);nwr[tourism](57.0,65.0,57.3,65.9);nwr[leisure](57.0,65.0,57.3,65.9);nwr[office](57.0,65.0,57.3,65.9););out;" target="_blank" rel="noopener">
-        Скачать все организации Тюмени (CSV)</a> — готовый запрос, ~2000 объектов.
+      <details style="margin-top:8px">
+        <summary class="mut" style="font-size:11px;cursor:pointer">Показать запрос для Overpass Turbo</summary>
+        <pre style="background:#18181d;border-radius:8px;padding:10px;margin-top:6px;
+font-size:10px;overflow-x:auto;white-space:pre-wrap;color:#c4b5fd">[out:json][timeout:120];
+(
+  nwr["shop"](56.85,64.80,57.45,66.30)["name"];
+  nwr["amenity"](56.85,64.80,57.45,66.30)["name"];
+  nwr["tourism"](56.85,64.80,57.45,66.30)["name"];
+  nwr["leisure"](56.85,64.80,57.45,66.30)["name"];
+  nwr["office"](56.85,64.80,57.45,66.30)["name"];
+);
+out center tags;</pre>
+      </details>
+      <p class="mut" style="font-size:11px;margin-top:10px">
+        2. <a href="https://download.geofabrik.de/russia/ural-fed-district.html" target="_blank" rel="noopener">Geofabrik — УФО (.osm.pbf)</a> —
+        полный снимок OSM. Нужен инструмент для обработки (osmium, QGIS).
       </p>
     </div>
   </div>

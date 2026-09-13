@@ -266,51 +266,7 @@ final class Places
             return $result;
         }
 
-        $categoryByTag = [];
-        foreach (self::CATEGORIES as $key => $meta) {
-            foreach ($meta[1] as $tag) $categoryByTag[$tag] = $key;
-        }
-
-        $insert = $db->prepare(
-            'INSERT INTO places (id,name,search_name,category,address,latitude,longitude,osm_id,source,is_active)
-             VALUES (?,?,?,?,?,?,?,?,\'osm\',1)
-             ON DUPLICATE KEY UPDATE name=VALUES(name),search_name=VALUES(search_name),
-               category=VALUES(category),address=VALUES(address),
-               latitude=VALUES(latitude),longitude=VALUES(longitude),updated_at=NOW()'
-        );
-
-        foreach ($json['elements'] as $el) {
-            $tags = $el['tags'] ?? [];
-            $name = trim((string) ($tags['name'] ?? ''));
-            if ($name === '' || mb_strlen($name) > 160) { $result['skipped']++; continue; }
-
-            $pLat = (float) ($el['lat'] ?? $el['center']['lat'] ?? 0);
-            $pLng = (float) ($el['lon'] ?? $el['center']['lon'] ?? 0);
-            if ($pLat == 0.0 || $pLng == 0.0) { $result['skipped']++; continue; }
-
-            $category = 'other';
-            foreach ($categoryByTag as $tag => $key) {
-                [$tagKey, $tagValue] = explode('=', $tag, 2);
-                if (($tags[$tagKey] ?? null) === $tagValue) { $category = $key; break; }
-            }
-
-            // Адрес из OSM, если он проставлен
-            $street = trim((string) ($tags['addr:street'] ?? ''));
-            $house = trim((string) ($tags['addr:housenumber'] ?? ''));
-            $address = $street !== '' ? trim($street . ($house !== '' ? ', ' . $house : '')) : '';
-
-            $osmId = (string) ($el['type'] ?? 'node') . '/' . (string) ($el['id'] ?? '');
-            $existing = $db->prepare('SELECT id FROM places WHERE osm_id = ? LIMIT 1');
-            $existing->execute([$osmId]);
-            $isUpdate = (bool) $existing->fetchColumn();
-
-            $insert->execute([
-                Db::uuid(), $name, self::normalize($name), $category,
-                mb_substr($address, 0, 255), $pLat, $pLng, $osmId,
-            ]);
-            $isUpdate ? $result['updated']++ : $result['imported']++;
-        }
-        return $result;
+        return self::processOsmElements($db, $json['elements']);
     }
 
     /**
@@ -424,6 +380,98 @@ final class Places
             } catch (\Throwable) {
                 $result['skipped']++;
             }
+        }
+        return $result;
+    }
+
+    /**
+     * Импорт организаций по прямоугольной области (bounding box).
+     * Позволяет загрузить сразу весь Тюменский район.
+     *
+     * @return array{imported:int,updated:int,skipped:int,error:?string}
+     */
+    public static function importFromOsmBbox(
+        \PDO $db, float $south, float $west, float $north, float $east
+    ): array {
+        self::ensureTables($db);
+        $result = ['imported' => 0, 'updated' => 0, 'skipped' => 0, 'error' => null];
+
+        // Собираем запрос по всем категориям, только объекты с названием
+        $filters = [];
+        foreach (self::CATEGORIES as $meta) {
+            foreach ($meta[1] as $tag) {
+                [$key, $value] = explode('=', $tag, 2);
+                $filters[] = sprintf('nwr["%s"="%s"]["name"](%F,%F,%F,%F);',
+                    $key, $value, $south, $west, $north, $east);
+            }
+        }
+        $query = '[out:json][timeout:300];(' . implode('', $filters) . ');out center tags;';
+
+        $ctx = stream_context_create(['http' => [
+            'method' => 'POST',
+            'timeout' => 300,
+            'ignore_errors' => true,
+            'header' => "Content-Type: application/x-www-form-urlencoded\r\n"
+                . "User-Agent: TaxiTyumen/1.0 (" . PUBLIC_BASE_URL . ")\r\n",
+            'content' => http_build_query(['data' => $query]),
+        ]]);
+        $raw = @file_get_contents('https://overpass-api.de/api/interpreter', false, $ctx);
+        $json = $raw !== false ? json_decode($raw, true) : null;
+        if (!is_array($json) || !isset($json['elements'])) {
+            $result['error'] = 'Overpass API не ответил. Повторите позже или уменьшите область.';
+            return $result;
+        }
+
+        return self::processOsmElements($db, $json['elements']);
+    }
+
+    /** Обработка элементов OSM и сохранение в справочник. */
+    private static function processOsmElements(\PDO $db, array $elements): array
+    {
+        $result = ['imported' => 0, 'updated' => 0, 'skipped' => 0, 'error' => null];
+
+        $categoryByTag = [];
+        foreach (self::CATEGORIES as $key => $meta) {
+            foreach ($meta[1] as $tag) $categoryByTag[$tag] = $key;
+        }
+
+        $insert = $db->prepare(
+            'INSERT INTO places (id,name,search_name,category,address,latitude,longitude,osm_id,source,is_active)
+             VALUES (?,?,?,?,?,?,?,?,\'osm\',1)
+             ON DUPLICATE KEY UPDATE name=VALUES(name),search_name=VALUES(search_name),
+               category=VALUES(category),address=VALUES(address),
+               latitude=VALUES(latitude),longitude=VALUES(longitude),updated_at=NOW()'
+        );
+
+        foreach ($elements as $el) {
+            $tags = $el['tags'] ?? [];
+            $name = trim((string) ($tags['name'] ?? ''));
+            if ($name === '' || mb_strlen($name) > 160) { $result['skipped']++; continue; }
+
+            $pLat = (float) ($el['lat'] ?? $el['center']['lat'] ?? 0);
+            $pLng = (float) ($el['lon'] ?? $el['center']['lon'] ?? 0);
+            if ($pLat == 0.0 || $pLng == 0.0) { $result['skipped']++; continue; }
+
+            $category = 'other';
+            foreach ($categoryByTag as $tag => $key) {
+                [$tagKey, $tagValue] = explode('=', $tag, 2);
+                if (($tags[$tagKey] ?? null) === $tagValue) { $category = $key; break; }
+            }
+
+            $street = trim((string) ($tags['addr:street'] ?? ''));
+            $house = trim((string) ($tags['addr:housenumber'] ?? ''));
+            $address = $street !== '' ? trim($street . ($house !== '' ? ', ' . $house : '')) : '';
+
+            $osmId = (string) ($el['type'] ?? 'node') . '/' . (string) ($el['id'] ?? '');
+            $existing = $db->prepare('SELECT id FROM places WHERE osm_id = ? LIMIT 1');
+            $existing->execute([$osmId]);
+            $isUpdate = (bool) $existing->fetchColumn();
+
+            $insert->execute([
+                Db::uuid(), $name, self::normalize($name), $category,
+                mb_substr($address, 0, 255), $pLat, $pLng, $osmId,
+            ]);
+            $isUpdate ? $result['updated']++ : $result['imported']++;
         }
         return $result;
     }
