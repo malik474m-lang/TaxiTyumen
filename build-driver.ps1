@@ -1,9 +1,41 @@
 # Сборка APK приложения водителя: клонирует/обновляет репозиторий и собирает.
 # Запуск:  powershell -ExecutionPolicy Bypass -File build-driver.ps1
 #   или:  cmd /c powershell -File build-driver.ps1
+#
+# ПОДПИСЬ: используется СВОЙ постоянный ключ taxi-release.keystore, а не
+# случайный отладочный. Это устраняет две главные проблемы установки:
+#   1) предупреждение «неизвестный разработчик» при каждом обновлении —
+#      Android запоминает один и тот же издатель;
+#   2) «Приложение не установлено» при смене подписи — подпись больше
+#      не меняется от компьютера к компьютеру.
+# Ключ создаётся автоматически при первой сборке рядом со скриптом.
 $ErrorActionPreference = 'Stop'
 $repoUrl = 'https://github.com/malik474m-lang/TaxiTyumen.git'
 $dir = Join-Path $PSScriptRoot 'TaxiTyumen'
+
+# ── Свой ключ подписи (один раз создаётся и дальше переиспользуется) ────────
+$keystore = Join-Path $PSScriptRoot 'taxi-release.keystore'
+$ksPass   = 'TaxiTyumen2024'
+$ksAlias  = 'taxi-release'
+if (-not (Test-Path $keystore)) {
+    Write-Host "Создаю постоянный ключ подписи (один раз)..." -ForegroundColor Cyan
+    # keytool входит в состав Java JDK
+    & keytool -genkeypair -v `
+        -keystore $keystore `
+        -storepass $ksPass -keypass $ksPass `
+        -alias $ksAlias -keyalg RSA -keysize 2048 -validity 10950 `
+        -dname "CN=TaxiTyumen, OU=Taxi, O=TaxiTyumen, L=Tyumen, C=RU"
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Не удалось создать ключ подписи. Убедитесь, что Java JDK установлена (keytool в PATH).'
+    }
+    Write-Host "Ключ создан: $keystore" -ForegroundColor Green
+    Write-Host "ВАЖНО: сохраните этот файл в надёжное место (вместе с резервной копией)." -ForegroundColor Yellow
+}
+
+$signProps = " -p:AndroidSigningStorePass=$ksPass" + `
+             " -p:AndroidSigningKeyPass=$ksPass" + `
+             " -p:AndroidSigningKeyAlias=$ksAlias" + `
+             " -p:AndroidSigningKeyStore=$keystore"
 
 if (-not (Test-Path (Join-Path $dir '.git'))) {
     Write-Host "Клонирую репозиторий..." -ForegroundColor Cyan
@@ -18,7 +50,7 @@ Write-Host "Собираю APK..." -ForegroundColor Cyan
 $proj = Join-Path $dir 'TaxiDriver\TaxiDriver.csproj'
 dotnet publish $proj `
     -f net10.0-android -c Release `
-    -p:AndroidPackageFormat=apk
+    -p:AndroidPackageFormat=apk$signProps
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "СБОРКА НЕ УДАЛАСЬ — пришлите вывод выше" -ForegroundColor Red

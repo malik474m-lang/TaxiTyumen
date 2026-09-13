@@ -9,6 +9,30 @@ $ErrorActionPreference = 'Stop'
 $repoUrl = 'https://github.com/malik474m-lang/TaxiTyumen.git'
 $dir = Join-Path $PSScriptRoot 'TaxiTyumen'
 
+# ── Свой ключ подписи (один и тот же для клиента и водителя) ────────────────
+# Устраняет предупреждение «неизвестный разработчик» и ошибки «Приложение
+# не установлено» при обновлении: подпись больше не меняется.
+$keystore = Join-Path $PSScriptRoot 'taxi-release.keystore'
+$ksPass   = 'TaxiTyumen2024'
+$ksAlias  = 'taxi-release'
+if (-not (Test-Path $keystore)) {
+    Write-Host "Создаю постоянный ключ подписи (один раз)..." -ForegroundColor Cyan
+    & keytool -genkeypair -v `
+        -keystore $keystore `
+        -storepass $ksPass -keypass $ksPass `
+        -alias $ksAlias -keyalg RSA -keysize 2048 -validity 10950 `
+        -dname "CN=TaxiTyumen, OU=Taxi, O=TaxiTyumen, L=Tyumen, C=RU"
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Не удалось создать ключ подписи. Убедитесь, что Java JDK установлена (keytool в PATH).'
+    }
+    Write-Host "Ключ создан: $keystore" -ForegroundColor Green
+}
+
+$signProps = " -p:AndroidSigningStorePass=$ksPass" + `
+             " -p:AndroidSigningKeyPass=$ksPass" + `
+             " -p:AndroidSigningKeyAlias=$ksAlias" + `
+             " -p:AndroidSigningKeyStore=$keystore"
+
 if (-not (Test-Path (Join-Path $dir '.git'))) {
     Write-Host "Клонирую репозиторий..." -ForegroundColor Cyan
     git clone $repoUrl $dir
@@ -22,7 +46,7 @@ Write-Host "Собираю APK клиента..." -ForegroundColor Cyan
 $proj = Join-Path $dir 'TaxiClient\TaxiClient.csproj'
 dotnet publish $proj `
     -f net10.0-android -c Release `
-    -p:AndroidPackageFormat=apk
+    -p:AndroidPackageFormat=apk$signProps
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "СБОРКА НЕ УДАЛАСЬ — пришлите вывод выше" -ForegroundColor Red

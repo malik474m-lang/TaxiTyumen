@@ -27,3 +27,9 @@ TaxiDriver/maps/work/
 
 ## Credentials
 firebase-credentials.json
+
+## ⚠️ НЕ добавляйте ключ подписи в Git — он приватный.
+## taxi-release.keystore лежит рядом со сборочными скриптами и в git не попадает.
+taxi-release.keystore
+*.keystore
+*.jks
