@@ -46,13 +46,43 @@ final class Places
                 source      VARCHAR(20) NOT NULL DEFAULT 'manual',
                 is_active   TINYINT(1) NOT NULL DEFAULT 1,
                 usage_count INT NOT NULL DEFAULT 0,
+                address_status ENUM('pending','resolved','failed') NOT NULL DEFAULT 'pending',
+                address_error VARCHAR(255) NULL,
+                address_attempted_at DATETIME NULL,
                 created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at  DATETIME NULL,
                 UNIQUE KEY uniq_osm (osm_id),
                 INDEX (is_active, category), INDEX (search_name), INDEX (usage_count)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
         );
+
+        // Автомиграция для уже работающего сервера. Статус нужен, чтобы
+        // нераспознанные точки не обрабатывались бесконечно при каждом запуске.
+        self::addColumnIfMissing($db, 'address_status',
+            "ENUM('pending','resolved','failed') NOT NULL DEFAULT 'pending' AFTER usage_count");
+        self::addColumnIfMissing($db, 'address_error',
+            'VARCHAR(255) NULL AFTER address_status');
+        self::addColumnIfMissing($db, 'address_attempted_at',
+            'DATETIME NULL AFTER address_error');
+        $db->exec(
+            "UPDATE places SET address_status='resolved',address_error=NULL
+             WHERE address IS NOT NULL AND address <> '' AND address_status <> 'resolved'"
+        );
+
         self::seedBuiltIn($db);
+    }
+
+    private static function addColumnIfMissing(\PDO $db, string $column, string $definition): void
+    {
+        $stmt = $db->prepare(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='places' AND COLUMN_NAME=?"
+        );
+        $stmt->execute([$column]);
+        if ((int) $stmt->fetchColumn() === 0) {
+            // $column/$definition задаются только константами этого класса
+            $db->exec("ALTER TABLE places ADD COLUMN `$column` $definition");
+        }
     }
 
     /** Встроенные ориентиры города — чтобы поиск работал сразу после обновления. */
@@ -208,19 +238,27 @@ final class Places
         if ($id !== '') {
             $db->prepare(
                 'UPDATE places SET name=?,search_name=?,aliases=?,category=?,address=?,
-                 latitude=?,longitude=?,is_active=?,updated_at=? WHERE id=?'
+                 latitude=?,longitude=?,is_active=?,address_status=?,address_error=NULL,
+                 address_attempted_at=?,updated_at=? WHERE id=?'
             )->execute([
                 $name, self::normalize($name), $aliases, $category, $address,
-                $lat, $lng, !empty($data['is_active']) ? 1 : 0, Db::utcNow(), $id,
+                $lat, $lng, !empty($data['is_active']) ? 1 : 0,
+                $address !== '' ? 'resolved' : 'pending',
+                $address !== '' ? Db::utcNow() : null,
+                Db::utcNow(), $id,
             ]);
             return $id;
         }
 
         $id = Db::uuid();
         $db->prepare(
-            'INSERT INTO places (id,name,search_name,aliases,category,address,latitude,longitude,source,is_active)
-             VALUES (?,?,?,?,?,?,?,?,\'manual\',1)'
-        )->execute([$id, $name, self::normalize($name), $aliases, $category, $address, $lat, $lng]);
+            'INSERT INTO places
+             (id,name,search_name,aliases,category,address,latitude,longitude,source,is_active,address_status)
+             VALUES (?,?,?,?,?,?,?,?,\'manual\',1,?)'
+        )->execute([
+            $id, $name, self::normalize($name), $aliases, $category,
+            $address, $lat, $lng, $address !== '' ? 'resolved' : 'pending',
+        ]);
         return $id;
     }
 
@@ -270,53 +308,97 @@ final class Places
     }
 
     /**
-     * Заполнить недостающие адреса обратным геокодингом.
+     * Один короткий пакет обратного геокодинга для AJAX-цикла админки.
      *
-     * Многие организации из OSM не имеют тегов addr:street/addr:housenumber —
-     * импорт приносит только координаты. Этот метод берёт широту/долготу
-     * и определяет адрес через активный геокодер (DaData, Яндекс или OSM),
-     * поэтому вручную заполнять ничего не нужно.
+     * Один вызов DaData занимает ~3,5 секунды. Старый код пытался обработать
+     * 200–300 организаций одним PHP-запросом (10–20 минут), и shared-хостинг
+     * обрывал его по max_execution_time. Теперь браузер вызывает этот метод
+     * пакетами по 1–2 записи, пока все адреса не будут заполнены.
      *
-     * @return array{filled:int,skipped:int,failed:int,error:?string}
+     * Нераспознанные точки получают статус failed и больше не попадают в
+     * текущий проход; их можно отдельно вернуть в очередь из админки.
+     *
+     * @return array{processed:int,filled:int,skipped:int,failed:int,done:bool,remaining:int,failedTotal:int}
      */
-    public static function fillAddresses(\PDO $db, int $limit = 100): array
+    public static function fillAddressBatch(\PDO $db, int $limit = 2): array
     {
         self::ensureTables($db);
-        $result = ['filled' => 0, 'skipped' => 0, 'failed' => 0, 'error' => null];
-
+        $limit = max(1, min(3, $limit));
         $stmt = $db->prepare(
             "SELECT id, latitude, longitude FROM places
              WHERE is_active = 1 AND (address IS NULL OR address = '')
-             ORDER BY usage_count DESC, name ASC LIMIT ?"
+               AND address_status = 'pending'
+             ORDER BY usage_count DESC, name ASC LIMIT $limit"
         );
-        $stmt->bindValue(1, $limit, \PDO::PARAM_INT);
         $stmt->execute();
         $rows = $stmt->fetchAll();
-        if (!$rows) return $result;
 
-        $update = $db->prepare('UPDATE places SET address = ?, updated_at = NOW() WHERE id = ?');
+        $result = [
+            'processed' => 0, 'filled' => 0, 'skipped' => 0, 'failed' => 0,
+            'done' => false,
+            'remaining' => self::countPendingAddresses($db),
+            'failedTotal' => self::countFailedAddresses($db),
+        ];
+        if (!$rows) {
+            $result['done'] = true;
+            return $result;
+        }
+
+        $success = $db->prepare(
+            "UPDATE places SET address=?,address_status='resolved',address_error=NULL,
+             address_attempted_at=NOW(),updated_at=NOW() WHERE id=?"
+        );
+        $failure = $db->prepare(
+            "UPDATE places SET address_status='failed',address_error=?,
+             address_attempted_at=NOW(),updated_at=NOW() WHERE id=?"
+        );
 
         foreach ($rows as $row) {
+            $result['processed']++;
             $lat = (float) $row['latitude'];
             $lng = (float) $row['longitude'];
-            if ($lat == 0.0 || $lng == 0.0) { $result['skipped']++; continue; }
+            if ($lat == 0.0 || $lng == 0.0) {
+                $failure->execute(['Нет координат', $row['id']]);
+                $result['skipped']++;
+                continue;
+            }
 
             try {
                 $reverse = GeocodingService::reverse($db, $lat, $lng);
                 $address = trim((string) ($reverse['displayName'] ?? ''));
-                if ($address === '' || mb_strtolower($address) === 'неизвестный адрес') {
+                $source = (string) ($reverse['source'] ?? '');
+                if ($address === '' || $source === 'coordinates'
+                    || mb_strtolower($address) === 'неизвестный адрес') {
+                    $failure->execute(['Геокодер не нашёл адрес', $row['id']]);
                     $result['skipped']++;
                     continue;
                 }
-                $update->execute([mb_substr($address, 0, 255), $row['id']]);
+                $success->execute([mb_substr($address, 0, 255), $row['id']]);
                 $result['filled']++;
-            } catch (\Throwable) {
+            } catch (\Throwable $e) {
+                $failure->execute([mb_substr($e->getMessage(), 0, 255), $row['id']]);
                 $result['failed']++;
             }
-            // Пауза между запросами: не нагружаем геокодер
-            usleep(150000);
         }
+        $result['remaining'] = self::countPendingAddresses($db);
+        $result['failedTotal'] = self::countFailedAddresses($db);
+        $result['done'] = $result['remaining'] === 0;
         return $result;
+    }
+
+    /**
+     * Совместимый синхронный вызов: обрабатывает только безопасный короткий
+     * пакет. Для полного прохода админка использует AJAX fillAddressBatch().
+     */
+    public static function fillAddresses(\PDO $db, int $limit = 2): array
+    {
+        $batch = self::fillAddressBatch($db, min(2, $limit));
+        return [
+            'filled' => $batch['filled'],
+            'skipped' => $batch['skipped'],
+            'failed' => $batch['failed'],
+            'error' => null,
+        ];
     }
 
     /**
@@ -347,9 +429,12 @@ final class Places
         if (count($first) >= 4 && !is_numeric($first[2] ?? '')) $start = 1;
 
         $stmt = $db->prepare(
-            'INSERT INTO places (id,name,search_name,category,address,latitude,longitude,source,is_active)
-             VALUES (?,?,?,?,?,?,?,\'csv\',1)
-             ON DUPLICATE KEY UPDATE name=VALUES(name),address=VALUES(address),
+            'INSERT INTO places
+             (id,name,search_name,category,address,latitude,longitude,source,is_active,address_status)
+             VALUES (?,?,?,?,?,?,?,\'csv\',1,?)
+             ON DUPLICATE KEY UPDATE name=VALUES(name),
+               address=IF(VALUES(address)<>\'\',VALUES(address),address),
+               address_status=IF(VALUES(address)<>\'\',\'resolved\',address_status),
                latitude=VALUES(latitude),longitude=VALUES(longitude),updated_at=NOW()'
         );
 
@@ -375,6 +460,7 @@ final class Places
                 $stmt->execute([
                     Db::uuid(), $name, self::normalize($name), $category,
                     mb_substr($address, 0, 255), $lat, $lng,
+                    $address !== '' ? 'resolved' : 'pending',
                 ]);
                 $result['imported']++;
             } catch (\Throwable) {
@@ -436,10 +522,14 @@ final class Places
         }
 
         $insert = $db->prepare(
-            'INSERT INTO places (id,name,search_name,category,address,latitude,longitude,osm_id,source,is_active)
-             VALUES (?,?,?,?,?,?,?,?,\'osm\',1)
+            'INSERT INTO places
+             (id,name,search_name,category,address,latitude,longitude,osm_id,source,is_active,address_status)
+             VALUES (?,?,?,?,?,?,?,?,\'osm\',1,?)
              ON DUPLICATE KEY UPDATE name=VALUES(name),search_name=VALUES(search_name),
-               category=VALUES(category),address=VALUES(address),
+               category=VALUES(category),
+               address=IF(VALUES(address)<>\'\',VALUES(address),address),
+               address_status=IF(VALUES(address)<>\'\',\'resolved\',address_status),
+               address_error=IF(VALUES(address)<>\'\',NULL,address_error),
                latitude=VALUES(latitude),longitude=VALUES(longitude),updated_at=NOW()'
         );
 
@@ -470,23 +560,51 @@ final class Places
             $insert->execute([
                 Db::uuid(), $name, self::normalize($name), $category,
                 mb_substr($address, 0, 255), $pLat, $pLng, $osmId,
+                $address !== '' ? 'resolved' : 'pending',
             ]);
             $isUpdate ? $result['updated']++ : $result['imported']++;
         }
         return $result;
     }
 
-    /** Количество мест без адреса (для отображения в админке). */
+    /** Все места без адреса: ожидающие + нераспознанные. */
     public static function countWithoutAddress(\PDO $db): int
     {
         self::ensureTables($db);
         try {
             return (int) $db->query(
-                "SELECT COUNT(*) FROM places WHERE is_active = 1 AND (address IS NULL OR address = '')"
+                "SELECT COUNT(*) FROM places WHERE is_active=1 AND (address IS NULL OR address='')"
             )->fetchColumn();
-        } catch (\Throwable) {
-            return 0;
-        }
+        } catch (\Throwable) { return 0; }
+    }
+
+    public static function countPendingAddresses(\PDO $db): int
+    {
+        self::ensureTables($db);
+        return (int) $db->query(
+            "SELECT COUNT(*) FROM places WHERE is_active=1
+             AND (address IS NULL OR address='') AND address_status='pending'"
+        )->fetchColumn();
+    }
+
+    public static function countFailedAddresses(\PDO $db): int
+    {
+        self::ensureTables($db);
+        return (int) $db->query(
+            "SELECT COUNT(*) FROM places WHERE is_active=1
+             AND (address IS NULL OR address='') AND address_status='failed'"
+        )->fetchColumn();
+    }
+
+    /** Повторить адресный поиск для ранее нераспознанных точек. */
+    public static function retryFailedAddresses(\PDO $db): int
+    {
+        self::ensureTables($db);
+        $stmt = $db->query(
+            "UPDATE places SET address_status='pending',address_error=NULL
+             WHERE is_active=1 AND (address IS NULL OR address='') AND address_status='failed'"
+        );
+        return $stmt->rowCount();
     }
 
     /** Сводка по справочнику для админки. */

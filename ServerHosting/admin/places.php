@@ -7,10 +7,23 @@ $admin = admin_require($db, 'places');
 Places::ensureTables($db);
 $service = ServiceSettings::get($db);
 $importResult = null;
+$startAutoFill = !empty($_GET['autofill']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $cmd = (string) ($_POST['cmd'] ?? '');
     try {
+        // Короткий AJAX-пакет: 2 адреса ≈ 7 секунд, shared-хостинг не оборвёт.
+        if ($cmd === 'fill-address-batch') {
+            $batch = Places::fillAddressBatch($db, 2);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($batch, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            exit;
+        }
+        if ($cmd === 'retry-addresses') {
+            $count = Places::retryFailedAddresses($db);
+            header('Location: places.php?autofill=1&ok=' . urlencode("Повторная проверка: $count мест"));
+            exit;
+        }
         if ($cmd === 'save') {
             Places::save($db, $_POST);
             header('Location: places.php?ok=' . urlencode('Место сохранено'));
@@ -29,20 +42,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 (float) $service['center_longitude'],
                 $radius
             );
-            // Сразу заполняем адреса, которых нет в OSM, через геокодер:
-            // большинство организаций не имеют тегов addr:street
+            // Адреса заполняет AJAX-цикл после загрузки страницы:
+            // 200 синхронных геозапросов превышали таймаут shared-хостинга.
             if ($importResult['imported'] > 0 || $importResult['updated'] > 0) {
-                $filled = Places::fillAddresses($db, 200);
-                $importResult['addressesFilled'] = $filled['filled'];
+                $startAutoFill = true;
             }
         }
         if ($cmd === 'import-region') {
             // Импорт по прямоугольной области: Тюмень + Тюменский район
             // (bbox 56.85–57.45 / 64.80–66.30 покрывает весь район)
             $importResult = Places::importFromOsmBbox($db, 56.85, 64.80, 57.45, 66.30);
-            if ($importResult['imported'] > 0) {
-                $filled = Places::fillAddresses($db, 300);
-                $importResult['addressesFilled'] = $filled['filled'];
+            if ($importResult['imported'] > 0 || $importResult['updated'] > 0) {
+                $startAutoFill = true;
             }
         }
         if ($cmd === 'import-csv' && !empty($_FILES['csvfile']['tmp_name'])) {
@@ -50,18 +61,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Поддерживаем UTF-8 BOM от Excel
             if (str_starts_with($content, "\xEF\xBB\xBF")) $content = substr($content, 3);
             $csvResult = Places::importFromCsv($db, $content);
-            header('Location: places.php?ok=' . urlencode(sprintf(
+            header('Location: places.php?autofill=1&ok=' . urlencode(sprintf(
                 'CSV загружен: добавлено %d, пропущено %d',
                 $csvResult['imported'], $csvResult['skipped']
             ) . (!empty($csvResult['error']) ? ' · ' . $csvResult['error'] : '')));
             exit;
         }
         if ($cmd === 'fill-addresses') {
-            $fillResult = Places::fillAddresses($db, (int) ($_POST['limit'] ?? 200));
-            header('Location: places.php?ok=' . urlencode(sprintf(
-                'Адреса определены: %d, пропущено: %d, ошибок: %d',
-                $fillResult['filled'], $fillResult['skipped'], $fillResult['failed']
-            )));
+            // Совместимость со старой кнопкой/закладкой
+            header('Location: places.php?autofill=1');
             exit;
         }
     } catch (Throwable $e) {
@@ -130,7 +138,7 @@ layout_header('Места и организации', 'places');
       Бесплатно и без ключей (лицензия ODbL). Загружает ТРЦ, кинотеатры, вокзалы,
       больницы, кафе, гостиницы, банки и другие организации вокруг
       <b><?= h((string) $service['city_name']) ?></b>. Повторный импорт обновляет
-      существующие записи и не создаёт дубликатов. Занимает до минуты.
+      существующие записи и не создаёт дубликатов. После импорта адреса заполняются в фоне — не закрывайте страницу.
     </p>
     <form method="post" style="margin-top:12px" onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Импортируем…'">
       <input type="hidden" name="cmd" value="import">
@@ -142,19 +150,47 @@ layout_header('Места и организации', 'places');
 
     <?php
     $noAddress = Places::countWithoutAddress($db);
+    $pendingAddresses = Places::countPendingAddresses($db);
+    $failedAddresses = Places::countFailedAddresses($db);
     if ($noAddress > 0): ?>
-    <form method="post" style="margin-top:10px"
-          onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Определяем адреса…'">
-      <input type="hidden" name="cmd" value="fill-addresses">
-      <input type="hidden" name="limit" value="200">
-      <button class="btn ghost" style="width:100%">
-        Определить адреса автоматически (<?= $noAddress ?> без адреса)
-      </button>
+    <div style="margin-top:10px">
+      <?php if ($pendingAddresses > 0): ?>
+        <button type="button" id="fillAddressBtn" class="btn ghost" style="width:100%"
+                onclick="startAddressFill()">
+          Определить адреса автоматически (<?= $pendingAddresses ?> в очереди)
+        </button>
+      <?php endif; ?>
+
+      <div id="addressProgress" style="display:none;margin-top:10px;padding:12px;
+           background:#18181d;border:1px solid var(--line);border-radius:10px">
+        <div class="flex between">
+          <b id="addressProgressTitle">Заполняем адреса…</b>
+          <span id="addressProgressPercent" class="chip info">0%</span>
+        </div>
+        <div style="height:8px;background:#2a2a32;border-radius:999px;margin-top:8px;overflow:hidden">
+          <div id="addressProgressBar" style="height:100%;width:0;background:#4ade80;transition:.2s"></div>
+        </div>
+        <div id="addressProgressText" class="mut" style="font-size:11px;margin-top:7px">
+          Не закрывайте эту страницу. Обработка идёт короткими пакетами и не зависнет по таймауту.
+        </div>
+      </div>
+
+      <?php if ($failedAddresses > 0): ?>
+        <form method="post" style="margin-top:8px">
+          <input type="hidden" name="cmd" value="retry-addresses">
+          <button class="btn sm ghost" style="width:100%">
+            Повторить нераспознанные адреса (<?= $failedAddresses ?>)
+          </button>
+        </form>
+      <?php endif; ?>
+
       <p class="mut" style="font-size:11px;margin-top:6px">
-        Берёт координаты организации и определяет адрес через геокодер
-        (DaData / Яндекс / OSM). Занимает до минуты, повторно жать не нужно.
+        Каждый запрос обрабатывает 2 организации (около 7 секунд), затем
+        автоматически запускается следующий. <?= $failedAddresses > 0
+          ? 'Нераспознанные точки не зацикливаются — их можно повторить отдельной кнопкой.'
+          : '' ?>
       </p>
-    </form>
+    </div>
     <?php endif; ?>
     <div style="margin-top:14px">
       <?php foreach (Places::CATEGORIES as $key => $meta): ?>
@@ -186,7 +222,7 @@ layout_header('Места и организации', 'places');
         </button>
         <p class="mut" style="font-size:11px;margin-top:6px">
           Загружает ВСЕ организации из OSM по прямоугольной области,
-          покрывающей весь Тюменский район. Занимает 2–4 минуты.
+          покрывающей весь Тюменский район. Импорт может занять несколько минут, затем автоматически запустится заполнение адресов.
         </p>
       </form>
       <p class="mut" style="font-size:11px;margin-top:14px">
@@ -268,7 +304,16 @@ out center tags;</pre>
           <div class="mut" style="font-size:11px"><?= h((string) $p['source']) ?></div>
         </td>
         <td><?= h(Places::CATEGORIES[$p['category']][0] ?? (string) $p['category']) ?></td>
-        <td><?= h((string) $p['address']) ?: '<span class="mut">—</span>' ?></td>
+        <td>
+          <?php if (!empty($p['address'])): ?>
+            <?= h((string) $p['address']) ?>
+          <?php elseif (($p['address_status'] ?? 'pending') === 'failed'): ?>
+            <span class="chip bad" title="<?= h((string) ($p['address_error'] ?? '')) ?>">не распознано</span>
+            <div class="mut" style="font-size:10px"><?= h((string) ($p['address_error'] ?? 'Геокодер не нашёл адрес')) ?></div>
+          <?php else: ?>
+            <span class="chip warn">в очереди</span>
+          <?php endif; ?>
+        </td>
         <td class="mut" style="font-family:monospace;font-size:11px">
           <?= h(number_format((float) $p['latitude'], 5, '.', '')) ?>,
           <?= h(number_format((float) $p['longitude'], 5, '.', '')) ?>
@@ -294,4 +339,97 @@ out center tags;</pre>
     </tbody>
   </table>
 </div>
+<script>
+// ── Фоновое пакетное заполнение адресов ───────────────────────────────────
+var addressFillRunning = false;
+var addressTotal = <?= (int) ($pendingAddresses ?? 0) ?>;
+var addressProcessed = 0;
+var addressFilled = 0;
+var addressSkipped = 0;
+var addressFailed = 0;
+var addressCsrf = <?= json_encode(admin_csrf_token(), JSON_UNESCAPED_SLASHES) ?>;
+
+function updateAddressProgress(remaining){
+  var done = Math.max(0, addressTotal - remaining);
+  var pct = addressTotal > 0 ? Math.round(done * 100 / addressTotal) : 100;
+  var panel = document.getElementById('addressProgress');
+  if (!panel) return;
+  panel.style.display = 'block';
+  document.getElementById('addressProgressBar').style.width = pct + '%';
+  document.getElementById('addressProgressPercent').textContent = pct + '%';
+  document.getElementById('addressProgressText').textContent =
+    'Обработано: ' + addressProcessed
+    + ' · адресов вставлено: ' + addressFilled
+    + ' · не найдено: ' + addressSkipped
+    + ' · ошибок: ' + addressFailed
+    + ' · осталось: ' + remaining;
+}
+
+async function startAddressFill(){
+  if (addressFillRunning) return;
+  addressFillRunning = true;
+  var btn = document.getElementById('fillAddressBtn');
+  if (btn){ btn.disabled = true; btn.textContent = 'Заполняем адреса…'; }
+  updateAddressProgress(addressTotal);
+
+  try {
+    while (addressFillRunning) {
+      var body = new URLSearchParams();
+      body.set('_csrf', addressCsrf);
+      body.set('cmd', 'fill-address-batch');
+      body.set('limit', '2');
+
+      var response = await fetch('places.php', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: body.toString()
+      });
+      if (!response.ok) throw new Error(await response.text() || ('HTTP ' + response.status));
+      var data = await response.json();
+
+      addressProcessed += Number(data.processed || 0);
+      addressFilled += Number(data.filled || 0);
+      addressSkipped += Number(data.skipped || 0);
+      addressFailed += Number(data.failed || 0);
+      updateAddressProgress(Number(data.remaining || 0));
+
+      if (data.done) {
+        addressFillRunning = false;
+        document.getElementById('addressProgressTitle').textContent = 'Заполнение завершено';
+        document.getElementById('addressProgressPercent').className = 'chip ok';
+        document.getElementById('addressProgressPercent').textContent = 'Готово';
+        document.getElementById('addressProgressBar').style.width = '100%';
+        document.getElementById('addressProgressText').textContent =
+          'Адресов вставлено: ' + addressFilled
+          + ' · не удалось определить: ' + Number(data.failedTotal || 0)
+          + '. Страница обновится через 2 секунды.';
+        setTimeout(function(){
+          location.href = 'places.php?ok=' + encodeURIComponent(
+            'Адреса заполнены: ' + addressFilled
+            + ', нераспознано: ' + Number(data.failedTotal || 0)
+          );
+        }, 2000);
+        break;
+      }
+
+      // Небольшая пауза между пакетами, чтобы не перегружать PHP/геокодер
+      await new Promise(function(resolve){ setTimeout(resolve, 250); });
+    }
+  } catch (e) {
+    addressFillRunning = false;
+    if (btn){ btn.disabled = false; btn.textContent = 'Продолжить заполнение адресов'; }
+    document.getElementById('addressProgressTitle').textContent = 'Обработка прервана';
+    document.getElementById('addressProgressPercent').className = 'chip bad';
+    document.getElementById('addressProgressText').textContent =
+      'Ошибка: ' + (e && e.message ? e.message : e)
+      + '. Нажмите «Продолжить» — уже заполненные адреса не потеряются.';
+  }
+}
+
+<?php if ($startAutoFill && ($pendingAddresses ?? 0) > 0): ?>
+// После импорта запускать адресное заполнение автоматически
+setTimeout(startAddressFill, 400);
+<?php endif; ?>
+</script>
 <?php layout_footer();
