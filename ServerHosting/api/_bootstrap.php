@@ -30,3 +30,11 @@ try {
 } catch (\Throwable $e) {
     Response::error('MySQL недоступна: ' . $e->getMessage(), 503);
 }
+
+// Лицензия: суточная проверка + блокировка API при истечении
+try {
+    LicenseClient::ensureChecked();
+    LicenseClient::enforce();
+} catch (\Throwable) {
+    // Ошибка проверки не должна ронять API целиком
+}

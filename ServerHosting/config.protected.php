@@ -24,4 +24,7 @@ define('PUBLIC_BASE_URL', 'https://ваш-домен.ру');
 define('COMPANY_INN', '');
 define('SBER_USERNAME', '');
 define('SBER_PASSWORD', '');
+// Ключ лицензии на сервер такси (можно ввести в админке вместо файла)
+define('LICENSE_KEY', '');
+define('LICENSE_SERVER', 'https://taxi.license-prog.ru');
 define('CITY_UTC_OFFSET', 5);

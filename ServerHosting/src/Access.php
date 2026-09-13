@@ -43,6 +43,7 @@ final class Access
         'geocoding' => ['label' => 'Геокодинг',      'file' => 'geocoding.php', 'superadminOnly' => false, 'locked' => false],
         'tomtom'    => ['label' => 'TomTom',         'file' => 'tomtom.php',    'superadminOnly' => false, 'locked' => false],
         'service'   => ['label' => 'Бренд сервиса',  'file' => 'service.php',   'superadminOnly' => true,  'locked' => false],
+        'license'   => ['label' => 'Лицензия',        'file' => 'license.php',    'superadminOnly' => false, 'locked' => true],
         'access'    => ['label' => 'Доступ и роли',  'file' => 'access.php',    'superadminOnly' => true,  'locked' => false],
     ];
 

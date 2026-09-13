@@ -49,6 +49,11 @@ if (!defined('SBER_PASSWORD')) define('SBER_PASSWORD', getenv('SBER_PASSWORD') ?
 // Без него чек оформляется на физлицо и НЕ принимается к расходам ИП.
 if (!defined('COMPANY_INN')) define('COMPANY_INN', getenv('COMPANY_INN') ?: '');
 
+// Лицензия на сервер такси: ключ задаётся здесь или через админку.
+// Сервер лицензий — https://taxi.license-prog.ru
+if (!defined('LICENSE_KEY')) define('LICENSE_KEY', getenv('LICENSE_KEY') ?: '');
+if (!defined('LICENSE_SERVER')) define('LICENSE_SERVER', getenv('LICENSE_SERVER') ?: 'https://taxi.license-prog.ru');
+
 // Тюмень UTC+5 — сдвиг для ценообразования/статистики
 if (!defined('CITY_UTC_OFFSET')) define('CITY_UTC_OFFSET', 5);
 

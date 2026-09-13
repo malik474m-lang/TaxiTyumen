@@ -23,6 +23,12 @@
 Эквайринг ИП, карточные платежи/СБП C2B, внутренний счёт, кошельки
 водителей-самозанятых и ручные заявки на вывод: [`ServerHosting/SBER.md`](ServerHosting/SBER.md).
 
+## Сервер лицензий (PHP + MySQL)
+
+Автономный сервер лицензирования на taxi.license-prog.ru (jino.ru):
+выдача ключей, суточная проверка, TOTP 2FA, защита от брутфорса,
+блокировка сервера такси при истечении. [`LicenseServer/README.md`](LicenseServer/README.md)
+
 ## ServerHosting (PHP + MySQL)
 
 Самостоятельный PHP-бэкенд для shared-хостинга + готовая админ-панель `/admin/`: тот же API, токены и права ролей, база MySQL/PDO, одноразовый установщик. Инструкция деплоя: [`ServerHosting/README.md`](ServerHosting/README.md).
