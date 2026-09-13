@@ -13,16 +13,20 @@ final class Places
 {
     /** Категории справочника: ключ => [название, теги OSM для импорта]. */
     public const CATEGORIES = [
-        'mall'       => ['ТРЦ и магазины',     ['shop=mall', 'shop=department_store', 'shop=supermarket']],
-        'cinema'     => ['Кино и театры',      ['amenity=cinema', 'amenity=theatre']],
-        'transport'  => ['Вокзалы и аэропорт', ['aeroway=aerodrome', 'railway=station', 'amenity=bus_station']],
-        'medicine'   => ['Медицина',           ['amenity=hospital', 'amenity=clinic', 'amenity=doctors']],
-        'education'  => ['Образование',        ['amenity=university', 'amenity=college', 'amenity=school']],
-        'food'       => ['Кафе и рестораны',   ['amenity=restaurant', 'amenity=cafe', 'amenity=fast_food']],
-        'hotel'      => ['Гостиницы',          ['tourism=hotel', 'tourism=hostel']],
-        'sport'      => ['Спорт и отдых',      ['leisure=sports_centre', 'leisure=fitness_centre', 'leisure=stadium']],
-        'service'    => ['Услуги и банки',     ['amenity=bank', 'amenity=pharmacy', 'amenity=fuel', 'amenity=post_office']],
-        'government' => ['Госучреждения',      ['amenity=townhall', 'office=government', 'amenity=police']],
+        'mall'       => ['ТРЦ и магазины',     ['shop=mall', 'shop=department_store', 'shop=supermarket', 'shop=convenience', 'shop=hardware', 'shop=clothes', 'shop=shoes', 'shop=electronics', 'shop=furniture', 'shop=jewelry', 'shop=books', 'shop=toys', 'shop=sports', 'shop=alcohol', 'shop=bakery', 'shop=butcher', 'shop=greengrocer', 'shop=chemist', 'shop=stationery', 'shop=florist', 'shop=pet', 'shop=car', 'shop=car_repair', 'shop=car_parts', 'shop=ticket', 'shop=copyshop', 'shop=hairdresser', 'shop=beauty', 'shop=optician', 'shop=travel_agency', 'shop=laundry', 'shop=dry_cleaning', 'shop=mobile_phone', 'shop=computer', 'shop=photo', 'shop=gift', 'shop=houseware', 'shop=garden_centre', 'shop=doityourself', 'shop=bicycle', 'shop=music', 'shop=second_hand']],
+        'cinema'     => ['Кино и театры',      ['amenity=cinema', 'amenity=theatre', 'amenity=arts_centre', 'amenity=community_centre', 'amenity=nightclub', 'amenity=bar', 'amenity=pub', 'amenity=stripclub']],
+        'transport'  => ['Вокзалы и аэропорт', ['aeroway=aerodrome', 'railway=station', 'amenity=bus_station', 'amenity=ferry_terminal', 'amenity=taxi', 'amenity=parking', 'amenity=parking_entrance', 'amenity=car_wash', 'amenity=charging_station']],
+        'medicine'   => ['Медицина',           ['amenity=hospital', 'amenity=clinic', 'amenity=doctors', 'amenity=dentist', 'amenity=pharmacy', 'amenity=veterinary', 'amenity=social_facility', 'amenity=nursing_home']],
+        'education'  => ['Образование',        ['amenity=university', 'amenity=college', 'amenity=school', 'amenity=kindergarten', 'amenity=library', 'amenity=training', 'amenity=music_school', 'amenity=language_school', 'amenity=research_institute']],
+        'food'       => ['Кафе и рестораны',   ['amenity=restaurant', 'amenity=cafe', 'amenity=fast_food', 'amenity=food_court', 'amenity=ice_cream', 'amenity=biergarten', 'amenity=bar', 'amenity=pub']],
+        'hotel'      => ['Гостиницы',          ['tourism=hotel', 'tourism=hostel', 'tourism=guest_house', 'tourism=motel', 'tourism=apartment', 'tourism=chalet']],
+        'sport'      => ['Спорт и отдых',      ['leisure=sports_centre', 'leisure=fitness_centre', 'leisure=stadium', 'leisure=swimming_pool', 'leisure=ice_rink', 'leisure=sports_hall', 'leisure=pitch', 'leisure=park', 'leisure=garden', 'leisure=playground', 'leisure=water_park', 'leisure=horse_riding', 'leisure=golf_course', 'leisure=miniature_golf']],
+        'service'    => ['Услуги и банки',     ['amenity=bank', 'amenity=atm', 'amenity=bureau_de_change', 'amenity=post_office', 'amenity=courthouse', 'amenity=lawyer', 'amenity=accountant', 'amenity=insurance', 'amenity=estate_agent', 'amenity=notary', 'amenity=funeral_directors', 'amenity=marketplace', 'amenity=vending_machine', 'amenity=public_bookcase', 'amenity=toilets', 'amenity=drinking_water', 'amenity=shower', 'amenity=telephone', 'amenity=internet_cafe', 'amenity=recycling']],
+        'government' => ['Госучреждения',      ['amenity=townhall', 'office=government', 'amenity=police', 'amenity=fire_station', 'amenity=embassy', 'amenity=prison', 'amenity=community_centre', 'amenity=social_centre', 'amenity=youth_centre']],
+        'fuel'       => ['АЗС и автосервис',   ['amenity=fuel', 'shop=car_repair', 'shop=car_parts', 'shop=tyres', 'shop=car', 'amenity=car_rental', 'amenity=car_sharing', 'amenity=car_wash']],
+        'office'     => ['Офисы и компании',   ['office=company', 'office=it', 'office=advertising_agency', 'office=architect', 'office=consulting', 'office=engineering', 'office=financial', 'office=estate_agent', 'office=media', 'office=ngo', 'office=telecommunication', 'office=therapist', 'office=travel_agent']],
+        'culture'    => ['Культура и музеи',   ['tourism=museum', 'tourism=attraction', 'tourism=artwork', 'tourism=gallery', 'tourism=viewpoint', 'tourism=monument', 'tourism=memorial', 'tourism=theme_park', 'tourism=zoo', 'tourism=aquarium', 'historic=monument', 'historic=memorial', 'historic=castle', 'historic=ruins']],
+        'religious'  => ['Храмы и церкви',     ['amenity=place_of_worship', 'building=church', 'building=mosque', 'building=synagogue', 'building=temple']],
         'other'      => ['Прочее',             []],
     ];
 
@@ -355,6 +359,71 @@ final class Places
             }
             // Пауза между запросами: не нагружаем геокодер
             usleep(150000);
+        }
+        return $result;
+    }
+
+    /**
+     * Импорт мест из CSV-файла: название;адрес;широта;долгота;категория.
+     * Позволяет загрузить данные из любого внешнего источника.
+     *
+     * @return array{imported:int,updated:int,skipped:int,error:?string}
+     */
+    public static function importFromCsv(\PDO $db, string $csvContent): array
+    {
+        self::ensureTables($db);
+        $result = ['imported' => 0, 'updated' => 0, 'skipped' => 0, 'error' => null];
+
+        $lines = preg_split('/\r\n|\r|\n/', trim($csvContent));
+        if (!$lines || count($lines) < 2) {
+            $result['error'] = 'Файл пуст или содержит только заголовок';
+            return $result;
+        }
+
+        // Разделитель: ; или , или таб
+        $sample = $lines[0];
+        $delimiter = substr_count($sample, ';') >= substr_count($sample, ',') ? ';' : ',';
+        if (substr_count($sample, "\t") > substr_count($sample, $delimiter)) $delimiter = "\t";
+
+        // Пропускаем заголовок, если он есть
+        $first = str_getcsv($lines[0], $delimiter);
+        $start = 0;
+        if (count($first) >= 4 && !is_numeric($first[2] ?? '')) $start = 1;
+
+        $stmt = $db->prepare(
+            'INSERT INTO places (id,name,search_name,category,address,latitude,longitude,source,is_active)
+             VALUES (?,?,?,?,?,?,?,\'csv\',1)
+             ON DUPLICATE KEY UPDATE name=VALUES(name),address=VALUES(address),
+               latitude=VALUES(latitude),longitude=VALUES(longitude),updated_at=NOW()'
+        );
+
+        for ($i = $start; $i < count($lines); $i++) {
+            $line = trim($lines[$i]);
+            if ($line === '') { $result['skipped']++; continue; }
+            $parts = str_getcsv($line, $delimiter);
+            if (count($parts) < 4) { $result['skipped']++; continue; }
+
+            $name = trim($parts[0]);
+            $address = trim($parts[1] ?? '');
+            $lat = (float) ($parts[2] ?? 0);
+            $lng = (float) ($parts[3] ?? 0);
+            $category = trim($parts[4] ?? 'other');
+
+            if ($name === '' || $lat == 0.0 || $lng == 0.0) {
+                $result['skipped']++;
+                continue;
+            }
+            if (!isset(self::CATEGORIES[$category])) $category = 'other';
+
+            try {
+                $stmt->execute([
+                    Db::uuid(), $name, self::normalize($name), $category,
+                    mb_substr($address, 0, 255), $lat, $lng,
+                ]);
+                $result['imported']++;
+            } catch (\Throwable) {
+                $result['skipped']++;
+            }
         }
         return $result;
     }

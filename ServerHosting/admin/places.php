@@ -36,6 +36,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $importResult['addressesFilled'] = $filled['filled'];
             }
         }
+        if ($cmd === 'import-csv' && !empty($_FILES['csvfile']['tmp_name'])) {
+            $content = (string) file_get_contents($_FILES['csvfile']['tmp_name']);
+            // Поддерживаем UTF-8 BOM от Excel
+            if (str_starts_with($content, "\xEF\xBB\xBF")) $content = substr($content, 3);
+            $csvResult = Places::importFromCsv($db, $content);
+            header('Location: places.php?ok=' . urlencode(sprintf(
+                'CSV загружен: добавлено %d, пропущено %d',
+                $csvResult['imported'], $csvResult['skipped']
+            ) . (!empty($csvResult['error']) ? ' · ' . $csvResult['error'] : '')));
+            exit;
+        }
         if ($cmd === 'fill-addresses') {
             $fillResult = Places::fillAddresses($db, (int) ($_POST['limit'] ?? 200));
             header('Location: places.php?ok=' . urlencode(sprintf(
@@ -140,6 +151,37 @@ layout_header('Места и организации', 'places');
       <?php foreach (Places::CATEGORIES as $key => $meta): ?>
         <span class="chip" style="margin:2px"><?= h($meta[0]) ?>: <?= (int) ($stats['byCategory'][$key] ?? 0) ?></span>
       <?php endforeach; ?>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Загрузить из CSV-файла</h3>
+    <p class="mut" style="font-size:12px;margin-top:6px">
+      Формат: <code>название;адрес;широта;долгота;категория</code>.
+      Разделитель — точка с запятой или запятая. Первая строка (заголовок) пропускается.
+    </p>
+    <form method="post" enctype="multipart/form-data" style="margin-top:10px">
+      <input type="hidden" name="cmd" value="import-csv">
+      <input type="file" name="csvfile" accept=".csv,.txt" required
+             style="background:#18181d;border:1px solid var(--line);color:#f4f4f5;
+                    border-radius:9px;padding:8px;width:100%">
+      <button class="btn" style="margin-top:10px">Загрузить CSV</button>
+    </form>
+    <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+      <p class="mut" style="font-size:12px"><b>Бесплатные источники данных:</b></p>
+      <p class="mut" style="font-size:11px;margin-top:6px">
+        1. <a href="https://download.geofabrik.de/russia/ural-fed-district.html" target="_blank" rel="noopener">Geofabrik — Уральский ФО (.osm.pbf)</a> —
+        полная выгрузка OpenStreetMap, обновляется ежедневно. Тюменская область входит в УФО.
+      </p>
+      <p class="mut" style="font-size:11px">
+        2. <a href="https://overpass-turbo.eu/" target="_blank" rel="noopener">Overpass Turbo</a> —
+        интерактивный запрос к OSM: можно выбрать область на карте и выгрузить
+        организации в CSV/GeoJSON. Бесплатно, без регистрации.
+      </p>
+      <p class="mut" style="font-size:11px">
+        3. <a href="https://overpass-api.de/api/interpreter?data=[out:csv(name,::lat,::lon,addr:street,addr:housenumber;true;';')][timeout:120];(nwr[shop](57.0,65.0,57.3,65.9);nwr[amenity](57.0,65.0,57.3,65.9);nwr[tourism](57.0,65.0,57.3,65.9);nwr[leisure](57.0,65.0,57.3,65.9);nwr[office](57.0,65.0,57.3,65.9););out;" target="_blank" rel="noopener">
+        Скачать все организации Тюмени (CSV)</a> — готовый запрос, ~2000 объектов.
+      </p>
     </div>
   </div>
 
