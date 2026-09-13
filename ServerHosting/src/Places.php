@@ -309,6 +309,69 @@ final class Places
         return $result;
     }
 
+    /**
+     * Заполнить недостающие адреса обратным геокодингом.
+     *
+     * Многие организации из OSM не имеют тегов addr:street/addr:housenumber —
+     * импорт приносит только координаты. Этот метод берёт широту/долготу
+     * и определяет адрес через активный геокодер (DaData, Яндекс или OSM),
+     * поэтому вручную заполнять ничего не нужно.
+     *
+     * @return array{filled:int,skipped:int,failed:int,error:?string}
+     */
+    public static function fillAddresses(\PDO $db, int $limit = 100): array
+    {
+        self::ensureTables($db);
+        $result = ['filled' => 0, 'skipped' => 0, 'failed' => 0, 'error' => null];
+
+        $stmt = $db->prepare(
+            "SELECT id, latitude, longitude FROM places
+             WHERE is_active = 1 AND (address IS NULL OR address = '')
+             ORDER BY usage_count DESC, name ASC LIMIT ?"
+        );
+        $stmt->bindValue(1, $limit, \PDO::PARAM_INT);
+        $stmt->execute();
+        $rows = $stmt->fetchAll();
+        if (!$rows) return $result;
+
+        $update = $db->prepare('UPDATE places SET address = ?, updated_at = NOW() WHERE id = ?');
+
+        foreach ($rows as $row) {
+            $lat = (float) $row['latitude'];
+            $lng = (float) $row['longitude'];
+            if ($lat == 0.0 || $lng == 0.0) { $result['skipped']++; continue; }
+
+            try {
+                $reverse = GeocodingService::reverse($db, $lat, $lng);
+                $address = trim((string) ($reverse['displayName'] ?? ''));
+                if ($address === '' || mb_strtolower($address) === 'неизвестный адрес') {
+                    $result['skipped']++;
+                    continue;
+                }
+                $update->execute([mb_substr($address, 0, 255), $row['id']]);
+                $result['filled']++;
+            } catch (\Throwable) {
+                $result['failed']++;
+            }
+            // Пауза между запросами: не нагружаем геокодер
+            usleep(150000);
+        }
+        return $result;
+    }
+
+    /** Количество мест без адреса (для отображения в админке). */
+    public static function countWithoutAddress(\PDO $db): int
+    {
+        self::ensureTables($db);
+        try {
+            return (int) $db->query(
+                "SELECT COUNT(*) FROM places WHERE is_active = 1 AND (address IS NULL OR address = '')"
+            )->fetchColumn();
+        } catch (\Throwable) {
+            return 0;
+        }
+    }
+
     /** Сводка по справочнику для админки. */
     public static function stats(\PDO $db): array
     {

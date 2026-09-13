@@ -29,6 +29,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 (float) $service['center_longitude'],
                 $radius
             );
+            // Сразу заполняем адреса, которых нет в OSM, через геокодер:
+            // большинство организаций не имеют тегов addr:street
+            if ($importResult['imported'] > 0 || $importResult['updated'] > 0) {
+                $filled = Places::fillAddresses($db, 200);
+                $importResult['addressesFilled'] = $filled['filled'];
+            }
+        }
+        if ($cmd === 'fill-addresses') {
+            $fillResult = Places::fillAddresses($db, (int) ($_POST['limit'] ?? 200));
+            header('Location: places.php?ok=' . urlencode(sprintf(
+                'Адреса определены: %d, пропущено: %d, ошибок: %d',
+                $fillResult['filled'], $fillResult['skipped'], $fillResult['failed']
+            )));
+            exit;
         }
     } catch (Throwable $e) {
         header('Location: places.php?error=' . urlencode($e->getMessage()));
@@ -49,7 +63,7 @@ if (isset(Places::CATEGORIES[$category])) {
     $where .= ' AND category = ?';
     $params[] = $category;
 }
-$stmt = $db->prepare("SELECT * FROM places $where ORDER BY usage_count DESC, name ASC LIMIT 300");
+$stmt = $db->prepare("SELECT * FROM places $where ORDER BY (address IS NULL OR address = '') DESC, usage_count DESC, name ASC LIMIT 300");
 $stmt->execute($params);
 $places = $stmt->fetchAll();
 $stats = Places::stats($db);
@@ -82,6 +96,9 @@ layout_header('Места и организации', 'places');
     <?php else: ?>
       ✓ Импорт из OpenStreetMap: добавлено <?= (int) $importResult['imported'] ?>,
       обновлено <?= (int) $importResult['updated'] ?>, пропущено <?= (int) $importResult['skipped'] ?>
+      <?php if (!empty($importResult['addressesFilled'])): ?>
+        <br>✓ Адреса определены автоматически: <?= (int) $importResult['addressesFilled'] ?>
+      <?php endif; ?>
     <?php endif; ?>
   </div>
 <?php endif; ?>
@@ -102,6 +119,23 @@ layout_header('Места и организации', 'places');
       </label>
       <button class="btn" style="margin-top:10px">Импортировать организации</button>
     </form>
+
+    <?php
+    $noAddress = Places::countWithoutAddress($db);
+    if ($noAddress > 0): ?>
+    <form method="post" style="margin-top:10px"
+          onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Определяем адреса…'">
+      <input type="hidden" name="cmd" value="fill-addresses">
+      <input type="hidden" name="limit" value="200">
+      <button class="btn ghost" style="width:100%">
+        Определить адреса автоматически (<?= $noAddress ?> без адреса)
+      </button>
+      <p class="mut" style="font-size:11px;margin-top:6px">
+        Берёт координаты организации и определяет адрес через геокодер
+        (DaData / Яндекс / OSM). Занимает до минуты, повторно жать не нужно.
+      </p>
+    </form>
+    <?php endif; ?>
     <div style="margin-top:14px">
       <?php foreach (Places::CATEGORIES as $key => $meta): ?>
         <span class="chip" style="margin:2px"><?= h($meta[0]) ?>: <?= (int) ($stats['byCategory'][$key] ?? 0) ?></span>
