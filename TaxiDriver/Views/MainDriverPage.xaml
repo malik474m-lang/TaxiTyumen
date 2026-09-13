@@ -272,7 +272,8 @@
 
                         <!-- Явный статус: видно, получил ли клиент дорожную геометрию -->
                         <Label x:Name="MapRouteStatusLabel"
-                               Text="Построение маршрута…"
+                               Text=""
+                               IsVisible="False"
                                TextColor="#FACC15"
                                FontSize="12"
                                FontAttributes="Bold"

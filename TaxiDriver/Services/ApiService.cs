@@ -99,6 +99,8 @@ public class ApiService
             {
                 Geometry = resp.Geometry,
                 Steps = resp.Steps ?? new(),
+                DistanceKm = resp.DistanceKm,
+                DurationMinutes = resp.DurationMinutes,
             };
         }
         catch { return null; }
@@ -112,12 +114,16 @@ public class ApiService
     {
         public List<List<double>>? Geometry { get; set; }
         public List<RouteStep> Steps { get; set; } = new();
+        public double? DistanceKm { get; set; }
+        public int? DurationMinutes { get; set; }
     }
 
     private class RoadRouteResponse
     {
         public List<List<double>>? Geometry { get; set; }
         public List<RouteStep>? Steps { get; set; }
+        public double? DistanceKm { get; set; }
+        public int? DurationMinutes { get; set; }
         public bool ByRoads { get; set; }
     }
 

@@ -176,15 +176,21 @@ public static class MapAssets
     public static string BuildRouteJson(
         OrderResponse order, double driverLat, double driverLng, bool toPickup,
         List<List<double>>? roadGeometry = null, long tilesVersion = 0,
-        double? bearing = null, bool follow = false, double? speed = null)
+        double? bearing = null, bool follow = false, double? speed = null,
+        IReadOnlyList<RouteStep>? steps = null,
+        double? distanceKm = null, int? durationMinutes = null)
     {
         var payload = new
         {
             tilesVersion,
-            // follow — камера едет за машиной (включается в полноэкранном режиме)
+            // follow — навигационная камера едет за машиной в полноэкранном режиме
             follow,
-            // speed нужна навигаторскому режиму: масштаб зависит от скорости
+            // GPS-скорость нужна адаптивному масштабу карты
             driver = new { lat = driverLat, lng = driverLng, bearing, speed },
+            // Реальные манёвры TomTom/OSRM: ближайший поворот показывается
+            // крупной карточкой прямо внутри карты
+            steps = steps ?? Array.Empty<RouteStep>(),
+            routeSummary = new { distanceKm, durationMinutes },
             target = toPickup
                 ? Point(order.PickupLatitude, order.PickupLongitude, "Подача")
                 : Point(order.DestinationLatitude, order.DestinationLongitude, "Назначение"),

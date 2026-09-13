@@ -46,10 +46,26 @@ public partial class MainDriverPage : ContentPage
         _location = location;
         _auth = auth;
 
+        // Офлайн-карта уже скачана в одном из прошлых запусков — кнопку
+        // больше не показываем после каждого перезапуска приложения
+        MapDownloadBtn.IsVisible = !Preferences.Get("offline_map_downloaded", false);
+
         // Бренд сервиса из админки в заголовке страницы
         Title = BrandingService.Current.ServiceName;
         BrandingService.Updated += b =>
             MainThread.BeginInvokeOnMainThread(() => Title = b.ServiceName);
+
+        // Первый запуск навигационной карты: включаем живые пробки и ДТП.
+        // Если TomTom-сервис выключен в админке, запросов и слоя не будет.
+        // После этого выбор водителя сохраняется и больше не перезаписывается.
+        if (!Preferences.Get("nav_map_layers_v1", false))
+        {
+            _trafficOn = true;
+            _incidentsOn = true;
+            Preferences.Set("map_traffic", true);
+            Preferences.Set("map_incidents", true);
+            Preferences.Set("nav_map_layers_v1", true);
+        }
 
         // Слои карты и озвучка: отражаем сохранённое состояние, конфиг — в фоне
         UpdateTrafficButton();
@@ -1590,6 +1606,10 @@ public partial class MainDriverPage : ContentPage
             }
 
             // Ждём маршрут — никаких промежуточных «двух точек» на карте.
+            // Сначала очищаем навигацию прошлого заказа/этапа
+            _roadSteps = new List<RouteStep>();
+            _roadDistanceKm = null;
+            _roadDurationMinutes = null;
             _roadGeometry = await GetFullRoadRouteAsync(order);
             if (_roadGeometry is not { Count: > 2 }
                 && order.RouteGeometry is { Count: > 2 })
@@ -1619,6 +1639,7 @@ public partial class MainDriverPage : ContentPage
         }
         catch (Exception ex)
         {
+            MapRouteStatusLabel.IsVisible = true;
             MapRouteStatusLabel.Text = "Ошибка маршрута: " + ex.Message;
             MapRouteStatusLabel.TextColor = Color.FromArgb("#F87171");
             App.LogCrash("ShowRouteMap", ex);
@@ -1650,8 +1671,8 @@ public partial class MainDriverPage : ContentPage
             var result = await LocalWebServer.DownloadTyumenAsync(progress);
             if (result.Failed == 0)
             {
-                // Карта скачана — кнопка больше не нужна, убираем её совсем:
-                // надпись «Карта скачана · N тайлов» только занимала место
+                // Карта скачана — кнопку скрываем и запоминаем это между запусками
+                Preferences.Set("offline_map_downloaded", true);
                 MapDownloadBtn.IsVisible = false;
             }
             else
@@ -1679,6 +1700,13 @@ public partial class MainDriverPage : ContentPage
     /// Кеш дорожной геометрии: ключ маршрута → точки по улицам.
     private readonly Dictionary<string, List<List<double>>> _roadCache = new();
     private readonly Dictionary<string, List<RouteStep>> _stepsCache = new();
+    private readonly Dictionary<string, (double? DistanceKm, int? DurationMinutes)> _routeSummaryCache = new();
+
+    // Манёвры и сводка текущего маршрута — передаются в карту для
+    // навигационной карточки ближайшего поворота
+    private List<RouteStep> _roadSteps = new();
+    private double? _roadDistanceKm;
+    private int? _roadDurationMinutes;
 
     /// Полный маршрут заказа по дорогам:
     /// машина → подача → ВСЕ промежуточные точки → назначение.
@@ -1689,7 +1717,12 @@ public partial class MainDriverPage : ContentPage
         var driverLat = _mapDriverLat != 0 ? _mapDriverLat : _location.CurrentLat;
         var driverLng = _mapDriverLng != 0 ? _mapDriverLng : _location.CurrentLng;
         AddPoint(points, driverLat, driverLng);
-        AddPoint(points, order.PickupLatitude, order.PickupLongitude);
+
+        // До посадки: машина → подача → остановки → назначение.
+        // После «Начать поездку» точка подачи уже пройдена и не должна
+        // оставаться в маршруте — иначе навигатор предлагает развернуться назад.
+        if (_mapToPickup)
+            AddPoint(points, order.PickupLatitude, order.PickupLongitude);
 
         foreach (var stop in order.IntermediatePoints.OrderBy(p => p.SortOrder))
             AddPoint(points, stop.Latitude, stop.Longitude);
@@ -1702,10 +1735,16 @@ public partial class MainDriverPage : ContentPage
         var key = string.Join("|", points.Select(p => $"{p.Lat:F4},{p.Lng:F4}"));
         if (_roadCache.TryGetValue(key, out var cached))
         {
-            // Маршрут тот же — манёвры берём из кэша (SetRoute по ключу
-            // отсечёт дубль и не сбросит уже озвученное)
-            VoiceNavigator.SetRoute(
-                _stepsCache.TryGetValue(key, out var cachedSteps) ? cachedSteps : null, key);
+            // Маршрут тот же — манёвры и сводку берём из кеша
+            _roadSteps = _stepsCache.TryGetValue(key, out var cachedSteps)
+                ? cachedSteps
+                : new List<RouteStep>();
+            if (_routeSummaryCache.TryGetValue(key, out var summary))
+            {
+                _roadDistanceKm = summary.DistanceKm;
+                _roadDurationMinutes = summary.DurationMinutes;
+            }
+            VoiceNavigator.SetRoute(_roadSteps, key);
             return cached;
         }
 
@@ -1714,6 +1753,10 @@ public partial class MainDriverPage : ContentPage
 
         _roadCache[key] = result.Geometry;
         _stepsCache[key] = result.Steps;
+        _routeSummaryCache[key] = (result.DistanceKm, result.DurationMinutes);
+        _roadSteps = result.Steps;
+        _roadDistanceKm = result.DistanceKm;
+        _roadDurationMinutes = result.DurationMinutes;
         VoiceNavigator.SetRoute(result.Steps, key);
         return result.Geometry;
     }
@@ -1745,8 +1788,11 @@ public partial class MainDriverPage : ContentPage
             var lng = _mapDriverLng != 0 ? _mapDriverLng : _location.CurrentLng;
             var json = MapAssets.BuildRouteJson(
                 _mapOrder, lat, lng, _mapToPickup, _roadGeometry, _mapTilesVersion,
-                _mapDriverBearing ?? _location.CurrentBearing, _mapFullscreen,
-                _location.CurrentSpeed);
+                _mapDriverBearing ?? _location.CurrentBearing,
+                // Навигационное ведение работает и в обычной карте, и в
+                // полноэкранной. Ручной жест ставит автокамеру на паузу.
+                true, _location.CurrentSpeed, _roadSteps,
+                _roadDistanceKm, _roadDurationMinutes);
             if (json == _mapRouteJson) return;
             _mapRouteJson = json;
             LocalWebServer.SetState(json);
@@ -1787,6 +1833,7 @@ public partial class MainDriverPage : ContentPage
                 MapFullscreenHost.Children.Add(RouteMap);
                 MapFullscreenOverlay.IsVisible = true;
                 MapFullscreenHint.IsVisible = true;
+                _ = HideFullscreenMapHintAsync();
             }
             else
             {
@@ -1803,6 +1850,13 @@ public partial class MainDriverPage : ContentPage
             PublishMapState();
         }
         catch { }
+    }
+
+    private async Task HideFullscreenMapHintAsync()
+    {
+        await Task.Delay(3000);
+        if (_mapFullscreen)
+            MainThread.BeginInvokeOnMainThread(() => MapFullscreenHint.IsVisible = false);
     }
 
     // ── Слои TomTom (пробки, происшествия) и озвучка маршрута ───────────
@@ -1977,6 +2031,9 @@ public partial class MainDriverPage : ContentPage
             _mapRouteJson = string.Empty;
             _mapOrder = null;
             _roadGeometry = null;
+            _roadSteps = new List<RouteStep>();
+            _roadDistanceKm = null;
+            _roadDurationMinutes = null;
             VoiceNavigator.Clear();
             LocalWebServer.SetState("{}");
             if (_mapFullscreen) OnToggleMapFullscreen(null, EventArgs.Empty);

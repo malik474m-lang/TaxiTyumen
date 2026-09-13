@@ -3,7 +3,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <link rel="stylesheet" href="maplibre-gl.css">
 <style>
-html,body{margin:0;padding:0;height:100%;width:100%;background:#e8e6e1;overflow:hidden}
+html,body{margin:0;padding:0;height:100%;width:100%;background:#F1F0EC;overflow:hidden}
 #map{position:absolute;inset:0}
 .maplibregl-canvas{outline:none}
 .maplibregl-ctrl-attrib{font-size:9px;opacity:.55}
@@ -17,6 +17,32 @@ html,body{margin:0;padding:0;height:100%;width:100%;background:#e8e6e1;overflow:
 #car{width:44px;height:44px;will-change:transform;pointer-events:none}
 #car svg{display:block;filter:drop-shadow(0 2px 5px rgba(0,0,0,.55))}
 #car .body{transition:transform .35s linear}
+
+/* Навигационная карточка — крупная и читаемая на ходу, без копирования
+   дизайна Яндекса: собственный интерфейс поверх MapLibre */
+#navPanel{position:absolute;z-index:8;left:64px;right:58px;top:10px;display:none;
+  min-height:64px;background:rgba(18,18,22,.94);color:#fff;border-radius:16px;
+  box-shadow:0 5px 22px rgba(0,0,0,.38);padding:10px 13px;pointer-events:none;
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;backdrop-filter:blur(8px)}
+#navRow{display:flex;align-items:center;gap:11px}
+#navIcon{width:40px;min-width:40px;text-align:center;color:#facc15;font-size:34px;
+  line-height:38px;font-weight:900}
+#navDistance{font-size:18px;line-height:21px;font-weight:900;color:#fff}
+#navStreet{font-size:12px;line-height:16px;color:#d4d4d8;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:100%}
+#navSummary{font-size:10px;color:#a1a1aa;margin-top:3px}
+
+/* Легенда живых пробок TomTom: показывается только при включённом слое */
+#trafficLegend{position:absolute;z-index:7;left:9px;bottom:23px;display:none;
+  background:rgba(255,255,255,.93);color:#27272a;border-radius:10px;
+  padding:6px 8px;font:700 9px/12px system-ui,sans-serif;box-shadow:0 2px 10px rgba(0,0,0,.25);
+  pointer-events:none}
+#trafficLegend span{display:inline-flex;align-items:center;margin-right:7px;gap:3px}
+#trafficLegend i{display:inline-block;width:13px;height:4px;border-radius:3px}
+#trafficLegend span:last-child{margin-right:0}
+
+/* В режиме ведения карта чуть контрастнее — дороги/повороты читаются быстрее */
+body.nav-mode .maplibregl-canvas{filter:saturate(1.08) contrast(1.04)}
 </style></head>
 <body>
 <div id="map"></div>
@@ -25,6 +51,22 @@ html,body{margin:0;padding:0;height:100%;width:100%;background:#e8e6e1;overflow:
   Не удалось загрузить карту MapLibre.<br>Перезапустите приложение.
 </div>
 <div id="badge">Офлайн · карта из памяти</div>
+<div id="navPanel">
+  <div id="navRow">
+    <div id="navIcon">↑</div>
+    <div style="min-width:0;flex:1">
+      <div id="navDistance">Следуйте по маршруту</div>
+      <div id="navStreet"></div>
+      <div id="navSummary"></div>
+    </div>
+  </div>
+</div>
+<div id="trafficLegend">
+  <span><i style="background:#2EAB30"></i>свободно</span>
+  <span><i style="background:#F1BF40"></i>плотно</span>
+  <span><i style="background:#F18237"></i>медленно</span>
+  <span><i style="background:#E70704"></i>пробка</span>
+</div>
 <script src="maplibre-gl.js"></script>
 <script>
 /* Тайлы отдаёт локальный C#-сервер: сначала файл офлайн-кеша,
@@ -43,12 +85,20 @@ var map = new maplibregl.Map({
     layers: [
       // Светлый фон под тайлами: незагруженные участки выглядят как пустая
       // карта, а не как чёрные дыры на экране.
-      { id: 'bg', type: 'background', paint: { 'background-color': '#e8e6e1' } },
+      { id: 'bg', type: 'background', paint: { 'background-color': '#F1F0EC' } },
       { id: 'osm', type: 'raster', source: 'osm',
-        paint: { 'raster-fade-duration': 0 } }
+        paint: {
+          'raster-fade-duration': 0,
+          'raster-contrast': 0.08,
+          'raster-saturation': 0.06,
+          'raster-brightness-min': 0.04,
+          'raster-brightness-max': 0.98
+        } }
     ]
   },
-  center: [65.5272, 57.1522], zoom: 12, attributionControl: { compact: true }
+  center: [65.5272, 57.1522], zoom: 12,
+  maxPitch: 50,
+  attributionControl: { compact: true }
 });
 // Явно включаем сенсорные жесты (на случай, если WebView/скролл их глушат):
 // свести/развести — масштаб, тащить — перемещение, двойной тап — зум.
@@ -85,7 +135,7 @@ try { map.on('trackuserlocationstart', function(){ releaseCamera(); }); } catch 
 /* Каждый контрол — в своей защите: раньше одна ошибка в addControl
    останавливала ВЕСЬ скрипт, и карта висела без кнопок, позиции и маршрута. */
 try {
-  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+  map.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: true, visualizePitch: true }), 'top-right');
 } catch (e) { console.warn('nav control', e); }
 
 var geo = null;
@@ -118,6 +168,121 @@ try {
 
 var meMarker = null, markers = [], routeReady = false, lastData = null;
 
+/* ---------- Манёвры и навигационная карточка ----------------------------- */
+var navSteps = [], navIndex = 0, navStepsKey = '', navRouteSummary = null;
+var nextTurnDistance = null, navWasFollowing = false;
+
+function haversineM(lat1, lng1, lat2, lng2){
+  var r = 6371000, rad = Math.PI / 180;
+  var dLat = (lat2 - lat1) * rad, dLng = (lng2 - lng1) * rad;
+  var a = Math.sin(dLat/2) * Math.sin(dLat/2)
+    + Math.cos(lat1*rad) * Math.cos(lat2*rad)
+    * Math.sin(dLng/2) * Math.sin(dLng/2);
+  return 2 * r * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1-a)));
+}
+
+function maneuverIcon(step){
+  if (!step) return '↑';
+  var type = String(step.type || '').toLowerCase();
+  var mod = String(step.modifier || '').toLowerCase();
+  if (type === 'arrive') return '◆';
+  if (type.indexOf('roundabout') >= 0 || type === 'rotary') return '↻';
+  if (mod === 'uturn') return '⤵';
+  if (mod === 'sharp left') return '⬅';
+  if (mod === 'sharp right') return '➡';
+  if (mod === 'left') return '↰';
+  if (mod === 'right') return '↱';
+  if (mod === 'slight left') return '↖';
+  if (mod === 'slight right') return '↗';
+  return '↑';
+}
+
+function maneuverText(step){
+  if (!step) return 'Следуйте по маршруту';
+  var type = String(step.type || '').toLowerCase();
+  var mod = String(step.modifier || '').toLowerCase();
+  if (type === 'arrive') return 'Пункт назначения';
+  if (type.indexOf('roundabout') >= 0 || type === 'rotary')
+    return step.exit ? ('Круг · ' + step.exit + '-й съезд') : 'Круговое движение';
+  if (mod === 'uturn') return 'Развернитесь';
+  if (mod === 'left') return 'Поверните налево';
+  if (mod === 'right') return 'Поверните направо';
+  if (mod === 'slight left') return 'Держитесь левее';
+  if (mod === 'slight right') return 'Держитесь правее';
+  if (mod === 'sharp left') return 'Резко налево';
+  if (mod === 'sharp right') return 'Резко направо';
+  if (type === 'merge') return 'Вливайтесь в поток';
+  if (type === 'off ramp') return 'Съезд';
+  return 'Двигайтесь прямо';
+}
+
+function formatNavDistance(meters){
+  if (meters < 45) return 'Сейчас';
+  if (meters < 950){
+    var step = meters < 200 ? 10 : (meters < 500 ? 50 : 100);
+    return 'Через ' + Math.max(step, Math.round(meters / step) * step) + ' м';
+  }
+  return 'Через ' + (meters / 1000).toFixed(meters < 2000 ? 1 : 0) + ' км';
+}
+
+function setNavigationSteps(data){
+  var steps = Array.isArray(data.steps) ? data.steps : [];
+  var key = steps.map(function(s){
+    return (s.loc || []).join(',') + ':' + (s.type || '') + ':' + (s.modifier || '');
+  }).join('|');
+  if (key !== navStepsKey){
+    navStepsKey = key;
+    navSteps = steps;
+    navIndex = 0;
+  }
+  navRouteSummary = data.routeSummary || null;
+}
+
+function updateNavigation(lat, lng, follow){
+  var panel = document.getElementById('navPanel');
+  if (!follow || !navSteps.length){
+    panel.style.display = 'none';
+    document.body.classList.remove('nav-mode');
+    nextTurnDistance = null;
+    if (!follow && navWasFollowing){
+      // Свернули навигатор: плоская карта, север снова сверху
+      try{ map.easeTo({ bearing: 0, pitch: 0, offset: [0,0], duration: 350 }); }catch(e){}
+    }
+    navWasFollowing = false;
+    return;
+  }
+  navWasFollowing = true;
+
+  // Пропускаем уже пройденные точки. Первый шаг часто depart прямо под машиной.
+  while (navIndex < navSteps.length){
+    var s = navSteps[navIndex], loc = s.loc || [];
+    if (loc.length < 2){ navIndex++; continue; }
+    var d = haversineM(lat, lng, Number(loc[0]), Number(loc[1]));
+    if (d <= 32 && navIndex < navSteps.length - 1){ navIndex++; continue; }
+    nextTurnDistance = d;
+    break;
+  }
+
+  var step = navSteps[Math.min(navIndex, navSteps.length - 1)];
+  if (!step){ panel.style.display = 'none'; return; }
+  var action = maneuverText(step);
+  var street = String(step.name || '').trim();
+  document.getElementById('navIcon').textContent = maneuverIcon(step);
+  document.getElementById('navDistance').textContent = formatNavDistance(nextTurnDistance || 0);
+  document.getElementById('navStreet').textContent = street ? (action + ' · ' + street) : action;
+
+  var bits = [];
+  if (navRouteSummary){
+    var km = Number(navRouteSummary.distanceKm || 0);
+    var min = Number(navRouteSummary.durationMinutes || 0);
+    if (km > 0) bits.push(km.toFixed(1) + ' км');
+    if (min > 0) bits.push('≈ ' + Math.round(min) + ' мин');
+  }
+  document.getElementById('navSummary').textContent = bits.join(' · ');
+  panel.style.display = 'block';
+  document.body.classList.add('nav-mode');
+}
+
 /* ---------- Слои TomTom (пробки, происшествия) поверх OSM, но ПОД линией
    маршрута. Приложение управляет ими через setOverlay(id, url, show). */
 function overlayIds(id){ return { src: 'tt-' + id + '-src', layer: 'tt-' + id }; }
@@ -129,6 +294,7 @@ window.setOverlay = function(id, tileUrl, show){
     if (!show || !tileUrl){
       if (has) map.removeLayer(ids.layer);
       if (map.getSource(ids.src)) map.removeSource(ids.src);
+      if (id === 'flow') document.getElementById('trafficLegend').style.display = 'none';
       return 'off';
     }
     if (!map.isStyleLoaded()){
@@ -139,15 +305,17 @@ window.setOverlay = function(id, tileUrl, show){
       if (!map.getSource(ids.src))
         map.addSource(ids.src, { type: 'raster', tiles: [tileUrl], tileSize: 256,
           maxzoom: 19, attribution: '© TomTom' });
-      // Происшествия рисуем выше пробок, но обе — под линией маршрута
-      var before = map.getLayer('route-line') ? 'route-line' : undefined;
+      // Происшествия рисуем выше пробок, но оба слоя — ПОД окантовкой маршрута
+      var before = map.getLayer('route-casing') ? 'route-casing'
+        : (map.getLayer('route-line') ? 'route-line' : undefined);
       map.addLayer({ id: ids.layer, type: 'raster', source: ids.src,
-        paint: { 'raster-opacity': id === 'incidents' ? 1 : 0.85,
+        paint: { 'raster-opacity': id === 'incidents' ? 1 : 0.88,
                  'raster-fade-duration': 0 } }, before);
     } else {
       var src = map.getSource(ids.src);
       if (src && src.setTiles) src.setTiles([tileUrl]);
     }
+    if (id === 'flow') document.getElementById('trafficLegend').style.display = 'block';
     return 'on';
   }catch(e){ return 'err:' + e.message; }
 };
@@ -213,8 +381,11 @@ function addVectorLayers(info){
           attribution: '© OpenStreetMap'
         });
       }
-      // Линия маршрута и слои пробок остаются выше карты
-      var before = map.getLayer('route-line') ? 'route-line' : undefined;
+      // Базовая векторная карта должна быть ПОД пробками/ДТП и маршрутом
+      var before = map.getLayer('tt-flow') ? 'tt-flow'
+        : (map.getLayer('tt-incidents') ? 'tt-incidents'
+          : (map.getLayer('route-casing') ? 'route-casing'
+            : (map.getLayer('route-line') ? 'route-line' : undefined)));
       layers.forEach(function(l){
         if (map.getLayer(l.id)) return;
         try{ map.addLayer(l, before); }catch(e){ console.warn('vector layer ' + l.id, e); }
@@ -253,6 +424,7 @@ window.setRoute = function(json){
   try{
     var d = typeof json === 'string' ? JSON.parse(json) : json;
     lastData = d;
+    setNavigationSteps(d);
 
     if (d.tilesVersion && d.tilesVersion !== window._tilesVersion){
       window._tilesVersion = d.tilesVersion;
@@ -298,16 +470,36 @@ window.setRoute = function(json){
     if (line.length < 3) line = [];
     var gj = { type: 'Feature', geometry: { type: 'LineString', coordinates: line } };
     if (map.getSource('route')) map.getSource('route').setData(gj);
-    else {
-      map.addSource('route', { type: 'geojson', data: gj });
+    else map.addSource('route', { type: 'geojson', data: gj });
+
+    // Тёмная окантовка отделяет маршрут от жёлтых/красных линий пробок
+    if (!map.getLayer('route-casing')){
+      map.addLayer({ id: 'route-casing', type: 'line', source: 'route',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#343439',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 12, 7, 16, 11, 19, 16],
+          'line-opacity': .82
+        }
+      });
+    }
+    if (!map.getLayer('route-line')){
       map.addLayer({ id: 'route-line', type: 'line', source: 'route',
         layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#FFD700', 'line-width': 6, 'line-opacity': .95 } });
+        paint: {
+          'line-color': '#FACC15',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 12, 4, 16, 7, 19, 11],
+          'line-opacity': 1
+        }
+      });
     }
     line.forEach(function(c){ pts.push(c); });
 
     if (d.driver && d.driver.lat && d.driver.lng){
-      window.updateDriver(d.driver.lat, d.driver.lng, !!d.follow, d.driver.bearing);
+      window.updateDriver(
+        d.driver.lat, d.driver.lng, !!d.follow,
+        d.driver.bearing, d.driver.speed
+      );
       if (!window._centered){
         window._centered = true;
         map.jumpTo({ center: [d.driver.lng, d.driver.lat], zoom: 14 });
@@ -367,8 +559,12 @@ window.updateDriver = function(lat, lng, follow, bearing, speed){
       if (Math.abs(dx) > 1e-6 || Math.abs(dy) > 1e-6)
         deg = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
     }
-    if (deg !== null) setCarBearing(deg);
+    // Маркер вращается относительно экрана. Когда сама карта уже повернута
+    // по курсу, вычитаем её bearing — иначе направление применялось дважды.
+    if (deg !== null) setCarBearing(deg - map.getBearing());
     window._prevLL = ll;
+
+    updateNavigation(Number(lat), Number(lng), !!follow);
 
     if (routeReady && lastData && lastData.geometry && lastData.geometry.length > 1){
       /* стартовая точка линии следует за водителем */
@@ -391,19 +587,35 @@ window.updateDriver = function(lat, lng, follow, bearing, speed){
       // Масштаб по скорости (м/с → км/ч)
       var kmh = (sp !== null && !isNaN(sp)) ? sp * 3.6 : 20;
       var targetZoom;
-      if (kmh < 15)       targetZoom = 17.2;  // стоит или пробка — виден каждый поворот
-      else if (kmh < 40)  targetZoom = 16.6;  // город — повороты и строения
-      else if (kmh < 70)  targetZoom = 16.0;  // быстрый поток — перекрёсток заранее
-      else                targetZoom = 15.4;  // трасса — обзор дальше
+      if (kmh < 15)       targetZoom = 17.2;
+      else if (kmh < 40)  targetZoom = 16.6;
+      else if (kmh < 70)  targetZoom = 16.0;
+      else                targetZoom = 15.4;
 
-      // Плавный поворот карты по курсу (курс = «вверх»)
-      var targetBearing = (deg !== null) ? deg : map.getBearing();
+      // Перед ближайшим поворотом приближаемся сильнее независимо от скорости
+      if (nextTurnDistance !== null){
+        if (nextTurnDistance < 80)       targetZoom = Math.max(targetZoom, 18.0);
+        else if (nextTurnDistance < 180) targetZoom = Math.max(targetZoom, 17.6);
+        else if (nextTurnDistance < 350) targetZoom = Math.max(targetZoom, 17.2);
+        else if (nextTurnDistance < 700) targetZoom = Math.max(targetZoom, 16.7);
+      }
+
+      // Стоя на месте курс GPS прыгает — не вращаем карту без движения
+      var targetBearing = (deg !== null && kmh >= 6) ? deg : map.getBearing();
+      var mapHeight = map.getContainer().clientHeight || 500;
+
+      // В режиме «курс вверх» машина смотрит строго вверх экрана
+      if (deg !== null && kmh >= 6) setCarBearing(0);
 
       map.easeTo({
         center: ll,
         zoom: targetZoom,
         bearing: targetBearing,
-        duration: 600,
+        // Машина ниже центра: впереди видно примерно 70% экрана
+        offset: [0, Math.round(mapHeight * 0.20)],
+        // Небольшой наклон даёт ощущение навигатора, но не искажает повороты
+        pitch: kmh >= 8 ? 35 : 20,
+        duration: 650,
         easing: function(t){ return t * t * (3 - 2 * t); }
       });
     }

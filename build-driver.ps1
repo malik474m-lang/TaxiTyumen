@@ -41,6 +41,24 @@ if (-not (Test-Path (Join-Path $dir '.git'))) {
 }
 if ($LASTEXITCODE -ne 0) { throw 'Ошибка git clone/pull' }
 
+# PMTiles и шрифты не хранятся в Git (десятки МБ). Если пакет был собран
+# в основной папке командой TaxiDriver/maps/build-pmtiles.ps1, переносим
+# его в свежий рабочий клон перед сборкой APK — иначе включался только
+# растровый OSM и собственный навигационный стиль не использовался.
+$mapSource = Join-Path $PSScriptRoot 'TaxiDriver\Resources\Raw\map'
+$mapTarget = Join-Path $dir 'TaxiDriver\Resources\Raw\map'
+$pmtiles = Join-Path $mapSource 'tyumen.pmtiles'
+if (Test-Path $pmtiles) {
+    New-Item -ItemType Directory -Force -Path $mapTarget | Out-Null
+    Copy-Item $pmtiles (Join-Path $mapTarget 'tyumen.pmtiles') -Force
+    Get-ChildItem $mapSource -Filter 'font-*.pbf' -ErrorAction SilentlyContinue |
+        Copy-Item -Destination $mapTarget -Force
+    Write-Host ("Офлайн-карта добавлена в APK: {0:N1} МБ" -f ((Get-Item $pmtiles).Length / 1MB)) -ForegroundColor Green
+} else {
+    Write-Host "PMTiles не найден — будет онлайн-карта OSM + пробки TomTom." -ForegroundColor DarkGray
+    Write-Host "Для собственного векторного стиля сначала запустите TaxiDriver\maps\build-pmtiles.ps1" -ForegroundColor DarkGray
+}
+
 Write-Host "Собираю APK..." -ForegroundColor Cyan
 $proj = Join-Path $dir 'TaxiDriver\TaxiDriver.csproj'
 
