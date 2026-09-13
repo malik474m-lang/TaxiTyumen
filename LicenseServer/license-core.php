@@ -2,7 +2,7 @@
 // Сервер лицензий TaxiTyumen: выдаёт, проверяет и отзывает лицензии на
 // серверную часть такси. Размещается отдельно (taxi.license-prog.ru).
 //
-// Без composer, чистый PHP 8 + MySQL/PDO. TOTP 2FA (RFC 6238) и защита
+// Без composer, совместимо с PHP 7.4+ и MySQL/PDO. TOTP 2FA (RFC 6238) и защита
 // от брутфорса — собственная реализация без внешних библиотек.
 declare(strict_types=1);
 date_default_timezone_set('UTC');
@@ -80,6 +80,16 @@ function lic_ensure_tables(): void
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         INDEX (username, ip, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    // Постоянные настройки администратора. TOTP-секрет нельзя хранить
+    // только в PHP-сессии: после выхода 2FA переставала работать.
+    $db->exec("CREATE TABLE IF NOT EXISTS license_admin_settings (
+        id              TINYINT PRIMARY KEY DEFAULT 1,
+        totp_secret_enc TEXT NULL,
+        totp_enabled    TINYINT(1) NOT NULL DEFAULT 0,
+        totp_updated_at DATETIME NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $db->exec('INSERT IGNORE INTO license_admin_settings (id) VALUES (1)');
 }
 
 function lic_uuid(): string
@@ -90,7 +100,7 @@ function lic_uuid(): string
     return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($d), 4));
 }
 
-function lic_json(array $data, int $code = 200): never
+function lic_json(array $data, int $code = 200): void
 {
     http_response_code($code);
     header('Content-Type: application/json; charset=utf-8');
@@ -98,7 +108,7 @@ function lic_json(array $data, int $code = 200): never
     exit;
 }
 
-function lic_error(string $msg, int $code = 400): never
+function lic_error(string $msg, int $code = 400): void
 {
     lic_json(['error' => $msg], $code);
 }
@@ -109,7 +119,49 @@ function lic_log_event(?string $licenseId, string $event, ?string $ip = null, st
         lic_db()->prepare(
             'INSERT INTO license_events (license_id,event,ip,details) VALUES (?,?,?,?)'
         )->execute([$licenseId, $event, $ip, mb_substr($details, 0, 500)]);
-    } catch (Throwable) {}
+    } catch (Throwable $e) {}
+}
+
+// ── Шифрование TOTP-секрета в БД ─────────────────────────────────────────
+function lic_encrypt(string $plain): string
+{
+    $key = hash('sha256', LIC_SECRET . '|totp', true);
+    $iv = random_bytes(16);
+    $encrypted = openssl_encrypt($plain, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);
+    if ($encrypted === false) throw new RuntimeException('Не удалось зашифровать 2FA-секрет');
+    return base64_encode($iv . $encrypted);
+}
+
+function lic_decrypt(?string $value): string
+{
+    if (!$value) return '';
+    $raw = base64_decode($value, true);
+    if ($raw === false || strlen($raw) < 17) return '';
+    $key = hash('sha256', LIC_SECRET . '|totp', true);
+    $plain = openssl_decrypt(substr($raw, 16), 'aes-256-cbc', $key,
+        OPENSSL_RAW_DATA, substr($raw, 0, 16));
+    return $plain === false ? '' : $plain;
+}
+
+function lic_totp_secret(): string
+{
+    // Можно задать секрет в license.local.php; иначе берём зашифрованный из БД.
+    if (defined('LIC_TOTP_SECRET') && (string) LIC_TOTP_SECRET !== '') {
+        return (string) LIC_TOTP_SECRET;
+    }
+    $row = lic_db()->query(
+        'SELECT totp_secret_enc,totp_enabled FROM license_admin_settings WHERE id=1'
+    )->fetch();
+    if (!$row || (int) $row['totp_enabled'] !== 1) return '';
+    return lic_decrypt($row['totp_secret_enc']);
+}
+
+function lic_save_totp_secret(string $secret): void
+{
+    lic_db()->prepare(
+        'UPDATE license_admin_settings SET totp_secret_enc=?,totp_enabled=1,
+         totp_updated_at=NOW() WHERE id=1'
+    )->execute([lic_encrypt($secret)]);
 }
 
 // ── TOTP 2FA (RFC 6238, без composer) ────────────────────────────────────
@@ -179,12 +231,15 @@ final class Totp
 // ── Защита от брутфорса ───────────────────────────────────────────────────
 final class BruteGuard
 {
-    private const MAX_ATTEMPTS = 5;
-    private const LOCKOUT_MINUTES = 15;
+    public const MAX_ATTEMPTS = 5;
+    public const LOCKOUT_MINUTES = 15;
 
     public static function clientIp(): string
     {
-        foreach (['HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'REMOTE_ADDR'] as $k) {
+        // REMOTE_ADDR нельзя подделать обычным HTTP-заголовком. X-Forwarded-For
+        // используем только как резерв — иначе злоумышленник обходит лимит,
+        // меняя X-Forwarded-For на каждой попытке.
+        foreach (['REMOTE_ADDR', 'HTTP_X_REAL_IP', 'HTTP_X_FORWARDED_FOR'] as $k) {
             $v = $_SERVER[$k] ?? '';
             if ($v !== '') return trim(explode(',', $v)[0]);
         }
@@ -194,13 +249,23 @@ final class BruteGuard
     public static function isLocked(string $username): bool
     {
         $db = lic_db();
-        $stmt = $db->prepare(
-            "SELECT COUNT(*) FROM admin_login_attempts
-             WHERE username = ? AND ip = ? AND success = 0
-               AND created_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)"
+        return self::failedCount($username) >= self::MAX_ATTEMPTS;
+    }
+
+    public static function failedCount(string $username): int
+    {
+        $cutoff = gmdate('Y-m-d H:i:s', time() - self::LOCKOUT_MINUTES * 60);
+        $stmt = lic_db()->prepare(
+            'SELECT COUNT(*) FROM admin_login_attempts
+             WHERE username=? AND ip=? AND success=0 AND created_at>?'
         );
-        $stmt->execute([$username, self::clientIp(), self::LOCKOUT_MINUTES]);
-        return (int) $stmt->fetchColumn() >= self::MAX_ATTEMPTS;
+        $stmt->execute([$username, self::clientIp(), $cutoff]);
+        return (int) $stmt->fetchColumn();
+    }
+
+    public static function remainingAttempts(string $username): int
+    {
+        return max(0, self::MAX_ATTEMPTS - self::failedCount($username));
     }
 
     public static function record(string $username, bool $success): void
@@ -216,21 +281,36 @@ final class BruteGuard
                      WHERE username = ? AND ip = ? AND success = 0"
                 )->execute([$username, self::clientIp()]);
             }
-        } catch (Throwable) {}
+        } catch (Throwable $e) {}
     }
 
     public static function remainingLockout(string $username): int
     {
-        $db = lic_db();
-        $stmt = $db->prepare(
-            "SELECT TIMESTAMPDIFF(MINUTE, MAX(created_at), NOW())
-             FROM admin_login_attempts
-             WHERE username = ? AND ip = ? AND success = 0
-               AND created_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)"
+        $cutoff = gmdate('Y-m-d H:i:s', time() - self::LOCKOUT_MINUTES * 60);
+        $stmt = lic_db()->prepare(
+            'SELECT MAX(created_at) FROM admin_login_attempts
+             WHERE username=? AND ip=? AND success=0 AND created_at>?'
         );
-        $stmt->execute([$username, self::clientIp(), self::LOCKOUT_MINUTES]);
-        $elapsed = (int) ($stmt->fetchColumn() ?: 0);
-        return max(0, self::LOCKOUT_MINUTES - $elapsed);
+        $stmt->execute([$username, self::clientIp(), $cutoff]);
+        $last = $stmt->fetchColumn();
+        if (!$last) return 0;
+        $elapsed = (int) floor((time() - strtotime($last . ' UTC')) / 60);
+        return max(1, self::LOCKOUT_MINUTES - $elapsed);
+    }
+}
+
+// ── Ограничение публичного API ───────────────────────────────────────────
+function lic_api_rate_limited(string $ip, int $limit = 60): bool
+{
+    try {
+        $cutoff = gmdate('Y-m-d H:i:s', time() - 60);
+        $stmt = lic_db()->prepare(
+            'SELECT COUNT(*) FROM license_events WHERE ip=? AND created_at>?'
+        );
+        $stmt->execute([$ip, $cutoff]);
+        return (int) $stmt->fetchColumn() >= $limit;
+    } catch (Throwable $e) {
+        return false;
     }
 }
 

@@ -4,7 +4,25 @@ require_once __DIR__ . '/license-core.php';
 
 lic_ensure_tables();
 session_name('licadmin');
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+    'httponly' => true,
+    'samesite' => 'Strict',
+]);
 session_start();
+
+// Защитные заголовки админки
+header('X-Frame-Options: DENY');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: no-referrer');
+header('Cache-Control: no-store, no-cache, must-revalidate');
+header("Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; "
+    . "img-src 'self' data:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
+
+// CSRF-токен для всех действий после входа
+if (empty($_SESSION['csrf'])) $_SESSION['csrf'] = bin2hex(random_bytes(24));
 
 // ── Выход ────────────────────────────────────────────────────────────────
 if (($_GET['action'] ?? '') === 'logout') {
@@ -13,73 +31,117 @@ if (($_GET['action'] ?? '') === 'logout') {
     exit;
 }
 
-// ── Логин ────────────────────────────────────────────────────────────────
 $loginError = '';
-$totpRequired = false;
-$pendingUser = $_SESSION['pending_user'] ?? '';
+$loggedIn = !empty($_SESSION['admin_logged_in']);
+$cmd = (string) ($_POST['cmd'] ?? '');
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['cmd'] ?? '') === 'login') {
+// Административная сессия: 30 минут бездействия, затем повторный пароль + 2FA.
+if ($loggedIn) {
+    $lastActivity = (int) ($_SESSION['last_activity'] ?? $_SESSION['logged_in_at'] ?? 0);
+    if ($lastActivity === 0 || time() - $lastActivity > 1800) {
+        session_destroy();
+        header('Location: license-admin.php?expired=1');
+        exit;
+    }
+    $_SESSION['last_activity'] = time();
+}
+
+// Просроченный второй шаг забываем через 5 минут
+if (!$loggedIn && !empty($_SESSION['pending_expires'])
+    && (int) $_SESSION['pending_expires'] < time()) {
+    unset($_SESSION['pending_user'], $_SESSION['pending_expires'],
+        $_SESSION['pending_totp_secret'], $_SESSION['pending_totp_setup']);
+}
+
+// ── Шаг 1: логин + пароль ────────────────────────────────────────────────
+if (!$loggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && $cmd === 'login') {
     $username = trim((string) ($_POST['username'] ?? ''));
     $password = (string) ($_POST['password'] ?? '');
-    $totp = trim((string) ($_POST['totp'] ?? ''));
 
-    // Проверяем брутфорс ДО сверки пароля
     if (BruteGuard::isLocked($username)) {
-        $mins = BruteGuard::remainingLockout($username);
-        $loginError = "Слишком много неудачных попыток. Повторите через $mins мин.";
+        $loginError = 'Слишком много неудачных попыток. Повторите через '
+            . BruteGuard::remainingLockout($username) . ' мин.';
     } else {
         $hash = LIC_ADMIN_PASS_HASH;
-        $validUser = $username === LIC_ADMIN_USER;
+        $validUser = hash_equals((string) LIC_ADMIN_USER, $username);
         $validPass = $hash !== '' && password_verify($password, $hash);
 
         if (!$validUser || !$validPass) {
             BruteGuard::record($username, false);
             lic_log_event(null, 'admin-login-failed', BruteGuard::clientIp(), "user=$username");
-            $remaining = BruteGuard::MAX_ATTEMPTS -
-                (BruteGuard::isLocked($username) ? BruteGuard::MAX_ATTEMPTS : 0);
-            $loginError = "Неверный логин или пароль. Осталось попыток: $remaining";
+            $loginError = 'Неверный логин или пароль. Осталось попыток: '
+                . BruteGuard::remainingAttempts($username);
         } else {
-            // Пароль верен — нужен TOTP
-            $secret = $_SESSION['totp_secret'] ?? '';
-            if ($secret === '') {
-                // Первый вход без настроенного 2FA — генерируем секрет
-                $secret = Totp::generateSecret();
-                $_SESSION['totp_secret'] = $secret;
-                $_SESSION['totp_pending_setup'] = true;
-            }
+            // Пароль верен. Сохраняем только факт прохождения шага, НЕ сам пароль.
+            session_regenerate_id(true);
+            $_SESSION['pending_user'] = $username;
+            $_SESSION['pending_expires'] = time() + 300;
 
-            if ($totp === '' && !empty($_SESSION['totp_pending_setup'])) {
-                // Показываем QR для первичной настройки
-                BruteGuard::record($username, true);
-                $_SESSION['pending_user'] = $username;
-                $totpRequired = true;
-            } elseif ($totp !== '' && Totp::verify($secret, $totp)) {
-                // 2FA пройдена
-                BruteGuard::record($username, true);
-                $_SESSION['admin_logged_in'] = true;
-                $_SESSION['admin_user'] = $username;
-                unset($_SESSION['totp_pending_setup'], $_SESSION['pending_user']);
-                lic_log_event(null, 'admin-login-ok', BruteGuard::clientIp(), "user=$username");
-                header('Location: license-admin.php');
-                exit;
-            } elseif ($totp !== '') {
-                BruteGuard::record($username, false);
-                lic_log_event(null, 'admin-2fa-failed', BruteGuard::clientIp(), "user=$username");
-                $loginError = 'Неверный код 2FA';
-                $totpRequired = true;
+            $secret = lic_totp_secret();
+            if ($secret === '') {
+                // Первый вход: секрет попадёт в БД только после верного кода.
+                $secret = Totp::generateSecret();
+                $_SESSION['pending_totp_secret'] = $secret;
+                $_SESSION['pending_totp_setup'] = true;
             } else {
-                $totpRequired = true;
+                $_SESSION['pending_totp_secret'] = $secret;
+                $_SESSION['pending_totp_setup'] = false;
             }
+            // Счётчик не сбрасываем до успешного TOTP: иначе человек,
+            // знающий пароль, получал бы бесконечные попытки 2FA.
         }
     }
 }
 
-// ── Проверка авторизации ────────────────────────────────────────────────
+// ── Шаг 2: TOTP-код ─────────────────────────────────────────────────────
+if (!$loggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && $cmd === 'totp') {
+    $username = (string) ($_SESSION['pending_user'] ?? '');
+    $expires = (int) ($_SESSION['pending_expires'] ?? 0);
+    $secret = (string) ($_SESSION['pending_totp_secret'] ?? '');
+    $code = trim((string) ($_POST['totp'] ?? ''));
+
+    if ($username === '' || $secret === '' || $expires < time()) {
+        $loginError = 'Время подтверждения истекло. Войдите заново.';
+        unset($_SESSION['pending_user'], $_SESSION['pending_expires'],
+            $_SESSION['pending_totp_secret'], $_SESSION['pending_totp_setup']);
+    } elseif (BruteGuard::isLocked($username)) {
+        $loginError = 'Слишком много неудачных попыток. Повторите через '
+            . BruteGuard::remainingLockout($username) . ' мин.';
+    } elseif (Totp::verify($secret, $code)) {
+        // При первой настройке сохраняем секрет зашифрованным в MySQL.
+        if (!empty($_SESSION['pending_totp_setup'])) lic_save_totp_secret($secret);
+
+        BruteGuard::record($username, true);
+        session_regenerate_id(true);
+        $_SESSION['admin_logged_in'] = true;
+        $_SESSION['admin_user'] = $username;
+        $_SESSION['logged_in_at'] = time();
+        unset($_SESSION['pending_user'], $_SESSION['pending_expires'],
+            $_SESSION['pending_totp_secret'], $_SESSION['pending_totp_setup']);
+        lic_log_event(null, 'admin-login-ok', BruteGuard::clientIp(), "user=$username");
+        header('Location: license-admin.php');
+        exit;
+    } else {
+        BruteGuard::record($username, false);
+        lic_log_event(null, 'admin-2fa-failed', BruteGuard::clientIp(), "user=$username");
+        $loginError = 'Неверный код 2FA. Осталось попыток: '
+            . BruteGuard::remainingAttempts($username);
+    }
+}
+
 $loggedIn = !empty($_SESSION['admin_logged_in']);
-$totpSecret = $_SESSION['totp_secret'] ?? '';
+$totpRequired = !$loggedIn && !empty($_SESSION['pending_user'])
+    && !empty($_SESSION['pending_totp_secret']);
+$pendingUser = (string) ($_SESSION['pending_user'] ?? '');
+$totpSecret = (string) ($_SESSION['pending_totp_secret'] ?? '');
 
 // ── POST-действия (только после логина) ─────────────────────────────────
 if ($loggedIn && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $providedCsrf = (string) ($_POST['_csrf'] ?? '');
+    if ($providedCsrf === '' || !hash_equals((string) $_SESSION['csrf'], $providedCsrf)) {
+        http_response_code(403);
+        exit('Недействительный CSRF-токен. Обновите страницу.');
+    }
     $cmd = (string) ($_POST['cmd'] ?? '');
 
     if ($cmd === 'create') {
@@ -123,10 +185,21 @@ if ($loggedIn && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($cmd === 'extend') {
         $id = (string) ($_POST['id'] ?? '');
         $months = max(1, min(60, (int) ($_POST['months'] ?? 12)));
+        // Считаем новую дату в PHP: параметр внутри INTERVAL не на всех
+        // конфигурациях MySQL/MariaDB разрешён в prepared statement.
+        $dateStmt = lic_db()->prepare('SELECT expires_at FROM licenses WHERE id=? LIMIT 1');
+        $dateStmt->execute([$id]);
+        $oldExpires = $dateStmt->fetchColumn();
+        if (!$oldExpires) {
+            header('Location: license-admin.php?ok=' . urlencode('Лицензия не найдена'));
+            exit;
+        }
+        $base = max(time(), strtotime((string) $oldExpires . ' UTC'));
+        $newExpires = gmdate('Y-m-d H:i:s', strtotime("+$months months", $base));
         lic_db()->prepare(
-            'UPDATE licenses SET expires_at = DATE_ADD(GREATEST(expires_at, NOW()), INTERVAL ? MONTH),
-             status = IF(status = "expired", "active", status), updated_at = NOW() WHERE id = ?'
-        )->execute([$months, $id]);
+            'UPDATE licenses SET expires_at=?,status=IF(status="expired","active",status),
+             updated_at=NOW() WHERE id=?'
+        )->execute([$newExpires, $id]);
         lic_log_event($id, 'extended', BruteGuard::clientIp(), "+$months months");
         header('Location: license-admin.php?ok=' . urlencode("Продлено на $months мес."));
         exit;
@@ -193,6 +266,7 @@ h3{margin-bottom:10px}
 <div class="login">
   <h1>🔐 Сервер лицензий</h1>
   <p class="mut">TaxiTyumen — управление лицензиями</p>
+  <?php if (!empty($_GET['expired'])): ?><div class="err">Сессия завершена по таймауту. Войдите снова.</div><?php endif; ?>
   <?php if ($loginError): ?><div class="err"><?= htmlspecialchars($loginError) ?></div><?php endif; ?>
   <form method="post">
     <input type="hidden" name="cmd" value="login">
@@ -205,23 +279,31 @@ h3{margin-bottom:10px}
 <?php elseif ($totpRequired && !$loggedIn): ?>
 <div class="login">
   <h1>📱 Код подтверждения</h1>
-  <?php if (!empty($_SESSION['totp_pending_setup'])): ?>
-    <p class="mut">Отсканируйте QR-код приложением Google Authenticator или FreeOTP:</p>
-    <div class="totp-qr">
-      <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=<?= urlencode(Totp::provisioningUri($totpSecret, 'TaxiLicense')) ?>"
-           alt="QR" width="180" height="180">
+  <?php if (!empty($_SESSION['pending_totp_setup'])): ?>
+    <p class="mut">Первичная настройка 2FA:</p>
+    <ol class="mut" style="margin:10px 0 10px 20px">
+      <li>Откройте Google Authenticator или FreeOTP.</li>
+      <li>Выберите «Ввести ключ настройки».</li>
+      <li>Имя: <b>TaxiLicense</b>, тип: «По времени».</li>
+      <li>Введите секрет ниже и код из приложения.</li>
+    </ol>
+    <div style="background:#18181d;border:1px solid var(--line);border-radius:10px;
+                padding:12px;margin:10px 0;word-break:break-all">
+      <code style="color:#c4b5fd;font-size:16px;letter-spacing:.12em"><?= htmlspecialchars($totpSecret) ?></code>
     </div>
-    <p class="mut">Или введите секрет вручную:<br>
-      <code style="color:#c4b5fd;font-size:14px"><?= $totpSecret ?></code></p>
+    <p class="mut">Секрет не передаётся внешнему QR-сервису и после подтверждения
+      хранится в MySQL в зашифрованном виде.</p>
+  <?php else: ?>
+    <p class="mut">Введите 6-значный код из Google Authenticator или FreeOTP.</p>
   <?php endif; ?>
   <?php if ($loginError): ?><div class="err"><?= htmlspecialchars($loginError) ?></div><?php endif; ?>
   <form method="post">
-    <input type="hidden" name="cmd" value="login">
-    <input type="hidden" name="username" value="<?= htmlspecialchars($pendingUser) ?>">
-    <input type="hidden" name="password" value="<?= htmlspecialchars($_POST['password'] ?? '') ?>">
-    <input name="totp" placeholder="6-значный код" required inputmode="numeric" maxlength="6" autocomplete="one-time-code">
+    <input type="hidden" name="cmd" value="totp">
+    <input name="totp" placeholder="6-значный код" required inputmode="numeric"
+           pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" autofocus>
     <button>Подтвердить</button>
   </form>
+  <p class="mut" style="margin-top:10px"><a href="?action=logout">Начать вход заново</a></p>
 </div>
 
 <?php else: ?>
@@ -237,6 +319,7 @@ h3{margin-bottom:10px}
   <div class="card">
     <h3>Выдать новую лицензию</h3>
     <form method="post" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:10px">
+      <input type="hidden" name="_csrf" value="<?= htmlspecialchars((string) $_SESSION['csrf']) ?>">
       <input type="hidden" name="cmd" value="create">
       <input name="customer_name" placeholder="Клиент (ИП/ООО)" required>
       <input name="customer_email" type="email" placeholder="Email">
@@ -290,9 +373,12 @@ h3{margin-bottom:10px}
         <th>Водителей</th><th>Действует до</th><th>Статус</th><th>Проверок</th><th></th>
       </tr></thead>
       <tbody>
-      <?php foreach ($licenses as $l): $cls = match($l['status']) {
-        'active' => 'ok-c', 'expired' => 'bad-c', 'revoked' => 'bad-c', default => 'warn-c'
-      }; ?>
+      <?php foreach ($licenses as $l):
+        // PHP 7.4: match-expression появился только в PHP 8.0
+        if ($l['status'] === 'active') $cls = 'ok-c';
+        elseif ($l['status'] === 'expired' || $l['status'] === 'revoked') $cls = 'bad-c';
+        else $cls = 'warn-c';
+      ?>
         <tr>
           <td><span class="key"><?= htmlspecialchars($l['license_key']) ?></span></td>
           <td><?= htmlspecialchars($l['customer_name']) ?>
@@ -307,7 +393,8 @@ h3{margin-bottom:10px}
             <div class="mut"><?= $l['last_check_at'] ?: '—' ?></div></td>
           <td>
             <form method="post" class="inline">
-              <input type="hidden" name="id" value="<?= $l['id'] ?>">
+              <input type="hidden" name="_csrf" value="<?= htmlspecialchars((string) $_SESSION['csrf']) ?>">
+              <input type="hidden" name="id" value="<?= htmlspecialchars($l['id']) ?>">
               <?php if ($l['status'] !== 'active'): ?>
                 <button name="cmd" value="activate" class="btn ghost" title="Возобновить">▶</button>
               <?php else: ?>

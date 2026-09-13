@@ -51,8 +51,10 @@ final class LicenseClient
     {
         self::ensureTable();
         self::db()->prepare(
-            'UPDATE license_state SET license_key=?,updated_at=NOW() WHERE id=1'
+            "UPDATE license_state SET license_key=?,status='unchecked',
+             last_check_at=NULL,last_reason='',updated_at=NOW() WHERE id=1"
         )->execute([$key]);
+        self::$cached = null;
     }
 
     /** Текущее состояние лицензии (кешируется на время запроса). */
@@ -120,9 +122,13 @@ final class LicenseClient
                 self::db()->prepare(
                     'UPDATE license_state SET last_reason=?,updated_at=NOW() WHERE id=1'
                 )->execute(['Сервер лицензий недоступен — льготный период']);
+                self::$cached = null;
                 return self::status();
             }
-            self::saveState('unchecked', '', '', 0, '', 'Сервер лицензий недоступен');
+            // Льготный период закончился — сервер блокируется до связи
+            // с сервером лицензий или ввода нового корректного ключа.
+            self::saveState('invalid', '', '', 0, '',
+                'Сервер лицензий недоступен более 3 дней');
             return self::status();
         }
 
@@ -171,11 +177,48 @@ final class LicenseClient
         }
     }
 
-    /** Принудительная проверка при вводе нового ключа. */
+    /**
+     * Первая активация: не просто проверяет, а привязывает ключ к домену
+     * на сервере лицензий. Раньше вызывался только check, и ключ с пустым
+     * доменом можно было перенести на другой сервер.
+     */
     public static function activateKey(string $key): array
     {
         self::setKey($key);
-        return self::check();
+        $server = defined('LICENSE_SERVER') ? (string) LICENSE_SERVER : '';
+        if ($server === '') $server = 'https://taxi.license-prog.ru';
+        $domain = parse_url(PUBLIC_BASE_URL, PHP_URL_HOST) ?: '';
+        $url = rtrim($server, '/') . '/license-api.php?action=activate';
+        $payload = json_encode(['key' => $key, 'domain' => $domain],
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $ctx = stream_context_create(['http' => [
+            'method' => 'POST',
+            'timeout' => 15,
+            'ignore_errors' => true,
+            'header' => "Content-Type: application/json\r\n"
+                . "Accept: application/json\r\n"
+                . "User-Agent: TaxiTyumen/1.0\r\n",
+            'content' => $payload,
+        ]]);
+        $raw = @file_get_contents($url, false, $ctx);
+        $json = $raw !== false ? json_decode($raw, true) : null;
+
+        if (!is_array($json)) {
+            self::saveState('invalid', '', '', 0, '',
+                'Сервер лицензий недоступен — ключ не активирован');
+            return self::status();
+        }
+        if (!empty($json['valid'])) {
+            self::saveState('valid', $json['expiresAt'] ?? '', $json['plan'] ?? '',
+                (int) ($json['maxDrivers'] ?? 0), $json['customerName'] ?? '', '');
+        } else {
+            $reason = (string) ($json['reason'] ?? 'invalid');
+            $status = $reason === 'expired' ? 'expired'
+                : ($reason === 'suspended' ? 'suspended' : 'invalid');
+            self::saveState($status, $json['expiredAt'] ?? '', '', 0, '',
+                (string) ($json['message'] ?? 'Лицензия недействительна'));
+        }
+        return self::status();
     }
 
     private static function saveState(string $status, string $expiresAt,
@@ -185,6 +228,7 @@ final class LicenseClient
             'UPDATE license_state SET status=?,expires_at=?,plan=?,max_drivers=?,
              customer_name=?,last_check_at=NOW(),last_reason=?,updated_at=NOW() WHERE id=1'
         )->execute([$status, $expiresAt ?: null, $plan, $maxDrivers, $customerName, $reason]);
+        self::$cached = null;
     }
 
     /** Блокировка API при невалидной лицензии — вызывается из _bootstrap.php. */

@@ -9,6 +9,12 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $action = strtolower((string) ($_GET['action'] ?? ''));
 $body = $method === 'POST' ? (json_decode(file_get_contents('php://input') ?: '', true) ?: []) : [];
 $ip = BruteGuard::clientIp();
+header('X-Content-Type-Options: nosniff');
+header('Cache-Control: no-store');
+if (lic_api_rate_limited($ip)) {
+    header('Retry-After: 60');
+    lic_error('Слишком много запросов. Повторите через минуту.', 429);
+}
 
 // ── GET /license-api.php?action=check&key=XXXXX&domain=xxx ──────────────
 // Проверка валидности лицензии. Вызывается сервером такси раз в сутки.
