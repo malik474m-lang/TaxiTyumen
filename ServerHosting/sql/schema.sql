@@ -614,3 +614,18 @@ CREATE TABLE IF NOT EXISTS geo_providers (
   updated_at DATETIME NULL,
   updated_by CHAR(36) NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Локальное состояние лицензии сервера такси. Проверяется удалённо раз в сутки.
+CREATE TABLE IF NOT EXISTS license_state (
+  id            TINYINT PRIMARY KEY DEFAULT 1,
+  license_key   VARCHAR(64) NOT NULL DEFAULT '',
+  status        ENUM('valid','expired','invalid','suspended','unchecked') NOT NULL DEFAULT 'unchecked',
+  expires_at    DATETIME NULL,
+  plan          VARCHAR(20) NOT NULL DEFAULT '',
+  max_drivers   INT NOT NULL DEFAULT 0,
+  customer_name VARCHAR(160) NOT NULL DEFAULT '',
+  last_check_at DATETIME NULL,
+  last_attempt_at DATETIME NULL,
+  last_reason   VARCHAR(255) NOT NULL DEFAULT '',
+  updated_at    DATETIME NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

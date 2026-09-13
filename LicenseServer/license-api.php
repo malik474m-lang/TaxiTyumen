@@ -3,11 +3,20 @@
 // Сервер такси вызывает эти эндпоинты раз в сутки.
 require_once __DIR__ . '/license-core.php';
 
-lic_ensure_tables();
+try {
+    lic_ensure_tables();
+} catch (Throwable $e) {
+    lic_json([
+        'error' => 'Сервер лицензий не настроен',
+        'details' => LIC_DEBUG ? $e->getMessage() : 'Проверьте license.local.php и базу MySQL',
+    ], 503);
+}
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-$action = strtolower((string) ($_GET['action'] ?? ''));
-$body = $method === 'POST' ? (json_decode(file_get_contents('php://input') ?: '', true) ?: []) : [];
+$body = $method === 'POST'
+    ? (json_decode(file_get_contents('php://input') ?: '', true) ?: [])
+    : [];
+$action = strtolower((string) ($_GET['action'] ?? $body['action'] ?? ''));
 $ip = BruteGuard::clientIp();
 header('X-Content-Type-Options: nosniff');
 header('Cache-Control: no-store');
@@ -16,20 +25,27 @@ if (lic_api_rate_limited($ip)) {
     lic_error('Слишком много запросов. Повторите через минуту.', 429);
 }
 
-// ── GET /license-api.php?action=check&key=XXXXX&domain=xxx ──────────────
-// Проверка валидности лицензии. Вызывается сервером такси раз в сутки.
+// Ограничиваем подбор лицензионных ключей с одного IP
+if (!BruteGuard::licenseApiAllowed()) {
+    header('Retry-After: 3600');
+    lic_error('Слишком много неудачных проверок. Повторите через час.', 429);
+}
+
+// ── POST /license-api.php?action=check ─────────────────────────────────
+// Тело: {"key":"...","domain":"..."}. GET оставлен для совместимости,
+// но сервер такси использует POST, чтобы ключ не попадал в access-логи.
 if ($action === 'check' || $action === '') {
-    if ($method !== 'GET') lic_error('Метод GET', 405);
-    $key = trim((string) ($_GET['key'] ?? ''));
-    $domain = strtolower(trim((string) ($_GET['domain'] ?? '')));
+    if ($method !== 'GET' && $method !== 'POST') lic_error('Метод POST', 405);
+    $key = strtoupper(trim((string) ($body['key'] ?? $_GET['key'] ?? '')));
+    $domain = strtolower(trim((string) ($body['domain'] ?? $_GET['domain'] ?? '')));
     if ($key === '' || $domain === '') lic_error('key и domain обязательны');
 
     $stmt = lic_db()->prepare('SELECT * FROM licenses WHERE license_key = ? LIMIT 1');
-    $stmt->execute([$key]);
+    $stmt->execute([lic_hash_key($key)]);
     $lic = $stmt->fetch();
 
     if (!$lic) {
-        lic_log_event(null, 'check-failed', $ip, "key=$key domain=$domain not found");
+        lic_log_event(null, 'check-failed', $ip, "domain=$domain key-not-found");
         lic_json(['valid' => false, 'reason' => 'invalid_key',
             'message' => 'Лицензия с таким ключом не найдена'], 404);
     }
@@ -87,16 +103,16 @@ if ($action === 'check' || $action === '') {
 // Первая активация: сервер такси привязывает ключ к своему домену.
 if ($action === 'activate') {
     if ($method !== 'POST') lic_error('Метод POST', 405);
-    $key = trim((string) ($body['key'] ?? ''));
+    $key = strtoupper(trim((string) ($body['key'] ?? '')));
     $domain = strtolower(trim((string) ($body['domain'] ?? '')));
     if ($key === '' || $domain === '') lic_error('key и domain обязательны');
 
     $stmt = lic_db()->prepare('SELECT * FROM licenses WHERE license_key = ? LIMIT 1');
-    $stmt->execute([$key]);
+    $stmt->execute([lic_hash_key($key)]);
     $lic = $stmt->fetch();
 
     if (!$lic) {
-        lic_log_event(null, 'activate-failed', $ip, "key=$key not found");
+        lic_log_event(null, 'activate-failed', $ip, "domain=$domain key-not-found");
         lic_json(['valid' => false, 'reason' => 'invalid_key'], 404);
     }
 

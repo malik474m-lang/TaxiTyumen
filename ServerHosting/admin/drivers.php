@@ -13,6 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         if ($cmd === 'add') {
+            LicenseClient::assertDriverCapacity();
             $phone = Auth::normalizePhone((string) ($_POST['phone'] ?? ''));
             $firstName = trim((string) ($_POST['first_name'] ?? ''));
             $lastName = trim((string) ($_POST['last_name'] ?? ''));

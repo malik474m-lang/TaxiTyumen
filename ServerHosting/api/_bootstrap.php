@@ -35,6 +35,8 @@ try {
 try {
     LicenseClient::ensureChecked();
     LicenseClient::enforce();
-} catch (\Throwable) {
-    // Ошибка проверки не должна ронять API целиком
+} catch (\Throwable $e) {
+    // Лицензионная подсистема работает fail-closed: непредвиденная ошибка
+    // не должна превращаться в бесплатный обход проверки.
+    Response::error('Не удалось проверить лицензию. Обратитесь к администратору.', 503);
 }

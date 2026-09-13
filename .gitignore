@@ -33,5 +33,6 @@ firebase-credentials.json
 taxi-release.keystore
 *.keystore
 *.jks
-## License server secrets
+## Сервер лицензий — секреты и lock установки
 LicenseServer/license.local.php
+LicenseServer/setup.lock

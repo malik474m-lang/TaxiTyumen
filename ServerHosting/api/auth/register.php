@@ -28,6 +28,11 @@ if ($exists->fetch()) {
     Response::error('Пользователь с таким номером уже существует', 409);
 }
 
+if ($role === 'driver') {
+    try { LicenseClient::assertDriverCapacity(); }
+    catch (RuntimeException $e) { Response::error($e->getMessage(), 409); }
+}
+
 $uid = Db::uuid();
 $db->prepare(
     'INSERT INTO users (id, phone, first_name, last_name, email, password_hash, role)

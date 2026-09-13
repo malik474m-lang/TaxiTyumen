@@ -1,0 +1,12 @@
+<?php
+// Скопируйте как license.local.php или используйте install.php.
+define('LIC_DB_HOST', 'localhost');
+define('LIC_DB_PORT', '3306');
+define('LIC_DB_NAME', 'taxi_licenses');
+define('LIC_DB_USER', 'mysql_user');
+define('LIC_DB_PASS', 'mysql_password');
+define('LIC_SECRET', 'replace-with-long-random-secret-at-least-64-chars');
+define('LIC_ADMIN_USER', 'admin');
+// Получить: php -r "echo password_hash('ВАШ-ПАРОЛЬ', PASSWORD_DEFAULT), PHP_EOL;"
+define('LIC_ADMIN_PASS_HASH', '$2y$10$replace_me');
+define('LIC_DEBUG', false);
