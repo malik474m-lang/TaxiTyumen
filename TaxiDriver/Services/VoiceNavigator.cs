@@ -10,14 +10,19 @@ namespace TaxiDriver.Services;
 ///
 /// Логика навигатора: на подходе к манёвру (дистанция зависит от скорости)
 /// звучит «Через N метров …», у самой точки — «Сейчас …» / «Вы прибыли».
-/// Очередь сбрасывается при смене маршрута и по окончании поездки.
+/// Очередь сбрасывается только при смене заказа/этапа и по окончании поездки.
+/// GPS-движение и перерисовка карты прогресс манёвров не сбрасывают.
 /// </summary>
 public static class VoiceNavigator
 {
     private static readonly List<RouteStep> _steps = new();
     private static int _next;
     private static bool _preAnnounced;
+    private static bool _departHandled;
     private static string? _routeKey;
+    private static DateTime _routeSetAt;
+    private static string _lastPromptSignature = string.Empty;
+    private static DateTime _lastPromptAt = DateTime.MinValue;
     private static CancellationTokenSource? _speechCts;
     private static Locale? _russian;
     private static bool _localeResolved;
@@ -46,12 +51,26 @@ public static class VoiceNavigator
         _steps.Clear();
         _next = 0;
         _preAnnounced = false;
+        _departHandled = false;
+        _routeSetAt = DateTime.UtcNow;
         if (steps != null)
         {
+            RouteStep? previous = null;
             foreach (var s in steps)
             {
-                if (s.Lat != 0 && s.Lng != 0 && s.Type != "")
-                    _steps.Add(s);
+                if (s.Lat == 0 || s.Lng == 0 || s.Type == "") continue;
+
+                // Маршрутизаторы иногда отдают один манёвр дважды на границе
+                // участков. Не даём дубликату породить повторную фразу.
+                var duplicate = previous != null
+                    && previous.Type == s.Type
+                    && previous.Modifier == s.Modifier
+                    && Math.Abs(previous.Lat - s.Lat) < 0.00002
+                    && Math.Abs(previous.Lng - s.Lng) < 0.00002;
+                if (duplicate) continue;
+
+                _steps.Add(s);
+                previous = s;
             }
         }
     }
@@ -60,6 +79,8 @@ public static class VoiceNavigator
     public static void Clear()
     {
         _routeKey = null;
+        _lastPromptSignature = string.Empty;
+        _lastPromptAt = DateTime.MinValue;
         SetRoute(null);
         StopSpeaking();
     }
@@ -77,6 +98,31 @@ public static class VoiceNavigator
         if (!Enabled || !HasRoute) return;
         try
         {
+            // GPS speed — м/с. Значение 1.5 м/с ≈ 5.4 км/ч: машина уже едет.
+            var speed = Math.Max(0, speedMps ?? 0);
+
+            // «depart» — не поворот, а старт маршрута. Обрабатываем его ровно
+            // один раз. Если машина уже движется или маршрут создан >30 сек назад,
+            // пропускаем молча: говорить «начните движение» посреди поездки нельзя.
+            while (HasRoute && _steps[_next].Type == "depart")
+            {
+                var depart = _steps[_next];
+                var departDist = HaversineM(lat, lng, depart.Lat, depart.Lng);
+                _next++;
+                _preAnnounced = false;
+
+                var justBuilt = (DateTime.UtcNow - _routeSetAt).TotalSeconds <= 30;
+                if (!_departHandled && speed < 1.5 && departDist <= 50 && justBuilt)
+                {
+                    _departHandled = true;
+                    SpeakOnce(WithStreet("начните движение", depart),
+                        "depart:" + (_routeKey ?? "route"), TimeSpan.FromMinutes(10));
+                    return;
+                }
+                _departHandled = true;
+            }
+
+            if (!HasRoute) return;
             var step = _steps[_next];
             var dist = HaversineM(lat, lng, step.Lat, step.Lng);
 
@@ -87,17 +133,35 @@ public static class VoiceNavigator
             {
                 _next++;
                 _preAnnounced = false;
-                Speak(step.Type == "arrive"
+                var text = step.Type == "arrive"
                     ? "Вы прибыли в пункт назначения"
-                    : ImmediatePrompt(step));
+                    : ImmediatePrompt(step);
+                SpeakOnce(text, StepSignature(step, "now"), TimeSpan.FromSeconds(20));
             }
             else if (!_preAnnounced && dist <= approach)
             {
                 _preAnnounced = true;
-                Speak($"Через {FormatDistance(dist)} {AdvancePrompt(step)}");
+                var text = $"Через {FormatDistance(dist)} {AdvancePrompt(step)}";
+                SpeakOnce(text, StepSignature(step, "advance"), TimeSpan.FromSeconds(20));
             }
         }
         catch { }
+    }
+
+    private static string StepSignature(RouteStep step, string phase)
+        => $"{_routeKey}:{_next}:{phase}:{step.Type}:{step.Modifier}:{step.Lat:F5}:{step.Lng:F5}";
+
+    /// Последняя страховка от дребезга GPS и повторной установки маршрута:
+    /// одинаковая логическая подсказка не произносится чаще cooldown.
+    private static void SpeakOnce(string text, string signature, TimeSpan cooldown)
+    {
+        var now = DateTime.UtcNow;
+        if (signature == _lastPromptSignature && now - _lastPromptAt < cooldown)
+            return;
+
+        _lastPromptSignature = signature;
+        _lastPromptAt = now;
+        Speak(text);
     }
 
     // ── Формулировки ─────────────────────────────────────────────────────

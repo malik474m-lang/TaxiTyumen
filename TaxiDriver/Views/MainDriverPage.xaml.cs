@@ -1123,11 +1123,10 @@ public partial class MainDriverPage : ContentPage
 
         StatusBtn.Text = label;
         StatusBtn.BackgroundColor = Color.FromArgb(color);
-        // Дублируем текущий этап на кнопке поверх карты
-        // Панель поверх Навигатора и, при смене цели, сам маршрут
-        // Маршрут в Навигаторе перестраиваем, только если водитель им пользуется
-        // Карта в приложении перерисовывается под новый этап
-        if (_activeOrder != null) _ = ShowRouteMapAsync(_activeOrder);
+        // Здесь обновляется только кнопка. Маршрут строит ShowActiveOrder()
+        // один раз после фактической смены заказа/этапа. Раньше вызов отсюда
+        // запускал второй параллельный ShowRouteMapAsync и сбрасывал голосовые
+        // манёвры на «начните движение».
     }
 
     /// Останавливает платное ожидание, не меняя этап заказа.
@@ -1708,8 +1707,8 @@ public partial class MainDriverPage : ContentPage
     private double? _roadDistanceKm;
     private int? _roadDurationMinutes;
 
-    /// Полный маршрут заказа по дорогам:
-    /// машина → подача → ВСЕ промежуточные точки → назначение.
+    /// Маршрут текущего этапа по дорогам:
+    /// до посадки — машина → подача; в поездке — машина → остановки → назначение.
     private async Task<List<List<double>>?> GetFullRoadRouteAsync(OrderResponse order)
     {
         var points = new List<(double Lat, double Lng)>();
@@ -1718,21 +1717,31 @@ public partial class MainDriverPage : ContentPage
         var driverLng = _mapDriverLng != 0 ? _mapDriverLng : _location.CurrentLng;
         AddPoint(points, driverLat, driverLng);
 
-        // До посадки: машина → подача → остановки → назначение.
-        // После «Начать поездку» точка подачи уже пройдена и не должна
-        // оставаться в маршруте — иначе навигатор предлагает развернуться назад.
+        // Голос и линия строятся только для ТЕКУЩЕГО этапа:
+        // до посадки — машина → подача; во время поездки — машина → остановки → финиш.
+        // Раньше маршрут до подачи уже содержал будущий участок после посадки и
+        // несколько команд depart («начните движение»).
         if (_mapToPickup)
+        {
             AddPoint(points, order.PickupLatitude, order.PickupLongitude);
+        }
+        else
+        {
+            foreach (var stop in order.IntermediatePoints.OrderBy(p => p.SortOrder))
+                AddPoint(points, stop.Latitude, stop.Longitude);
 
-        foreach (var stop in order.IntermediatePoints.OrderBy(p => p.SortOrder))
-            AddPoint(points, stop.Latitude, stop.Longitude);
-
-        if (order.DestinationLatitude.HasValue && order.DestinationLongitude.HasValue)
-            AddPoint(points, order.DestinationLatitude.Value, order.DestinationLongitude.Value);
+            if (order.DestinationLatitude.HasValue && order.DestinationLongitude.HasValue)
+                AddPoint(points, order.DestinationLatitude.Value, order.DestinationLongitude.Value);
+        }
 
         if (points.Count < 2) return null;
 
+        // Геометрия зависит от текущей точки машины, поэтому кеш-ключ динамический.
         var key = string.Join("|", points.Select(p => $"{p.Lat:F4},{p.Lng:F4}"));
+        // Голосовая очередь НЕ зависит от меняющегося GPS: один ключ на заказ+этап.
+        // Машина движется — ключ остаётся тем же, прогресс манёвров не сбрасывается.
+        var voiceKey = $"{order.Id:N}:{(_mapToPickup ? "pickup" : "trip")}";
+
         if (_roadCache.TryGetValue(key, out var cached))
         {
             // Маршрут тот же — манёвры и сводку берём из кеша
@@ -1744,7 +1753,7 @@ public partial class MainDriverPage : ContentPage
                 _roadDistanceKm = summary.DistanceKm;
                 _roadDurationMinutes = summary.DurationMinutes;
             }
-            VoiceNavigator.SetRoute(_roadSteps, key);
+            VoiceNavigator.SetRoute(_roadSteps, voiceKey);
             return cached;
         }
 
@@ -1757,7 +1766,7 @@ public partial class MainDriverPage : ContentPage
         _roadSteps = result.Steps;
         _roadDistanceKm = result.DistanceKm;
         _roadDurationMinutes = result.DurationMinutes;
-        VoiceNavigator.SetRoute(result.Steps, key);
+        VoiceNavigator.SetRoute(result.Steps, voiceKey);
         return result.Geometry;
     }
 
