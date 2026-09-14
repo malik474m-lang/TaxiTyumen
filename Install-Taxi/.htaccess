@@ -1,0 +1,46 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# TaxiTyumen — .htaccess для корня домена
+# Разместите этот файл в корне домена рядом с папками api/, admin/, src/, sql/
+# ═══════════════════════════════════════════════════════════════════════════
+Options -Indexes
+AddDefaultCharset utf-8
+
+# ── БЕЗОПАСНОСТЬ ─────────────────────────────────────────────────────────────
+# Закрываем служебные файлы и каталоги от web-доступа
+RedirectMatch 404 ^/\.git
+RedirectMatch 404 ^/src(/|$)
+RedirectMatch 404 ^/sql(/|$)
+RedirectMatch 404 ^/deploy(/|$)
+<FilesMatch "\.(sql|md|log|lock)$">
+    Require all denied
+</FilesMatch>
+<FilesMatch "^(config\.local\.php|install\.lock|install\.done)$">
+    Require all denied
+</FilesMatch>
+
+# ── РЕДИРЕКТЫ ────────────────────────────────────────────────────────────────
+RewriteEngine On
+
+# Схема за прокси (nginx → Apache): редиректы должны оставаться на https
+SetEnvIf X-Forwarded-Proto https HTTPS=on
+
+# Коллекции без слеша: /api/orders и /api/drivers — реальные каталоги,
+# на них mod_dir отвечал 301 и ТЕРЯЛ POST-тело
+RewriteRule ^api/orders$ api/router.php?route=orders [L,QSA]
+RewriteRule ^api/drivers$ api/router.php?route=drivers [L,QSA]
+
+# Уже существующие реальные файлы и каталоги — без изменений
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Точное вхождение без слеша
+RewriteRule ^api/?$ api/index.php [L,QSA]
+RewriteRule ^admin/?$ admin/index.php [L,QSA]
+
+# Явные пути
+RewriteRule ^api/(.*)$ api/$1 [L,QSA]
+RewriteRule ^admin/(.*)$ admin/$1 [L,QSA]
+
+# Корень — редирект на админку
+RewriteRule ^$ admin/login.php [L,R=302]
