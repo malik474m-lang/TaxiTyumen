@@ -434,7 +434,7 @@ CREATE TABLE IF NOT EXISTS events (
   INDEX (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Сервисы TomTom: что включено (админка → «TomTom»); ключ — в api_settings
+-- Сервисы TomTom: что включено (админка → «TomTom»), ключ — в api_settings
 CREATE TABLE IF NOT EXISTS tomtom_services (
   service_key VARCHAR(40) PRIMARY KEY,       -- traffic_flow | routing | search | ...
   is_enabled  TINYINT(1) NOT NULL DEFAULT 0,

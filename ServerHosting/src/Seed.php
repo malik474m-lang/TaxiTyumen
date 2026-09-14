@@ -36,64 +36,71 @@ final class Seed
             }
         }
 
-        // Персонал (админ + оператор)
-        $adminCount = (int) $db->query("SELECT COUNT(*) FROM users WHERE role='admin'")->fetchColumn();
-        if ($adminCount === 0) {
-            $db->prepare(
-                'INSERT INTO users (id, phone, first_name, last_name, email, password_hash, role, is_phone_verified)
-                 VALUES (?,?,?,?,?,?,?,?)'
-            )->execute([
-                Db::uuid(), '+79001234567', 'Админ', 'Системы',
-                'admin@taxityumen.ru', Auth::hashPassword('Admin123!'), 'admin', 1,
-            ]);
-        }
-        $operatorCount = (int) $db->query("SELECT COUNT(*) FROM users WHERE role='operator'")->fetchColumn();
-        if ($operatorCount === 0) {
-            $db->prepare(
-                'INSERT INTO users (id, phone, first_name, last_name, email, password_hash, role, is_phone_verified)
-                 VALUES (?,?,?,?,?,?,?,?)'
-            )->execute([
-                Db::uuid(), '+79001234568', 'Мария', 'Диспетчер',
-                'operator@taxityumen.ru', Auth::hashPassword('Operator123!'), 'operator', 1,
-            ]);
-        }
-
-        // Демо-водители
-        $driverCount = (int) $db->query('SELECT COUNT(*) FROM drivers')->fetchColumn();
-        if ($driverCount === 0) {
-            $demo = [
-                ['Алексей', 'Иванов',   '+79221000001', 'Kia',    'Rio',      'Белый',       'А123ВС72', 2021, 600, 57.1580, 65.5340, 1],
-                ['Дмитрий', 'Петров',   '+79221000002', 'Hyundai','Solaris',  'Серебристый', 'В456ОР72', 2022, 420, 57.1380, 65.5605, 1],
-                ['Сергей',  'Сидоров',  '+79221000003', 'Toyota', 'Camry',    'Чёрный',      'Е789КХ72', 2023, 900, 57.1225, 65.5908, 1],
-                ['Андрей',  'Кузнецов', '+79221000004', 'Skoda',  'Octavia',  'Синий',       'М234ТУ72', 2020, 350, 57.1654, 65.4749, 0],
-                ['Игорь',   'Васильев', '+79221000005', 'Volkswagen','Multivan','Серый',     'Х567УТ72', 2022, 750, 57.0951, 65.5691, 0],
-            ];
-            $uStmt = $db->prepare(
-                'INSERT INTO users (id, phone, first_name, last_name, password_hash, role, is_phone_verified, rating)
-                 VALUES (?,?,?,?,?,?,?,?)'
-            );
-            $dStmt = $db->prepare(
-                'INSERT INTO drivers (id, user_id, car_brand, car_model, car_color, license_plate, car_year,
-                 is_verified, status, latitude, longitude, balance, rejection_penalty, last_location_update)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
-            );
-            foreach ($demo as [$fn, $ln, $phone, $brand, $model, $color, $plate, $year, $balance, $lat, $lng, $online]) {
-                $uid = Db::uuid();
-                $uStmt->execute([$uid, $phone, $fn, $ln, Auth::hashPassword('Driver123!'), 'driver', 1, 4.8]);
-                $dStmt->execute([
-                    Db::uuid(), $uid, $brand, $model, $color, $plate, $year,
-                    1, $online ? 'available' : 'offline', $lat, $lng, $balance, 50, Db::utcNow(),
+        // Демо-данные нужны только разработческой/старой установке.
+        // Чистый пакет Install-Taxi задаёт DEMO_DATA_ENABLED=false:
+        // персонал и водители создаются администратором вручную, балансы = 0.
+        $demoEnabled = !defined('DEMO_DATA_ENABLED') || DEMO_DATA_ENABLED === true;
+        if ($demoEnabled) {
+            // Персонал (админ + оператор)
+            $adminCount = (int) $db->query("SELECT COUNT(*) FROM users WHERE role='admin'")->fetchColumn();
+            if ($adminCount === 0) {
+                $db->prepare(
+                    'INSERT INTO users (id, phone, first_name, last_name, email, password_hash, role, is_phone_verified)
+                     VALUES (?,?,?,?,?,?,?,?)'
+                )->execute([
+                    Db::uuid(), '+79001234567', 'Админ', 'Системы',
+                    'admin@taxityumen.ru', Auth::hashPassword('Admin123!'), 'admin', 1,
                 ]);
             }
-        }
+            $operatorCount = (int) $db->query("SELECT COUNT(*) FROM users WHERE role='operator'")->fetchColumn();
+            if ($operatorCount === 0) {
+                $db->prepare(
+                    'INSERT INTO users (id, phone, first_name, last_name, email, password_hash, role, is_phone_verified)
+                     VALUES (?,?,?,?,?,?,?,?)'
+                )->execute([
+                    Db::uuid(), '+79001234568', 'Мария', 'Диспетчер',
+                    'operator@taxityumen.ru', Auth::hashPassword('Operator123!'), 'operator', 1,
+                ]);
+            }
 
-        // Демо-клиент
-        $client = $db->query("SELECT id FROM users WHERE phone='+79221112233' LIMIT 1")->fetch();
-        if (!$client) {
-            $db->prepare(
-                'INSERT INTO users (id, phone, first_name, last_name, password_hash, role, is_phone_verified)
-                 VALUES (?,?,?,?,?,?,?)'
-            )->execute([Db::uuid(), '+79221112233', 'Демо', 'Клиент', Auth::hashPassword('Client123!'), 'client', 1]);
+            // Демо-водители
+            $driverCount = (int) $db->query('SELECT COUNT(*) FROM drivers')->fetchColumn();
+            if ($driverCount === 0) {
+                $demo = [
+                    ['Алексей', 'Иванов',   '+79221000001', 'Kia',    'Rio',      'Белый',       'А123ВС72', 2021, 600, 57.1580, 65.5340, 1],
+                    ['Дмитрий', 'Петров',   '+79221000002', 'Hyundai','Solaris',  'Серебристый', 'В456ОР72', 2022, 420, 57.1380, 65.5605, 1],
+                    ['Сергей',  'Сидоров',  '+79221000003', 'Toyota', 'Camry',    'Чёрный',      'Е789КХ72', 2023, 900, 57.1225, 65.5908, 1],
+                    ['Андрей',  'Кузнецов', '+79221000004', 'Skoda',  'Octavia',  'Синий',       'М234ТУ72', 2020, 350, 57.1654, 65.4749, 0],
+                    ['Игорь',   'Васильев', '+79221000005', 'Volkswagen','Multivan','Серый',     'Х567УТ72', 2022, 750, 57.0951, 65.5691, 0],
+                ];
+                $uStmt = $db->prepare(
+                    'INSERT INTO users (id, phone, first_name, last_name, password_hash, role, is_phone_verified, rating)
+                     VALUES (?,?,?,?,?,?,?,?)'
+                );
+                $dStmt = $db->prepare(
+                    'INSERT INTO drivers (id, user_id, car_brand, car_model, car_color, license_plate, car_year,
+                     is_verified, status, latitude, longitude, balance, rejection_penalty, last_location_update)
+                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+                );
+                foreach ($demo as [$fn, $ln, $phone, $brand, $model, $color, $plate, $year, $balance, $lat, $lng, $online]) {
+                    $uid = Db::uuid();
+                    $uStmt->execute([$uid, $phone, $fn, $ln, Auth::hashPassword('Driver123!'), 'driver', 1, 4.8]);
+                    $dStmt->execute([
+                        Db::uuid(), $uid, $brand, $model, $color, $plate, $year,
+                        1, $online ? 'available' : 'offline', $lat, $lng, $balance, 50, Db::utcNow(),
+                    ]);
+                }
+            }
+
+            // Демо-клиент
+            $client = $db->query("SELECT id FROM users WHERE phone='+79221112233' LIMIT 1")->fetch();
+            if (!$client) {
+                $db->prepare(
+                    'INSERT INTO users (id, phone, first_name, last_name, password_hash, role, is_phone_verified)
+                     VALUES (?,?,?,?,?,?,?)'
+                )->execute([Db::uuid(), '+79221112233', 'Демо', 'Клиент', Auth::hashPassword('Client123!'), 'client', 1]);
+            }
+
         }
 
         // Настройки автодозвона

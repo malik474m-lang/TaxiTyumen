@@ -8,6 +8,108 @@ error_reporting(E_ALL & ~E_DEPRECATED & ~E_NOTICE);
 require_once dirname(__DIR__) . '/config.php';
 require_once dirname(__DIR__) . '/src/Db.php';
 
+
+/**
+ * Разбивает schema.sql на SQL-выражения, не принимая точку с запятой
+ * внутри комментария или строкового литерала за конец выражения.
+ *
+ * Простой explode(';', $sql) ломал установку на комментарии:
+ *   -- Сервисы TomTom: ...; ключ — в api_settings
+ * Остаток текста «ключ — ... CREATE TABLE» отправлялся в MariaDB как SQL.
+ *
+ * @return array<int,string>
+ */
+function install_sql_statements(string $sql): array
+{
+    // BOM в начале файла мешает первому выражению на некоторых MariaDB.
+    if (substr($sql, 0, 3) === "\xEF\xBB\xBF") $sql = substr($sql, 3);
+
+    $statements = [];
+    $current = '';
+    $length = strlen($sql);
+    $quote = null;          // ' или " или `
+    $lineComment = false;   // -- ... / # ...
+    $blockComment = false;  // /* ... */
+
+    for ($i = 0; $i < $length; $i++) {
+        $ch = $sql[$i];
+        $next = $i + 1 < $length ? $sql[$i + 1] : '';
+        $next2 = $i + 2 < $length ? $sql[$i + 2] : '';
+
+        if ($lineComment) {
+            if ($ch === "\n") {
+                $lineComment = false;
+                $current .= "\n";
+            }
+            continue;
+        }
+        if ($blockComment) {
+            if ($ch === '*' && $next === '/') {
+                $blockComment = false;
+                $i++;
+            }
+            continue;
+        }
+
+        if ($quote !== null) {
+            $current .= $ch;
+            if ($ch === '\\' && $i + 1 < $length) {
+                // Экранированный символ внутри строки.
+                $current .= $sql[++$i];
+                continue;
+            }
+            if ($ch === $quote) {
+                // SQL допускает удвоенную кавычку: '' / "" / ``.
+                if ($next === $quote) {
+                    $current .= $next;
+                    $i++;
+                } else {
+                    $quote = null;
+                }
+            }
+            continue;
+        }
+
+        // Блочный комментарий.
+        if ($ch === '/' && $next === '*') {
+            $blockComment = true;
+            $i++;
+            continue;
+        }
+        // Строчный -- комментарий: по SQL после -- должен идти пробел/EOL.
+        if ($ch === '-' && $next === '-'
+            && ($next2 === '' || $next2 === " " || $next2 === "\t"
+                || $next2 === "\r" || $next2 === "\n")) {
+            $lineComment = true;
+            $i++;
+            continue;
+        }
+        // MySQL/MariaDB # комментарий.
+        if ($ch === '#') {
+            $lineComment = true;
+            continue;
+        }
+
+        if ($ch === "'" || $ch === '"' || $ch === '`') {
+            $quote = $ch;
+            $current .= $ch;
+            continue;
+        }
+
+        if ($ch === ';') {
+            $statement = trim($current);
+            if ($statement !== '') $statements[] = $statement;
+            $current = '';
+            continue;
+        }
+        $current .= $ch;
+    }
+
+    $tail = trim($current);
+    if ($tail !== '') $statements[] = $tail;
+    return $statements;
+}
+
 header('Content-Type: application/json; charset=utf-8');
 
 try {
@@ -32,8 +134,21 @@ try {
     if ($sql === false) {
         throw new \RuntimeException('sql/schema.sql не найден');
     }
-    foreach (array_filter(array_map('trim', explode(';', $sql))) as $statement) {
-        $pdo->exec($statement);
+    $schemaStatements = install_sql_statements($sql);
+    if (!$schemaStatements) {
+        throw new \RuntimeException('schema.sql пуст или не содержит SQL-выражений');
+    }
+    foreach ($schemaStatements as $index => $statement) {
+        try {
+            $pdo->exec($statement);
+        } catch (\Throwable $sqlError) {
+            $preview = preg_replace('/\s+/u', ' ', mb_substr($statement, 0, 160));
+            throw new \RuntimeException(sprintf(
+                'SQL-выражение %d из %d (%s): %s',
+                $index + 1, count($schemaStatements), $preview,
+                $sqlError->getMessage()
+            ), 0, $sqlError);
+        }
     }
 
     foreach (glob(dirname(__DIR__) . '/src/*.php') as $file) {

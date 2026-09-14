@@ -8,6 +8,8 @@ define('TAXI_DB_NAME', 'моя_бд');
 define('TAXI_DB_USER', 'мой_пользователь');
 define('TAXI_DB_PASS', 'мой_пароль');
 define('AUTH_SECRET', 'придумайте-длинную-случайную-строку-минимум-32-символа');
+// Production: не создавать тестовых пользователей и демо-балансы
+define('DEMO_DATA_ENABLED', false);
 define('SMS_API_ID', '');
 define('DADATA_API_KEY', '');
 // Независимый резервный геокодер (OSM): https://opencagedata.com/
