@@ -40,12 +40,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($cmd === 'import-batch') {
             $categoryIndex = max(0, (int) ($_POST['category_index'] ?? 0));
             $radius = max(5, min(60, (int) ($_POST['radius'] ?? 25)));
+            // bbox: если задан — импорт по прямоугольной области (весь район),
+            // иначе — по радиусу от центра города
+            $useBbox = !empty($_POST['bbox']);
             $batch = Places::importCategoryBatch(
                 $db,
                 (float) $service['center_latitude'],
                 (float) $service['center_longitude'],
                 $radius,
-                $categoryIndex
+                $categoryIndex,
+                $useBbox
             );
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode($batch, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -231,17 +235,15 @@ layout_header('Места и организации', 'places');
     </form>
     <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
       <p class="mut" style="font-size:12px"><b>Дополнительно:</b></p>
-      <form method="post" style="margin-top:8px"
-            onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Импортируем всю область…'">
-        <input type="hidden" name="cmd" value="import-region">
-        <button class="btn ghost" style="width:100%">
-          Импорт по всей области (Тюмень + Тюменский район)
-        </button>
-        <p class="mut" style="font-size:11px;margin-top:6px">
-          Загружает ВСЕ организации из OSM по прямоугольной области,
-          покрывающей весь Тюменский район. Импорт может занять несколько минут, затем автоматически запустится заполнение адресов.
-        </p>
-      </form>
+      <button type="button" class="btn ghost" style="width:100%;margin-top:8px"
+              onclick="startImport(true)">
+        Импорт по всей области (Тюмень + Тюменский район)
+      </button>
+      <p class="mut" style="font-size:11px;margin-top:6px">
+        Загружает все организации OSM по прямоугольной области,
+        покрывающей весь Тюменский район. Импорт идёт по категориям
+        с прогресс-баром и не обрывается по таймауту хостинга.
+      </p>
       <p class="mut" style="font-size:11px;margin-top:14px">
         <b>Другие источники:</b><br>
         1. <a href="https://overpass-turbo.eu/" target="_blank" rel="noopener">overpass-turbo.eu</a> —
@@ -454,9 +456,10 @@ var importRunning = false;
 var importCsrf = <?= json_encode(admin_csrf_token(), JSON_UNESCAPED_SLASHES) ?>;
 var importTotals = {imported: 0, updated: 0, skipped: 0, failed: 0};
 
-async function startImport(){
+async function startImport(useBbox){
     if (importRunning) return;
     importRunning = true;
+    useBbox = !!useBbox;
     var btn = document.getElementById('importBtn');
     btn.disabled = true; btn.textContent = 'Импортируем…';
     document.getElementById('importProgress').style.display = 'block';
@@ -471,6 +474,7 @@ async function startImport(){
             body.set('cmd', 'import-batch');
             body.set('category_index', String(index));
             body.set('radius', String(radius));
+            if (useBbox) body.set('bbox', '1');
 
             var resp = await fetch('places.php', {
                 method: 'POST',

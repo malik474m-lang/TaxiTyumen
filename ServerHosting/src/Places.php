@@ -584,7 +584,8 @@ final class Places
      * @return array{category:string,categoryIndex:int,totalCategories:int,imported:int,updated:int,skipped:int,done:boolean,error:?string}
      */
     public static function importCategoryBatch(
-        \PDO $db, float $lat, float $lng, float $radiusKm, int $categoryIndex
+        \PDO $db, float $lat, float $lng, float $radiusKm, int $categoryIndex,
+        bool $useBbox = false
     ): array {
         self::ensureTables($db);
 
@@ -606,8 +607,14 @@ final class Places
         $filters = [];
         foreach ($tags as $tag) {
             [$key, $value] = explode('=', $tag, 2);
-            $filters[] = sprintf('nwr["%s"="%s"]["name"](around:%d,%F,%F);',
-                $key, $value, (int) ($radiusKm * 1000), $lat, $lng);
+            if ($useBbox) {
+                // Прямоугольная область: весь Тюменский район
+                $filters[] = sprintf('nwr["%s"="%s"]["name"](%F,%F,%F,%F);',
+                    $key, $value, 56.85, 64.80, 57.45, 66.30);
+            } else {
+                $filters[] = sprintf('nwr["%s"="%s"]["name"](around:%d,%F,%F);',
+                    $key, $value, (int) ($radiusKm * 1000), $lat, $lng);
+            }
         }
         $query = "[out:json][timeout:60];(" . implode('', $filters) . ");out center tags;";
         $json = self::overpassRequest($query, 70);
