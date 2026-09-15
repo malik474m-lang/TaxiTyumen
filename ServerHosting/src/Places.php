@@ -298,9 +298,8 @@ final class Places
                 . "User-Agent: TaxiTyumen/1.0 (+" . PUBLIC_BASE_URL . ")\r\n",
             'content' => http_build_query(['data' => $query]),
         ]]);
-        $raw = @file_get_contents('https://overpass-api.de/api/interpreter', false, $ctx);
-        $json = $raw !== false ? json_decode($raw, true) : null;
-        if (!is_array($json) || !isset($json['elements'])) {
+        $json = self::overpassRequest($query, 70);
+        if ($json === null) {
             $result['error'] = 'Overpass API не ответил. Повторите позже.';
             return $result;
         }
@@ -480,37 +479,93 @@ final class Places
     public static function importFromOsmBbox(
         \PDO $db, float $south, float $west, float $north, float $east
     ): array {
+        @set_time_limit(0);
         self::ensureTables($db);
         $result = ['imported' => 0, 'updated' => 0, 'skipped' => 0, 'error' => null];
 
-        // Собираем запрос по всем категориям, только объекты с названием
-        $filters = [];
+        // Собираем все теги по категориям
+        $tags = [];
         foreach (self::CATEGORIES as $meta) {
             foreach ($meta[1] as $tag) {
+                $tags[] = $tag;
+            }
+        }
+
+        // Один запрос с 173 тегами Overpass не обрабатывает за 90 секунд.
+        // Разбиваем на пакеты по 15 тегов: каждый запрос занимает 3–10 сек,
+        // всего ~12 запросов на полный импорт.
+        $batches = array_chunk($tags, 15);
+        $allElements = [];
+        $failedBatches = 0;
+
+        foreach ($batches as $batchIndex => $batch) {
+            $filters = [];
+            foreach ($batch as $tag) {
                 [$key, $value] = explode('=', $tag, 2);
                 $filters[] = sprintf('nwr["%s"="%s"]["name"](%F,%F,%F,%F);',
                     $key, $value, $south, $west, $north, $east);
             }
-        }
-        // Таймаут понижен: shared-хостинг jino.ru обрывает LSAPI на 300 сек
-        $query = '[out:json][timeout:90];(' . implode('', $filters) . ');out center tags;';
+            $query = '[out:json][timeout:60];(' . implode('', $filters) . ');out center tags;';
 
-        $ctx = stream_context_create(['http' => [
-            'method' => 'POST',
-            'timeout' => 100,
-            'ignore_errors' => true,
-            'header' => "Content-Type: application/x-www-form-urlencoded\r\n"
-                . "User-Agent: TaxiTyumen/1.0 (" . PUBLIC_BASE_URL . ")\r\n",
-            'content' => http_build_query(['data' => $query]),
-        ]]);
-        $raw = @file_get_contents('https://overpass-api.de/api/interpreter', false, $ctx);
-        $json = $raw !== false ? json_decode($raw, true) : null;
-        if (!is_array($json) || !isset($json['elements'])) {
-            $result['error'] = 'Overpass API не ответил. Повторите позже или уменьшите область.';
+            $json = self::overpassRequest($query, 70);
+            if ($json === null) {
+                $failedBatches++;
+                continue;
+            }
+            foreach ($json['elements'] ?? [] as $el) {
+                $allElements[] = $el;
+            }
+            // Пауза между пакетами: не нагружаем Overpass
+            usleep(500000);
+        }
+
+        if (empty($allElements)) {
+            $result['error'] = $failedBatches > 0
+                ? "Overpass API не ответил ни на один из {$failedBatches} пакетов."
+                : 'Overpass API вернул пустой результат.';
             return $result;
         }
 
-        return self::processOsmElements($db, $json['elements']);
+        $proc = self::processOsmElements($db, $allElements);
+        $proc['error'] = $failedBatches > 0
+            ? "Импортировано, но {$failedBatches} пакетов из " . count($batches) . ' не загрузились.'
+            : null;
+        return $proc;
+    }
+
+    /**
+     * Отправляет запрос к Overpass API с повторами и зеркалами.
+     *
+     * @return array|null Разобранный JSON или null при неудаче
+     */
+    private static function overpassRequest(string $query, int $timeoutSec): ?array
+    {
+        $mirrors = [
+            'https://overpass-api.de/api/interpreter',
+            'https://overpass.kumi.systems/api/interpreter',
+        ];
+        foreach ($mirrors as $mirror) {
+            for ($attempt = 0; $attempt < 2; $attempt++) {
+                $ctx = stream_context_create(['http' => [
+                    'method' => 'POST',
+                    'timeout' => $timeoutSec,
+                    'ignore_errors' => true,
+                    'header' => "Content-Type: application/x-www-form-urlencoded\r\n"
+                        . 'User-Agent: TaxiTyumen/1.0 (+' . PUBLIC_BASE_URL . ")\r\n",
+                    'content' => http_build_query(['data' => $query]),
+                ]]);
+                $raw = @file_get_contents($mirror, false, $ctx);
+                if ($raw === false) continue;
+                $json = json_decode($raw, true);
+                if (is_array($json) && isset($json['elements'])) return $json;
+                // 429 Too Many Requests — ждём и пробуем снова
+                if (str_contains($raw, '429') || str_contains($raw, 'Too Many')) {
+                    sleep(3);
+                    continue;
+                }
+            }
+        }
+        return null;
     }
 
     /** Обработка элементов OSM и сохранение в справочник. */
