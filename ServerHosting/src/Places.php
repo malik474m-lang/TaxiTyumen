@@ -589,9 +589,13 @@ final class Places
     ): array {
         self::ensureTables($db);
 
-        $keys = array_keys(array_filter(self::CATEGORIES, fn($m) => !empty($m[1])));
-        $totalCategories = count($keys);
-        $categoryKey = $keys[$categoryIndex] ?? null;
+        // Фильтруем категории с тегами, получаем их ключи
+        $validCategories = [];
+        foreach (self::CATEGORIES as $key => $meta) {
+            if (!empty($meta[1])) $validCategories[] = $key;
+        }
+        $totalCategories = count($validCategories);
+        $categoryKey = $validCategories[$categoryIndex] ?? null;
 
         $result = [
             'category' => $categoryKey ?? '',
@@ -604,29 +608,52 @@ final class Places
         if ($categoryKey === null) return $result;
 
         $tags = self::CATEGORIES[$categoryKey][1];
-        $filters = [];
-        foreach ($tags as $tag) {
-            [$key, $value] = explode('=', $tag, 2);
-            if ($useBbox) {
-                // Прямоугольная область: весь Тюменский район
-                $filters[] = sprintf('nwr["%s"="%s"]["name"](%F,%F,%F,%F);',
-                    $key, $value, 56.85, 64.80, 57.45, 66.30);
-            } else {
-                $filters[] = sprintf('nwr["%s"="%s"]["name"](around:%d,%F,%F);',
-                    $key, $value, (int) ($radiusKm * 1000), $lat, $lng);
+        $categoryLabel = self::CATEGORIES[$categoryKey][0];
+
+        // Разбиваем на подпакеты по 10 тегов: Overpass отдаёт 504/timeout
+        // на запросах с 30+ тегами одновременно по большой области
+        $subBatches = array_chunk($tags, 10);
+        $allElements = [];
+        $failedSubBatches = 0;
+
+        foreach ($subBatches as $subBatch) {
+            $filters = [];
+            foreach ($subBatch as $tag) {
+                [$key, $value] = explode('=', $tag, 2);
+                if ($useBbox) {
+                    // Весь Тюменский район
+                    $filters[] = sprintf('nwr["%s"="%s"]["name"](%F,%F,%F,%F);',
+                        $key, $value, 56.85, 64.80, 57.45, 66.30);
+                } else {
+                    // Радиус от центра города
+                    $filters[] = sprintf('nwr["%s"="%s"]["name"](around:%d,%F,%F);',
+                        $key, $value, (int) ($radiusKm * 1000), $lat, $lng);
+                }
             }
+            $query = "[out:json][timeout:30];(" . implode('', $filters) . ");out center tags;";
+            $json = self::overpassRequest($query, 40);
+            if ($json === null) {
+                $failedSubBatches++;
+                continue;
+            }
+            foreach ($json['elements'] ?? [] as $el) $allElements[] = $el;
+            usleep(500000);
         }
-        $query = "[out:json][timeout:60];(" . implode('', $filters) . ");out center tags;";
-        $json = self::overpassRequest($query, 70);
-        if ($json === null) {
-            $result['error'] = "Категория «" . self::CATEGORIES[$categoryKey][0] . "» не загрузилась";
+
+        if (empty($allElements) && $failedSubBatches > 0) {
+            $result['error'] = "Категория «{$categoryLabel}»: все {$failedSubBatches} пакетов не загрузились";
             return $result;
         }
 
-        $proc = self::processOsmElements($db, $json['elements']);
-        $result['imported'] = $proc['imported'];
-        $result['updated'] = $proc['updated'];
-        $result['skipped'] = $proc['skipped'];
+        if (!empty($allElements)) {
+            $proc = self::processOsmElements($db, $allElements);
+            $result['imported'] = $proc['imported'];
+            $result['updated'] = $proc['updated'];
+            $result['skipped'] = $proc['skipped'];
+        }
+        if ($failedSubBatches > 0) {
+            $result['error'] = "Категория «{$categoryLabel}»: {$failedSubBatches} пакетов не загрузились";
+        }
         return $result;
     }
 
