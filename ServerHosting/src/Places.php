@@ -278,33 +278,38 @@ final class Places
         self::ensureTables($db);
         $result = ['imported' => 0, 'updated' => 0, 'skipped' => 0, 'error' => null];
 
-        // Собираем один запрос по всем категориям сразу — Overpass не любит частые вызовы
-        $filters = [];
+        // Разбиваем по категориям: один запрос = одна категория (5–30 тегов).
+        // Overpass отдаёт 504 Gateway Timeout на гигантском запросе со 130+ тегами.
+        $allElements = [];
+        $failed = 0;
+        $total = 0;
+
         foreach (self::CATEGORIES as $meta) {
-            foreach ($meta[1] as $tag) {
+            $tags = $meta[1];
+            if (!$tags) continue;
+            $total++;
+            $filters = [];
+            foreach ($tags as $tag) {
                 [$key, $value] = explode('=', $tag, 2);
                 $filters[] = sprintf('nwr["%s"="%s"]["name"](around:%d,%F,%F);',
                     $key, $value, (int) ($radiusKm * 1000), $lat, $lng);
             }
+            $query = "[out:json][timeout:60];(" . implode('', $filters) . ");out center tags;";
+            $json = self::overpassRequest($query, 70);
+            if ($json === null) { $failed++; continue; }
+            foreach ($json['elements'] ?? [] as $el) $allElements[] = $el;
+            usleep(500000);
         }
-        // Overpass timeout 60 сек: shared-хостинг обрывает PHP на 90-120 сек
-        $query = "[out:json][timeout:60];(" . implode('', $filters) . ");out center tags;";
 
-        $ctx = stream_context_create(['http' => [
-            'method' => 'POST',
-            'timeout' => 90,
-            'ignore_errors' => true,
-            'header' => "Content-Type: application/x-www-form-urlencoded\r\n"
-                . "User-Agent: TaxiTyumen/1.0 (+" . PUBLIC_BASE_URL . ")\r\n",
-            'content' => http_build_query(['data' => $query]),
-        ]]);
-        $json = self::overpassRequest($query, 70);
-        if ($json === null) {
-            $result['error'] = 'Overpass API не ответил. Повторите позже.';
+        if (empty($allElements)) {
+            $result['error'] = "Overpass API не ответил ни на одну из {$total} категорий.";
             return $result;
         }
 
-        return self::processOsmElements($db, $json['elements']);
+        $proc = self::processOsmElements($db, $allElements);
+        $proc['error'] = $failed > 0
+            ? "Импортировано, но {$failed} из {$total} категорий не загрузились." : null;
+        return $proc;
     }
 
     /**
