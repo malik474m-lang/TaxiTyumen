@@ -34,32 +34,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: places.php?ok=' . urlencode('Место удалено'));
             exit;
         }
-        if ($cmd === 'import') {
-            // Shared-хостинг обрывает PHP на 60-120 сек — просим максимум
-            @set_time_limit(0);
-            @ini_set('memory_limit', '256M');
+        // ── Пакетный импорт через AJAX: одна категория за HTTP-запрос ──────
+        // 14 категорий × ~10 сек = 140 сек суммарно, но каждый запрос
+        // длится 10-15 сек и НЕ превышает LSAPI timeout 300 на jino.ru.
+        if ($cmd === 'import-batch') {
+            $categoryIndex = max(0, (int) ($_POST['category_index'] ?? 0));
             $radius = max(5, min(60, (int) ($_POST['radius'] ?? 25)));
-            $importResult = Places::importFromOsm(
+            $batch = Places::importCategoryBatch(
                 $db,
                 (float) $service['center_latitude'],
                 (float) $service['center_longitude'],
-                $radius
+                $radius,
+                $categoryIndex
             );
-            // Адреса заполняет AJAX-цикл после загрузки страницы:
-            // 200 синхронных геозапросов превышали таймаут shared-хостинга.
-            if ($importResult['imported'] > 0 || $importResult['updated'] > 0) {
-                $startAutoFill = true;
-            }
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($batch, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            exit;
+        }
+        if ($cmd === 'import') {
+            // Пакетный режим: JS вызывает import-batch в цикле
+            $importResult = ['imported' => 0, 'updated' => 0, 'skipped' => 0,
+                'error' => null, 'batchMode' => true];
         }
         if ($cmd === 'import-region') {
-            @set_time_limit(0);
-            @ini_set('memory_limit', '256M');
-            // Импорт по прямоугольной области: Тюмень + Тюменский район
-            // (bbox 56.85–57.45 / 64.80–66.30 покрывает весь район)
-            $importResult = Places::importFromOsmBbox($db, 56.85, 64.80, 57.45, 66.30);
-            if ($importResult['imported'] > 0 || $importResult['updated'] > 0) {
-                $startAutoFill = true;
-            }
+            // Тоже пакетный режим (bbox передаётся в JS)
+            $importResult = ['imported' => 0, 'updated' => 0, 'skipped' => 0,
+                'error' => null, 'batchMode' => true];
         }
         if ($cmd === 'import-csv' && !empty($_FILES['csvfile']['tmp_name'])) {
             $content = (string) file_get_contents($_FILES['csvfile']['tmp_name']);
@@ -145,13 +145,25 @@ layout_header('Места и организации', 'places');
       <b><?= h((string) $service['city_name']) ?></b>. Повторный импорт обновляет
       существующие записи и не создаёт дубликатов. После импорта адреса заполняются в фоне — не закрывайте страницу.
     </p>
-    <form method="post" style="margin-top:12px" onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Импортируем…'">
-      <input type="hidden" name="cmd" value="import">
-      <label class="mut">Радиус поиска, км
-        <input type="number" name="radius" value="25" min="5" max="60">
-      </label>
-      <button class="btn" style="margin-top:10px">Импортировать организации</button>
-    </form>
+    <button type="button" id="importBtn" class="btn" style="width:100%" onclick="startImport()">
+      Импортировать организации
+    </button>
+    <div id="importProgress" style="display:none;margin-top:10px;padding:12px;
+         background:#18181d;border:1px solid var(--line);border-radius:10px">
+      <div class="flex between">
+        <b id="importCategory">Запуск…</b>
+        <span id="importPercent" class="chip info">0%</span>
+      </div>
+      <div style="height:8px;background:#2a2a32;border-radius:999px;margin-top:8px;overflow:hidden">
+        <div id="importBar" style="height:100%;width:0;background:#6366f1;transition:.3s"></div>
+      </div>
+      <div id="importStats" class="mut" style="font-size:11px;margin-top:6px">
+        Загружаю категории из OpenStreetMap…
+      </div>
+    </div>
+    <label class="mut" style="margin-top:10px">Радиус поиска, км
+      <input type="number" id="importRadius" value="25" min="5" max="60" style="width:80px">
+    </label>
 
     <?php
     $noAddress = Places::countWithoutAddress($db);
@@ -437,4 +449,76 @@ async function startAddressFill(){
 setTimeout(startAddressFill, 400);
 <?php endif; ?>
 </script>
+<script>
+var importRunning = false;
+var importCsrf = <?= json_encode(admin_csrf_token(), JSON_UNESCAPED_SLASHES) ?>;
+var importTotals = {imported: 0, updated: 0, skipped: 0, failed: 0};
+
+async function startImport(){
+    if (importRunning) return;
+    importRunning = true;
+    var btn = document.getElementById('importBtn');
+    btn.disabled = true; btn.textContent = 'Импортируем…';
+    document.getElementById('importProgress').style.display = 'block';
+
+    var radius = document.getElementById('importRadius').value || 25;
+    var index = 0;
+
+    try {
+        while (true) {
+            var body = new URLSearchParams();
+            body.set('_csrf', importCsrf);
+            body.set('cmd', 'import-batch');
+            body.set('category_index', String(index));
+            body.set('radius', String(radius));
+
+            var resp = await fetch('places.php', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'},
+                body: body.toString()
+            });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            var data = await resp.json();
+
+            document.getElementById('importCategory').textContent =
+                data.category ? 'Категория: ' + data.category : 'Завершение…';
+            importTotals.imported += Number(data.imported || 0);
+            importTotals.updated += Number(data.updated || 0);
+            importTotals.skipped += Number(data.skipped || 0);
+            if (data.error) importTotals.failed++;
+
+            var pct = Math.round(((data.categoryIndex + 1) / data.totalCategories) * 100);
+            document.getElementById('importBar').style.width = pct + '%';
+            document.getElementById('importPercent').textContent = pct + '%';
+            document.getElementById('importStats').textContent =
+                'Добавлено: ' + importTotals.imported
+                + ' · обновлено: ' + importTotals.updated
+                + (importTotals.failed > 0 ? ' · ошибок: ' + importTotals.failed : '');
+
+            if (data.done) break;
+            index = data.categoryIndex + 1;
+            await new Promise(r => setTimeout(r, 300));
+        }
+
+        document.getElementById('importCategory').textContent = 'Импорт завершён';
+        document.getElementById('importPercent').className = 'chip ok';
+        document.getElementById('importPercent').textContent = 'Готово';
+        document.getElementById('importBar').style.width = '100%';
+        document.getElementById('importStats').textContent =
+            'Всего добавлено: ' + importTotals.imported
+            + ' · обновлено: ' + importTotals.updated
+            + (importTotals.failed > 0 ? ' · ошибок: ' + importTotals.failed : '')
+            + '. Страница обновится…';
+        setTimeout(function(){ location.reload(); }, 2000);
+    } catch (e) {
+        document.getElementById('importCategory').textContent = 'Ошибка импорта';
+        document.getElementById('importPercent').className = 'chip bad';
+        document.getElementById('importStats').textContent = e.message;
+        btn.disabled = false; btn.textContent = 'Повторить импорт';
+    }
+    importRunning = false;
+}
+</script>
+
 <?php layout_footer();

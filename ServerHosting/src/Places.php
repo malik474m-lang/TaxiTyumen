@@ -573,6 +573,56 @@ final class Places
         return null;
     }
 
+    /**
+     * Импорт ОДНОЙ категории за HTTP-запрос (AJAX-цикл из админки).
+     *
+     * LSAPI на jino.ru обрывает PHP через 300 секунд. Полный импорт
+     * 14 категорий занимает 140-280 сек — не помещается в один запрос.
+     * Поэтому браузер вызывает этот метод по одному разу на категорию,
+     * каждый запрос длится 10-15 сек.
+     *
+     * @return array{category:string,categoryIndex:int,totalCategories:int,imported:int,updated:int,skipped:int,done:boolean,error:?string}
+     */
+    public static function importCategoryBatch(
+        \PDO $db, float $lat, float $lng, float $radiusKm, int $categoryIndex
+    ): array {
+        self::ensureTables($db);
+
+        $keys = array_keys(array_filter(self::CATEGORIES, fn($m) => !empty($m[1])));
+        $totalCategories = count($keys);
+        $categoryKey = $keys[$categoryIndex] ?? null;
+
+        $result = [
+            'category' => $categoryKey ?? '',
+            'categoryIndex' => $categoryIndex,
+            'totalCategories' => $totalCategories,
+            'imported' => 0, 'updated' => 0, 'skipped' => 0,
+            'done' => $categoryIndex >= $totalCategories - 1,
+            'error' => null,
+        ];
+        if ($categoryKey === null) return $result;
+
+        $tags = self::CATEGORIES[$categoryKey][1];
+        $filters = [];
+        foreach ($tags as $tag) {
+            [$key, $value] = explode('=', $tag, 2);
+            $filters[] = sprintf('nwr["%s"="%s"]["name"](around:%d,%F,%F);',
+                $key, $value, (int) ($radiusKm * 1000), $lat, $lng);
+        }
+        $query = "[out:json][timeout:60];(" . implode('', $filters) . ");out center tags;";
+        $json = self::overpassRequest($query, 70);
+        if ($json === null) {
+            $result['error'] = "Категория «" . self::CATEGORIES[$categoryKey][0] . "» не загрузилась";
+            return $result;
+        }
+
+        $proc = self::processOsmElements($db, $json['elements']);
+        $result['imported'] = $proc['imported'];
+        $result['updated'] = $proc['updated'];
+        $result['skipped'] = $proc['skipped'];
+        return $result;
+    }
+
     /** Обработка элементов OSM и сохранение в справочник. */
     private static function processOsmElements(\PDO $db, array $elements): array
     {
