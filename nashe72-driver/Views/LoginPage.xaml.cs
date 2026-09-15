@@ -1,0 +1,193 @@
+﻿using TaxiDriver.Services;
+
+namespace TaxiDriver.Views;
+
+public partial class LoginPage : ContentPage
+{
+    private readonly ApiService _api;
+    private readonly SignalRService _signalR;
+    private readonly LocationService _location;
+
+    public LoginPage(ApiService api, SignalRService signalR, LocationService location)
+    {
+        InitializeComponent();
+        _api = api;
+        _signalR = signalR;
+        _location = location;
+
+        // Бренд сервиса из админки: применяем текущий и следим за обновлениями
+        ApplyBrand(BrandingService.Current);
+        BrandingService.Updated += b =>
+            MainThread.BeginInvokeOnMainThread(() => ApplyBrand(b));
+
+        Loaded += OnPageLoaded;
+    }
+
+    /// Применение бренда: название сервиса, подзаголовок приложения,
+    /// фирменные цвета и логотип (если загружен в админке).
+    private void ApplyBrand(BrandingData brand)
+    {
+        var accent = BrandingService.ParseColor(brand.PrimaryColor, "#FFD700");
+        var ink = BrandingService.ParseColor(brand.PrimaryTextColor, "#1E1E2E");
+
+        if (!string.IsNullOrWhiteSpace(brand.ServiceName))
+        {
+            BrandNameLabel.Text = brand.ServiceName;
+            Title = brand.ServiceName;
+        }
+        if (!string.IsNullOrWhiteSpace(brand.AppName))
+            BrandSubtitleLabel.Text = brand.AppName;
+
+        BrandNameLabel.TextColor = accent;
+        LoginBtn.BackgroundColor = accent;
+        LoginBtn.TextColor = ink;
+        LoadingIndicator.Color = accent;
+
+        var logo = BrandingService.AbsoluteLogoUrl(brand);
+        if (logo != null)
+        {
+            LogoImage.Source = ImageSource.FromUri(new Uri(logo));
+            LogoImage.IsVisible = true;
+        }
+    }
+
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        // Освежаем бренд при каждом показе экрана входа
+        _ = BrandingService.LoadAsync();
+    }
+
+    /// Авто-вход по сохранённой сессии: токен и ID водителя восстанавливаются
+    /// из защищённого хранилища — ввод логина и пароля нужен только один раз.
+    private async void OnPageLoaded(object? sender, EventArgs e)
+    {
+        Loaded -= OnPageLoaded;
+
+        // Телефон из последнего входа подставляем сразу
+        try
+        {
+            var lastPhone = await SecureStorage.GetAsync("last_phone");
+            if (!string.IsNullOrWhiteSpace(lastPhone))
+                PhoneEntry.Text = lastPhone;
+        }
+        catch { }
+
+        try
+        {
+            var token = await SecureStorage.GetAsync("token");
+            var driverIdRaw = await SecureStorage.GetAsync("driver_id");
+            var userIdRaw = await SecureStorage.GetAsync("user_id");
+            var userName = await SecureStorage.GetAsync("user_name");
+
+            if (string.IsNullOrWhiteSpace(token) ||
+                !Guid.TryParse(driverIdRaw, out var driverId))
+                return;
+
+            // Показываем прогресс вместо формы, пока осуществляется авто-вход
+            LoadingIndicator.IsVisible = true;
+            LoadingIndicator.IsRunning = true;
+            LoginBtn.IsEnabled = false;
+
+            _api.SetToken(token);
+            var names = (userName ?? "Водитель").Split(' ', 2);
+
+            // Настоящий userId: из хранилища, иначе из самого токена (uid).
+            // Раньше сюда подставлялся driverId, и сервер отклонял сообщения
+            // чата с 403 «Нельзя писать от чужого имени».
+            var userId = Guid.TryParse(userIdRaw, out var storedUserId)
+                ? storedUserId
+                : _api.TokenUserId() ?? driverId;
+
+            var auth = new Models.AuthResponse
+            {
+                UserId = userId,
+                Token = token,
+                FirstName = names[0],
+                LastName = names.Length > 1 ? names[1] : "",
+                Role = "Driver",
+                DriverId = driverId
+            };
+
+            await _signalR.ConnectAsync(token);
+            _location.DriverId = auth.DriverId;
+
+            Application.Current!.MainPage = new NavigationPage(
+                new MainDriverPage(_api, _signalR, _location, auth));
+        }
+        catch
+        {
+            // Сессия повреждена или токен протух — показываем обычный вход
+            LoadingIndicator.IsRunning = false;
+            LoadingIndicator.IsVisible = false;
+            LoginBtn.IsEnabled = true;
+        }
+    }
+
+    private async void OnLoginClicked(object sender, EventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(PhoneEntry.Text) ||
+            string.IsNullOrWhiteSpace(PasswordEntry.Text))
+        {
+            ErrorLabel.Text = "Введите телефон и пароль";
+            ErrorLabel.IsVisible = true;
+            return;
+        }
+
+        LoginBtn.IsEnabled = false;
+        LoadingIndicator.IsVisible = true;
+        LoadingIndicator.IsRunning = true;
+        ErrorLabel.IsVisible = false;
+
+        try
+        {
+            var auth = await _api.LoginAsync(
+                PhoneEntry.Text.Trim(),
+                PasswordEntry.Text);
+
+            if (auth.Role != "Driver")
+            {
+                ErrorLabel.Text = "Этот аккаунт не является водителем";
+                ErrorLabel.IsVisible = true;
+                return;
+            }
+
+            if (!auth.DriverId.HasValue)
+            {
+                ErrorLabel.Text = "Профиль водителя не найден. Обратитесь к администратору.";
+                ErrorLabel.IsVisible = true;
+                return;
+            }
+
+            // Сохраняем данные
+            await SecureStorage.SetAsync("token", auth.Token);
+            await SecureStorage.SetAsync("last_phone", PhoneEntry.Text.Trim());
+            await SecureStorage.SetAsync("driver_id", auth.DriverId.ToString()!);
+            // userId нужен чату: сервер требует совпадения отправителя с токеном
+            await SecureStorage.SetAsync("user_id", auth.UserId.ToString());
+            await SecureStorage.SetAsync("user_name",
+                $"{auth.FirstName} {auth.LastName}");
+
+            // Подключаем SignalR
+            await _signalR.ConnectAsync(auth.Token);
+
+            // Устанавливаем driverId в LocationService
+            _location.DriverId = auth.DriverId;
+
+            // Переходим на главный экран
+            Application.Current!.MainPage = new NavigationPage(
+                new MainDriverPage(_api, _signalR, _location, auth));
+        }
+        catch (Exception ex)
+        {
+            ErrorLabel.Text = ex.Message;
+            ErrorLabel.IsVisible = true;
+        }
+        finally
+        {
+            LoginBtn.IsEnabled = true;
+            LoadingIndicator.IsRunning = false;
+            LoadingIndicator.IsVisible = false;
+        }
+    }
+}

@@ -23,6 +23,13 @@
 Эквайринг ИП, карточные платежи/СБП C2B, внутренний счёт, кошельки
 водителей-самозанятых и ручные заявки на вывод: [`ServerHosting/SBER.md`](ServerHosting/SBER.md).
 
+## nashe72 — приложение водителя (Android)
+
+Мобильное приложение водителя для сервера **https://nashe72.ru**.
+MAUI Android, навигационная карта OSM/MapLibre, голосовые подсказки,
+офлайн-карта, пробки TomTom, кошелёк, чеки НПД.
+[`nashe72-driver/README.md`](nashe72-driver/README.md) · Сборка: `nashe72-driver/build-driver.ps1`
+
 ## nashe72 — пульт оператора (Windows)
 
 Диспетчерский пульт для сервера **https://nashe72.ru**.

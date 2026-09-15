@@ -1,0 +1,620 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="TaxiDriver.Views.MainDriverPage"
+             Title=""
+             Shell.NavBarIsVisible="False"
+             NavigationPage.HasNavigationBar="False"
+             BackgroundColor="#1E1E2E">
+
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+
+        <Border x:Name="HeaderBorder" Grid.Row="0" BackgroundColor="#252536" Padding="15,12">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <StackLayout Grid.Column="0" Spacing="2">
+                    <Label x:Name="DriverNameLabel"
+                           TextColor="White"
+                           FontSize="16"
+                           FontAttributes="Bold"/>
+                    <Label x:Name="StatusLabel"
+                           TextColor="Gray"
+                           FontSize="13"/>
+                </StackLayout>
+
+                <Button Grid.Column="1"
+                        x:Name="SosTopBtn"
+                        Text="SOS"
+                        BackgroundColor="#DC2626"
+                        TextColor="White"
+                        FontAttributes="Bold"
+                        FontSize="14"
+                        CornerRadius="20"
+                        HeightRequest="40"
+                        WidthRequest="72"
+                        Margin="0,0,10,0"
+                        Clicked="OnSosClicked"/>
+
+                <Border Grid.Column="2"
+                        x:Name="OnlineBorder"
+                        BackgroundColor="#333"
+                        Padding="12,8">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="20"/>
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnToggleOnline"/>
+                    </Border.GestureRecognizers>
+                    <Label x:Name="OnlineLabel"
+                           Text=" Не в сети"
+                           TextColor="White"
+                           FontSize="13"
+                           FontAttributes="Bold"/>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Статистика -->
+        <Grid x:Name="StatsGrid" Grid.Row="1" ColumnDefinitions="*,*,*,*"
+              BackgroundColor="#252536"
+              Margin="0,1,0,0" Padding="10">
+
+            <StackLayout Grid.Column="0" HorizontalOptions="Center">
+                <Label x:Name="TodayTripsLabel" Text="0"
+                       TextColor="#FFD700" FontSize="20"
+                       FontAttributes="Bold"
+                       HorizontalOptions="Center"/>
+                <Label Text="Поездок" TextColor="Gray"
+                       FontSize="10" HorizontalOptions="Center"/>
+            </StackLayout>
+
+            <StackLayout Grid.Column="1" HorizontalOptions="Center">
+                <Label x:Name="TodayEarningsLabel" Text="***"
+                       TextColor="#4CAF50" FontSize="20"
+                       FontAttributes="Bold"
+                       HorizontalOptions="Center"/>
+                <Button x:Name="EarningsToggleBtn"
+                        Text=" Заработок"
+                        BackgroundColor="Transparent"
+                        TextColor="Gray"
+                        FontSize="10"
+                        HeightRequest="24"
+                        Padding="0"
+                        Clicked="OnToggleEarningsVisibility"/>
+            </StackLayout>
+
+            <StackLayout Grid.Column="2" HorizontalOptions="Center">
+                <Label x:Name="RatingLabel" Text="5.0 "
+                       TextColor="#2196F3" FontSize="20"
+                       FontAttributes="Bold"
+                       HorizontalOptions="Center"/>
+                <Label Text="Рейтинг" TextColor="Gray"
+                       FontSize="10" HorizontalOptions="Center"/>
+            </StackLayout>
+
+            <StackLayout Grid.Column="3" HorizontalOptions="Center">
+                <Label x:Name="BalanceLabel" Text=" ₽"
+                       TextColor="#FFD700" FontSize="20"
+                       FontAttributes="Bold"
+                       HorizontalOptions="Center"/>
+                <Button x:Name="BalanceToggleBtn"
+                        Text=" Баланс"
+                        BackgroundColor="Transparent"
+                        TextColor="Gray"
+                        FontSize="10"
+                        HeightRequest="24"
+                        Padding="0"
+                        Clicked="OnToggleBalanceVisibility"/>
+            </StackLayout>
+        </Grid>
+
+        <!-- Предупреждение о низком балансе -->
+        <Border x:Name="LowBalanceWarning"
+                Grid.Row="2"
+                IsVisible="False"
+                BackgroundColor="#4A1A1A"
+                Stroke="#F44336"
+                StrokeThickness="1"
+                Padding="10,8"
+                Margin="10,8,10,0">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="8"/>
+            </Border.StrokeShape>
+            <Grid ColumnDefinitions="*,Auto">
+                <Label Grid.Column="0"
+                       x:Name="LowBalanceText"
+                       Text=" Недостаточно средств на балансе. Обратитесь к оператору."
+                       TextColor="#FF6B6B"
+                       FontSize="12"
+                       VerticalOptions="Center"/>
+                <Button Grid.Column="1"
+                        Text=""
+                        BackgroundColor="Transparent"
+                        TextColor="#FF6B6B"
+                        FontSize="16"
+                        WidthRequest="40"
+                        HeightRequest="36"
+                        Padding="0"
+                        Clicked="OnRefreshBalance"/>
+            </Grid>
+        </Border>
+
+        <!-- Контент -->
+        <ScrollView Grid.Row="3" x:Name="MainScroll">
+            <StackLayout Padding="15" Spacing="12">
+
+                <!-- Безналичный заработок, пополнение и вывод по СБП -->
+                <Button Text="💳 Безналичный кошелёк / СБП"
+                        BackgroundColor="#17351E" TextColor="#4ADE80"
+                        BorderColor="#4CAF50" BorderWidth="1"
+                        CornerRadius="10" HeightRequest="44"
+                        Clicked="OnOpenWallet"/>
+
+                <!-- Баннер нового сообщения чата -->
+                <Border x:Name="ChatBanner" IsVisible="False"
+                        BackgroundColor="#1A2A4A"
+                        Stroke="#2196F3" StrokeThickness="2"
+                        Padding="12,10" Margin="0,0,0,8">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="10"/>
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnChatBannerTapped"/>
+                    </Border.GestureRecognizers>
+                    <StackLayout Spacing="4">
+                        <Label Text="Для продолжения диалога нажмите на сообщение"
+                               TextColor="#4FC3F7" FontSize="11"/>
+                        <Label x:Name="ChatBannerText"
+                               Text=""
+                               TextColor="White"
+                               FontSize="15"
+                               FontAttributes="Bold"/>
+                        <Label x:Name="ChatBannerSender"
+                               Text=""
+                               TextColor="Gray"
+                               FontSize="12"/>
+                    </StackLayout>
+                </Border>
+
+                <!-- Активный заказ -->
+                <Border x:Name="ActiveOrderPanel"
+                        IsVisible="False"
+                        BackgroundColor="#1A3A1A"
+                        Stroke="#4CAF50"
+                        StrokeThickness="2"
+                        Padding="15">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12"/>
+                    </Border.StrokeShape>
+
+                    <StackLayout Spacing="8">
+                        <Label Text=" АКТИВНЫЙ ЗАКАЗ"
+                               TextColor="#4CAF50"
+                               FontSize="13"
+                               FontAttributes="Bold"/>
+
+                        <Label x:Name="ActiveOrderNumber"
+                               TextColor="White"
+                               FontSize="16"
+                               FontAttributes="Bold"/>
+
+                        <BoxView HeightRequest="1" Color="#333"/>
+
+                        <Grid x:Name="MapContainer" HeightRequest="340" IsVisible="False">
+                            <WebView x:Name="RouteMap"
+                                     BackgroundColor="#1E1E2E"/>
+
+                            <!-- Только разворот: кнопки этапа и простоя живут
+                                 под картой в карточке заказа, дублей нет -->
+                            <Button x:Name="MapExpandBtn"
+                                    Text="⛶"
+                                    FontSize="18"
+                                    BackgroundColor="#CC252536"
+                                    TextColor="White"
+                                    CornerRadius="10"
+                                    HeightRequest="42"
+                                    WidthRequest="42"
+                                    Margin="8"
+                                    HorizontalOptions="Start"
+                                    VerticalOptions="Start"
+                                    Clicked="OnToggleMapFullscreen"/>
+
+                            <!-- Таймер простоя поверх карты -->
+                            <Label x:Name="MapWaitingLabel"
+                                   Text=""
+                                   TextColor="White"
+                                   BackgroundColor="#CC0EA5E9"
+                                   FontAttributes="Bold"
+                                   FontSize="14"
+                                   Padding="10,6"
+                                   Margin="8,56,8,8"
+                                   HorizontalOptions="Start"
+                                   VerticalOptions="Start"
+                                   IsVisible="False"/>
+
+                            <!-- Пробки (TomTom) и озвучка маршрута: справа,
+                                 НИЖЕ кнопок масштаба MapLibre, чтобы их не перекрывать -->
+                            <VerticalStackLayout HorizontalOptions="End"
+                                                 VerticalOptions="Start"
+                                                 Margin="8,100,8,8"
+                                                 Spacing="6">
+                                <Button x:Name="MapTrafficBtn"
+                                        Text="Пробки"
+                                        FontSize="11"
+                                        FontAttributes="Bold"
+                                        BackgroundColor="#CC252536"
+                                        TextColor="White"
+                                        CornerRadius="10"
+                                        HeightRequest="34"
+                                        Padding="12,0"
+                                        Clicked="OnToggleTraffic"/>
+                                <Button x:Name="MapIncidentsBtn"
+                                        Text="ДТП"
+                                        FontSize="11"
+                                        FontAttributes="Bold"
+                                        BackgroundColor="#CC252536"
+                                        TextColor="White"
+                                        CornerRadius="10"
+                                        HeightRequest="34"
+                                        Padding="12,0"
+                                        Clicked="OnToggleIncidents"/>
+                                <Button x:Name="MapVoiceBtn"
+                                        Text="Озвучка"
+                                        FontSize="11"
+                                        FontAttributes="Bold"
+                                        BackgroundColor="#CC252536"
+                                        TextColor="White"
+                                        CornerRadius="10"
+                                        HeightRequest="34"
+                                        Padding="12,0"
+                                        Clicked="OnToggleVoice"/>
+                            </VerticalStackLayout>
+                        </Grid>
+
+                        <!-- Явный статус: видно, получил ли клиент дорожную геометрию -->
+                        <Label x:Name="MapRouteStatusLabel"
+                               Text=""
+                               IsVisible="False"
+                               TextColor="#FACC15"
+                               FontSize="12"
+                               FontAttributes="Bold"
+                               Margin="2,6,2,0"/>
+
+                        <!-- Скачивание карты города: нативная кнопка под картой,
+                             её не перекрывают элементы управления MapLibre -->
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,4,0,0">
+                            <Label Grid.Column="0" x:Name="GpsStatusLabel"
+                                   Text="GPS: определение местоположения…"
+                                   TextColor="#FACC15"
+                                   FontSize="12"
+                                   VerticalOptions="Center"/>
+                            <Button Grid.Column="1"
+                                    Text="Настройки GPS"
+                                    BackgroundColor="#333340"
+                                    TextColor="White"
+                                    FontSize="11"
+                                    CornerRadius="8"
+                                    HeightRequest="38"
+                                    Clicked="OnOpenGpsSettings"/>
+                        </Grid>
+
+                        <Button x:Name="MapDownloadBtn"
+                                Text="⬇ Скачать карту города для работы офлайн"
+                                BackgroundColor="#252536"
+                                TextColor="#FFD700"
+                                FontSize="13"
+                                FontAttributes="Bold"
+                                CornerRadius="8"
+                                HeightRequest="44"
+                                Margin="0,8,0,0"
+                                Clicked="OnDownloadCityMap"/>
+
+                        <VerticalStackLayout x:Name="OrderDetailsPanel" Spacing="8">
+                            <Grid ColumnDefinitions="20,*">
+                                <Label Grid.Column="0" Text="🅰" FontSize="16" VerticalOptions="Center"/>
+                                <Label Grid.Column="1" x:Name="ActivePickupLabel" TextColor="White" FontSize="14"/>
+                            </Grid>
+
+                            <StackLayout x:Name="ActiveStopsPanel" IsVisible="False" Spacing="2">
+                                <Label Text="Промежуточные адреса:" TextColor="#FFD700"
+                                       FontSize="12" FontAttributes="Bold"/>
+                                <Label x:Name="ActiveStopsLabel" TextColor="White" FontSize="13"/>
+                            </StackLayout>
+
+                            <Grid ColumnDefinitions="20,*">
+                                <Label Grid.Column="0" Text="🅱" FontSize="16" VerticalOptions="Center"/>
+                                <Label Grid.Column="1" x:Name="ActiveDestLabel" TextColor="LightGray" FontSize="14"/>
+                            </Grid>
+
+                            <!-- Дополнительные условия заказа: детское кресло,
+                                 животное, багаж и прочее из справочника опций -->
+                            <Border x:Name="ActiveOptionsPanel" IsVisible="False"
+                                    BackgroundColor="#3A2E12" Stroke="#FFD700"
+                                    StrokeThickness="1" Padding="10,8">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="8"/>
+                                </Border.StrokeShape>
+                                <StackLayout Spacing="2">
+                                    <Label Text="⚠ Особые условия заказа:" TextColor="#FFD700"
+                                           FontSize="12" FontAttributes="Bold"/>
+                                    <Label x:Name="ActiveOptionsLabel" TextColor="White"
+                                           FontSize="14" FontAttributes="Bold"/>
+                                </StackLayout>
+                            </Border>
+
+                            <!-- Комментарий пассажира к заказу -->
+                            <StackLayout x:Name="ActiveCommentPanel" IsVisible="False" Spacing="2">
+                                <Label Text="Комментарий пассажира:" TextColor="#4FC3F7"
+                                       FontSize="12" FontAttributes="Bold"/>
+                                <Label x:Name="ActiveCommentLabel" TextColor="White" FontSize="13"/>
+                            </StackLayout>
+
+                            <Label x:Name="ActivePassengersLabel" TextColor="LightGray" FontSize="13"/>
+
+                            <Grid ColumnDefinitions="*,*">
+                                <Label Grid.Column="0" x:Name="ActivePriceLabel" TextColor="#FFD700" FontSize="20" FontAttributes="Bold"/>
+                                <Label Grid.Column="1" x:Name="ActiveTariffLabel" TextColor="Gray" FontSize="14" HorizontalOptions="End"/>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*,*">
+                                <Button Grid.Column="0" x:Name="StatusBtn"
+                                        Text="На месте"
+                                        BackgroundColor="#FF9800"
+                                        TextColor="White"
+                                        CornerRadius="8"
+                                        Margin="0,0,4,0"
+                                        Clicked="OnStatusButtonClick"/>
+                                <Button Grid.Column="1"
+                                        Text="Отказаться"
+                                        BackgroundColor="#555"
+                                        TextColor="White"
+                                        CornerRadius="8"
+                                        Margin="4,0,0,0"
+                                        Clicked="OnRejectActiveOrder"/>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
+                                <Button Grid.Column="0" x:Name="WaitingBtn"
+                                        Text="Простой"
+                                        BackgroundColor="#333"
+                                        TextColor="White"
+                                        CornerRadius="8"
+                                        HeightRequest="40"
+                                        IsVisible="False"
+                                        Clicked="OnToggleWaiting"/>
+                                <Label Grid.Column="1" x:Name="WaitingLabel"
+                                       Text=""
+                                       TextColor="#7dd3fc"
+                                       FontSize="14"
+                                       FontAttributes="Bold"
+                                       VerticalOptions="Center"
+                                       Margin="10,0,4,0"/>
+                            </Grid>
+
+                            <Button Text="💬 Чат с клиентом"
+                                    BackgroundColor="#2196F3"
+                                    TextColor="White"
+                                    CornerRadius="8"
+                                    HeightRequest="36"
+                                    FontSize="13"
+                                    Margin="0,4,0,4"
+                                    Clicked="OnOpenChat"/>
+                        </VerticalStackLayout>
+
+                    </StackLayout>
+                </Border>
+
+                <!-- Заголовок -->
+                <Grid ColumnDefinitions="*,Auto">
+                    <Label x:Name="OrdersHeaderLabel"
+                           Grid.Column="0"
+                           Text="Доступные заказы"
+                           TextColor="White"
+                           FontSize="16"
+                           FontAttributes="Bold"/>
+                    <Label x:Name="OrdersCountLabel"
+                           Grid.Column="1"
+                           Text=""
+                           TextColor="#FF9800"
+                           FontSize="14"/>
+                </Grid>
+
+                <!-- Радиус -->
+                <Border BackgroundColor="#252536" Padding="12,8" Margin="0,0,0,6">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="8"/>
+                    </Border.StrokeShape>
+                    <StackLayout Spacing="4">
+                        <HorizontalStackLayout Spacing="8">
+                            <CheckBox x:Name="RadiusEnabledCheck"
+                                      Color="#FFD700"
+                                      IsChecked="False"
+                                      CheckedChanged="OnRadiusToggled"/>
+                            <Label Text=" Фильтр по радиусу:"
+                                   TextColor="LightGray"
+                                   FontSize="12"
+                                   VerticalOptions="Center"/>
+                            <Label x:Name="RadiusValueLabel"
+                                   Text="Выкл"
+                                   TextColor="Gray"
+                                   FontSize="14"
+                                   FontAttributes="Bold"
+                                   VerticalOptions="Center"/>
+                        </HorizontalStackLayout>
+                        <Slider x:Name="RadiusSlider"
+                                Minimum="0.1"
+                                Maximum="5.0"
+                                Value="2.0"
+                                IsEnabled="False"
+                                MinimumTrackColor="#555"
+                                MaximumTrackColor="#555"
+                                ThumbColor="#888"
+                                ValueChanged="OnRadiusChanged"/>
+                    </StackLayout>
+                </Border>
+
+                <!-- Сортировка (перенос на маленьких экранах) -->
+                <FlexLayout Wrap="Wrap" Direction="Row">
+                    <Button x:Name="SosBtn"
+                            Text="🆘 SOS"
+                            BackgroundColor="#DC2626"
+                            TextColor="White"
+                            FontAttributes="Bold"
+                            CornerRadius="16"
+                            HeightRequest="34"
+                            Margin="0,0,8,8"
+                            Clicked="OnSosClicked"/>
+                    <Button x:Name="LogoutBtn"
+                            Text="Выйти"
+                            BackgroundColor="#252536"
+                            TextColor="#fca5a5"
+                            CornerRadius="16"
+                            HeightRequest="34"
+                            FontSize="12"
+                            Margin="0,0,8,8"
+                            Clicked="OnLogoutClicked"/>
+                    <Button x:Name="FleetChatBtn"
+                            Text="Чат автопарка"
+                            BackgroundColor="#2196F3"
+                            TextColor="White"
+                            CornerRadius="16"
+                            Margin="0,0,8,8"
+                            HeightRequest="34"
+                            FontSize="12"
+                            Clicked="OnOpenFleetChat"/>
+                    <Button x:Name="SortNearbyBtn"
+                            Text=" Рядом"
+                            BackgroundColor="#FFD700"
+                            TextColor="#1E1E2E"
+                            CornerRadius="16"
+                            Margin="0,0,8,8"
+                            HeightRequest="34"
+                            FontSize="12"
+                            Clicked="OnSortNearby"/>
+                    <Button x:Name="SortOldBtn"
+                            Text=" Старые"
+                            BackgroundColor="#333"
+                            TextColor="White"
+                            CornerRadius="16"
+                            Margin="0,0,8,8"
+                            HeightRequest="34"
+                            FontSize="12"
+                            Clicked="OnSortOld"/>
+                    <Button x:Name="SortExpensiveBtn"
+                            Text=" Дорогие"
+                            BackgroundColor="#333"
+                            TextColor="White"
+                            CornerRadius="16"
+                            Margin="0,0,8,8"
+                            HeightRequest="34"
+                            FontSize="12"
+                            Clicked="OnSortExpensive"/>
+                </FlexLayout>
+
+                <!-- Пусто -->
+                <Border x:Name="NoOrdersPanel"
+                        BackgroundColor="#252536"
+                        Padding="20"
+                        IsVisible="True">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12"/>
+                    </Border.StrokeShape>
+                    <StackLayout HorizontalOptions="Center" Spacing="8">
+                        <Label Text="" FontSize="40" HorizontalOptions="Center"/>
+                        <Label Text="Нет доступных заказов"
+                               TextColor="Gray"
+                               FontSize="15"
+                               HorizontalOptions="Center"/>
+                        <Label x:Name="NoOrdersHintLabel"
+                               Text="Включите режим онлайн и ждите"
+                               TextColor="#555"
+                               FontSize="12"
+                               HorizontalOptions="Center"
+                               HorizontalTextAlignment="Center"/>
+                    </StackLayout>
+                </Border>
+
+                <!-- Список -->
+                <StackLayout x:Name="OrdersList" Spacing="10"/>
+
+                <!-- История баланса -->
+                <Border BackgroundColor="#252536" Padding="15" Margin="0,10,0,0">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12"/>
+                    </Border.StrokeShape>
+                    <StackLayout Spacing="8">
+                        <HorizontalStackLayout Spacing="8">
+                            <HorizontalStackLayout.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnToggleBalanceHistory"/>
+                            </HorizontalStackLayout.GestureRecognizers>
+                            <Label x:Name="BalanceHistoryToggle"
+                                   Text=""
+                                   TextColor="#FFD700"
+                                   FontSize="14"
+                                   VerticalOptions="Center"/>
+                            <Label Text=" История баланса"
+                                   TextColor="White"
+                                   FontSize="15"
+                                   FontAttributes="Bold"/>
+                        </HorizontalStackLayout>
+
+                        <StackLayout x:Name="BalanceHistoryContainer"
+                                     IsVisible="False"
+                                     Spacing="4">
+                            <StackLayout x:Name="BalanceHistoryList" Spacing="4"/>
+                            <Label x:Name="BalanceHistoryEmpty"
+                                   Text="История пуста"
+                                   TextColor="Gray"
+                                   FontSize="13"
+                                   IsVisible="False"
+                                   HorizontalOptions="Center"/>
+                        </StackLayout>
+                    </StackLayout>
+                </Border>
+
+            </StackLayout>
+        </ScrollView>
+
+        <!-- Обновить -->
+        <Button Grid.Row="4"
+                Text=" Обновить"
+                BackgroundColor="#333"
+                TextColor="White"
+                CornerRadius="0"
+                HeightRequest="44"
+                FontSize="14"
+                Clicked="OnRefreshOrders"/>
+
+        <!-- Полноэкранный слой карты: WebView переносится СЮДА целиком,
+             поэтому кнопки «Пробки/ДТП/Озвучка» и карточка заказа остаются
+             в обычном режиме и не едут вместе с картой. Жесты пальцами
+             (масштаб, перемещение) работают, т.к. оверлей вне скролла. -->
+        <Grid x:Name="MapFullscreenOverlay"
+              Grid.Row="0" Grid.RowSpan="5" ZIndex="100"
+              BackgroundColor="#0A0A0C"
+              IsVisible="False">
+            <Grid x:Name="MapFullscreenHost" />
+            <Button x:Name="MapCollapseBtn"
+                    Text="✕"
+                    FontSize="20"
+                    BackgroundColor="#CC252536"
+                    TextColor="White"
+                    CornerRadius="22"
+                    HeightRequest="44"
+                    WidthRequest="44"
+                    Margin="12"
+                    HorizontalOptions="Start"
+                    VerticalOptions="Start"
+                    Clicked="OnToggleMapFullscreen"/>
+            <Label x:Name="MapFullscreenHint"
+                   Text="Жесты: свести/развести — масштаб · тащить — карта · камера вернётся к машине через 20 с · ✕ — свернуть"
+                   TextColor="#E4E4E7"
+                   BackgroundColor="#CC18181B"
+                   FontSize="11"
+                   Padding="12,7"
+                   Margin="64,12,12,0"
+                   HorizontalOptions="Start"
+                   VerticalOptions="Start"
+                   IsVisible="False"/>
+        </Grid>
+    </Grid>
+</ContentPage>

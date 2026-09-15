@@ -40,3 +40,10 @@ LicenseServer/setup.lock
 ## nashe72 — сборка пульта оператора
 nashe72/publish/
 nashe72/*.zip
+
+## nashe72-driver — сборка APK водителя
+nashe72-driver/bin/
+nashe72-driver/obj/
+nashe72-driver/maps/work/
+nashe72-driver/Resources/Raw/map/*.pmtiles
+nashe72-driver/Resources/Raw/map/font-*.pbf
