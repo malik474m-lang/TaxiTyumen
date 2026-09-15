@@ -23,6 +23,12 @@
 Эквайринг ИП, карточные платежи/СБП C2B, внутренний счёт, кошельки
 водителей-самозанятых и ручные заявки на вывод: [`ServerHosting/SBER.md`](ServerHosting/SBER.md).
 
+## nashe72 — пульт оператора (Windows)
+
+Диспетчерский пульт для сервера **https://nashe72.ru**.
+WPF, .NET 10, SIP-телефония, карта автопарка, заказы, SOS.
+[`nashe72/README.md`](nashe72/README.md) · Сборка: `nashe72/build-operator.ps1`
+
 ## Сервер лицензий (PHP + MySQL)
 
 Автономный сервер лицензирования на taxi.license-prog.ru (jino.ru):

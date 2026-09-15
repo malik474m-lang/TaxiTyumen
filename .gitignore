@@ -36,3 +36,7 @@ taxi-release.keystore
 ## Сервер лицензий — секреты и lock установки
 LicenseServer/license.local.php
 LicenseServer/setup.lock
+
+## nashe72 — сборка пульта оператора
+nashe72/publish/
+nashe72/*.zip
