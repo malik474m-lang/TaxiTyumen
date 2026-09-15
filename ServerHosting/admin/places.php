@@ -35,6 +35,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         if ($cmd === 'import') {
+            // Shared-хостинг обрывает PHP на 60-120 сек — просим максимум
+            @set_time_limit(0);
+            @ini_set('memory_limit', '256M');
             $radius = max(5, min(60, (int) ($_POST['radius'] ?? 25)));
             $importResult = Places::importFromOsm(
                 $db,
@@ -49,6 +52,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         if ($cmd === 'import-region') {
+            @set_time_limit(0);
+            @ini_set('memory_limit', '256M');
             // Импорт по прямоугольной области: Тюмень + Тюменский район
             // (bbox 56.85–57.45 / 64.80–66.30 покрывает весь район)
             $importResult = Places::importFromOsmBbox($db, 56.85, 64.80, 57.45, 66.30);

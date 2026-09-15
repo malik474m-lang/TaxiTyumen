@@ -287,11 +287,12 @@ final class Places
                     $key, $value, (int) ($radiusKm * 1000), $lat, $lng);
             }
         }
-        $query = "[out:json][timeout:120];(" . implode('', $filters) . ");out center tags;";
+        // Overpass timeout 60 сек: shared-хостинг обрывает PHP на 90-120 сек
+        $query = "[out:json][timeout:60];(" . implode('', $filters) . ");out center tags;";
 
         $ctx = stream_context_create(['http' => [
             'method' => 'POST',
-            'timeout' => 180,
+            'timeout' => 90,
             'ignore_errors' => true,
             'header' => "Content-Type: application/x-www-form-urlencoded\r\n"
                 . "User-Agent: TaxiTyumen/1.0 (+" . PUBLIC_BASE_URL . ")\r\n",
@@ -491,11 +492,12 @@ final class Places
                     $key, $value, $south, $west, $north, $east);
             }
         }
-        $query = '[out:json][timeout:300];(' . implode('', $filters) . ');out center tags;';
+        // Таймаут понижен: shared-хостинг jino.ru обрывает LSAPI на 300 сек
+        $query = '[out:json][timeout:90];(' . implode('', $filters) . ');out center tags;';
 
         $ctx = stream_context_create(['http' => [
             'method' => 'POST',
-            'timeout' => 300,
+            'timeout' => 100,
             'ignore_errors' => true,
             'header' => "Content-Type: application/x-www-form-urlencoded\r\n"
                 . "User-Agent: TaxiTyumen/1.0 (" . PUBLIC_BASE_URL . ")\r\n",

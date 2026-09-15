@@ -42,5 +42,5 @@ RewriteRule ^admin/?$ admin/index.php [L,QSA]
 RewriteRule ^api/(.*)$ api/$1 [L,QSA]
 RewriteRule ^admin/(.*)$ admin/$1 [L,QSA]
 
-# Корень — редирект на админку
+# index.php в корне обрабатывает вход; если его нет — редирект на админку
 RewriteRule ^$ admin/login.php [L,R=302]

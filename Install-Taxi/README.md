@@ -8,6 +8,7 @@
 ```
 Install-Taxi/
 ├── install.php          — веб-установщик (удалить после установки!)
+├── index.php            — корневая страница (редирект на админку)
 ├── README.md            — эта инструкция
 ├── .htaccess            — настройки Apache для корня домена
 └── STEPS.md             — пошаговая инструкция с API-ключами
@@ -55,7 +56,8 @@ config.php
 config.protected.php
 ```
 
-Скопируйте `Install-Taxi/.htaccess` в корень домена.
+Скопируйте `Install-Taxi/.htaccess` и `Install-Taxi/index.php` в корень домена.
+`index.php` нужен, иначе Apache отдаёт 403 при открытии корня домена.
 
 ### Шаг 2. Загрузите установщик
 
